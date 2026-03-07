@@ -1,0 +1,8 @@
+src/
+dist/__tests__/
+dist/**/*.test.*
+*.config.ts
+*.config.js
+tsconfig.json
+node_modules/
+.hive-mind/

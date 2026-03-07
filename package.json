@@ -13,9 +13,12 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "keywords": [],
-  "license": "UNLICENSED",
-  "private": true,
+  "keywords": ["cli", "orchestrator", "prd", "ai", "claude", "multi-agent"],
+  "author": "Ziyil",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "devDependencies": {
     "@types/node": "^25.3.5",
     "@typescript-eslint/eslint-plugin": "^8.56.1",

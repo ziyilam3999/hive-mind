@@ -3,6 +3,7 @@
 import { readFileSafe, fileExists } from "./utils/file-io.js";
 import { runShell } from "./utils/shell.js";
 import type { Checkpoint } from "./types/checkpoint.js";
+import { runPipeline, resumeFromCheckpoint } from "./orchestrator.js";
 
 export type ParsedCommand =
   | { command: "start"; prdPath: string }
@@ -67,8 +68,7 @@ export async function main(): Promise<void> {
         console.error("Error: claude CLI not found on PATH");
         process.exit(1);
       }
-      // TODO: delegate to orchestrator (US-09)
-      console.log(`Starting pipeline with PRD: ${parsed.prdPath}`);
+      await runPipeline(parsed.prdPath, ".hive-mind");
       break;
     }
     case "approve": {
@@ -77,8 +77,7 @@ export async function main(): Promise<void> {
         console.error("Error: no active checkpoint");
         process.exit(1);
       }
-      // TODO: delegate to orchestrator (US-09)
-      console.log(`Approving checkpoint: ${checkpoint.awaiting}`);
+      await resumeFromCheckpoint(checkpoint, ".hive-mind");
       break;
     }
     case "reject": {
@@ -87,8 +86,8 @@ export async function main(): Promise<void> {
         console.error("Error: no active checkpoint");
         process.exit(1);
       }
-      // TODO: persist feedback and delegate to orchestrator (US-09)
-      console.log(`Rejecting checkpoint: ${checkpoint.awaiting} with feedback: ${parsed.feedback}`);
+      checkpoint.feedback = parsed.feedback;
+      await resumeFromCheckpoint(checkpoint, ".hive-mind");
       break;
     }
     case "status": {
