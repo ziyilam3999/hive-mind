@@ -1,6 +1,6 @@
 import type { Checkpoint } from "./types/checkpoint.js";
 import type { ExecutionPlan } from "./types/execution-plan.js";
-import { fileExists, ensureDir } from "./utils/file-io.js";
+import { fileExists, ensureDir, readFileSafe } from "./utils/file-io.js";
 import { createMemoryFromTemplate } from "./memory/memory-manager.js";
 import {
   writeCheckpoint,
@@ -12,10 +12,19 @@ import {
   saveExecutionPlan,
   updateStoryStatus,
   getNextStory,
+  markCommitted,
 } from "./state/execution-plan.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
 import { isoTimestamp } from "./utils/timestamp.js";
 import { join } from "node:path";
+import { runSpecStage as specStage } from "./stages/spec-stage.js";
+import { runPlanStage as planStage } from "./stages/plan-stage.js";
+import { runBuild } from "./stages/execute-build.js";
+import { runVerify } from "./stages/execute-verify.js";
+import { runCommit } from "./stages/execute-commit.js";
+import { runLearn } from "./stages/execute-learn.js";
+import { parseRequiredTooling, detectAllTools } from "./tooling/detect.js";
+import { runToolingSetup } from "./tooling/setup.js";
 
 export async function runPipeline(
   prdPath: string,
@@ -59,7 +68,23 @@ export async function resumeFromCheckpoint(
     case "approve-spec": {
       deleteCheckpoint(hiveMindDir);
 
-      // Tooling detect/setup would run here (US-11)
+      // Tooling detect/setup (US-11)
+      const specPath = join(hiveMindDir, "spec", "SPEC-v1.0.md");
+      const specContent = readFileSafe(specPath);
+      if (specContent) {
+        const requirements = parseRequiredTooling(specContent);
+        if (requirements.length > 0) {
+          const { allDetected } = await detectAllTools(requirements);
+          if (!allDetected) {
+            const setupOk = await runToolingSetup(requirements, hiveMindDir);
+            if (!setupOk) {
+              console.error("Tooling setup failed. Please install required tools manually.");
+              process.exit(1);
+            }
+          }
+        }
+      }
+
       await runPlanStage(hiveMindDir, feedback);
 
       writeCheckpoint(hiveMindDir, {
@@ -113,22 +138,20 @@ export async function resumeFromCheckpoint(
 }
 
 export async function runSpecStage(
-  _prdPath: string,
-  _hiveMindDir: string,
-  _feedback?: string,
+  prdPath: string,
+  hiveMindDir: string,
+  feedback?: string,
 ): Promise<void> {
-  // Delegated to src/stages/spec-stage.ts (US-10)
-  // Placeholder: the 7-step dual-critique pipeline
   console.log("Running SPEC stage...");
+  await specStage(prdPath, hiveMindDir, feedback);
 }
 
 export async function runPlanStage(
-  _hiveMindDir: string,
-  _feedback?: string,
+  hiveMindDir: string,
+  feedback?: string,
 ): Promise<void> {
-  // Delegated to src/stages/plan-stage.ts (US-12)
-  // Placeholder: role auto-scaling + synthesizer
   console.log("Running PLAN stage...");
+  await planStage(hiveMindDir, feedback);
 }
 
 export async function runExecuteStage(
@@ -154,23 +177,26 @@ export async function runExecuteStage(
 
     try {
       // BUILD sub-pipeline (US-13)
-      // await runBuild(story, hiveMindDir);
+      await runBuild(story, hiveMindDir);
 
       // VERIFY sub-pipeline (US-14)
-      // const verifyResult = await runVerify(story, hiveMindDir, plan);
-      const verifyPassed = true; // placeholder
+      const verifyResult = await runVerify(story, hiveMindDir, planPath);
 
-      if (verifyPassed) {
+      if (verifyResult.passed) {
         // COMMIT sub-pipeline (US-15)
-        // await runCommit(story, hiveMindDir, plan);
+        const commitResult = await runCommit(story, hiveMindDir, verifyResult);
         plan = updateStoryStatus(plan, story.id, "passed");
+
+        if (commitResult.committed && commitResult.commitHash) {
+          plan = markCommitted(plan, story.id, commitResult.commitHash);
+        }
 
         appendLogEntry(logPath, createLogEntry("COMPLETED", {
           cycle: 1,
           storyId: story.id,
           testResults: { total: 0, passed: 0, failed: 0 },
           evalVerdict: "PASS",
-          attempt: 1,
+          attempt: verifyResult.attempts,
         }));
       } else {
         plan = updateStoryStatus(plan, story.id, "failed");
@@ -185,7 +211,7 @@ export async function runExecuteStage(
       saveExecutionPlan(planPath, plan);
 
       // LEARN sub-pipeline (US-16) -- always, even if failed
-      // await runLearn(story, hiveMindDir);
+      await runLearn(story, hiveMindDir);
     } catch (err) {
       console.error(`Error executing story ${story.id}:`, err);
       plan = updateStoryStatus(plan, story.id, "failed");
@@ -209,8 +235,10 @@ export async function runExecuteStage(
 }
 
 export async function runReportStage(
-  _hiveMindDir: string,
+  hiveMindDir: string,
 ): Promise<void> {
   // Delegated to src/stages/report-stage.ts (US-17)
+  // Placeholder until Wave 5
   console.log("Running REPORT stage...");
+  void hiveMindDir;
 }

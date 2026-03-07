@@ -1,5 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
 
+// Mock the agent spawner to avoid calling real claude CLI
+vi.mock("../../agents/spawner.js", () => ({
+  spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string }) => {
+    const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+    const { dirname } = await import("node:path");
+    md(dirname(config.outputFile), { recursive: true });
+    wf(config.outputFile, `# Mock output for ${config.type}`);
+    return { success: true, outputFile: config.outputFile };
+  }),
+  spawnAgent: vi.fn(async () => ({ success: true, outputFile: "" })),
+}));
+
 describe("orchestrator stage sequence", () => {
   it("runPipeline calls SPEC stage", async () => {
     const { runPipeline } = await import("../../orchestrator.js");
@@ -25,7 +37,7 @@ describe("orchestrator stage sequence", () => {
 
     consoleSpy.mockRestore();
     exitSpy.mockRestore();
-    rmSync(testDir, { recursive: true });
+    rmSync(testDir, { recursive: true, force: true });
   });
 
   it("resumeFromCheckpoint handles all 4 stages", async () => {
@@ -46,6 +58,6 @@ describe("orchestrator stage sequence", () => {
     expect(calls.some((c) => typeof c === "string" && c.includes("Pipeline complete"))).toBe(true);
 
     consoleSpy.mockRestore();
-    rmSync(testDir, { recursive: true });
+    rmSync(testDir, { recursive: true, force: true });
   });
 });
