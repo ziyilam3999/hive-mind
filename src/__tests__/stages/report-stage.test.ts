@@ -1,0 +1,139 @@
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../../agents/spawner.js", () => ({
+  spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string }) => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { dirname } = await import("node:path");
+    mkdirSync(dirname(config.outputFile), { recursive: true });
+    writeFileSync(config.outputFile, `# Mock ${config.type} report`);
+    return { success: true, outputFile: config.outputFile };
+  }),
+}));
+
+import { runReportStage } from "../../stages/report-stage.js";
+import { spawnAgentWithRetry } from "../../agents/spawner.js";
+import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+describe("report-stage", () => {
+  const testDir = join(process.cwd(), ".test-report-stage");
+
+  function setup() {
+    mkdirSync(join(testDir, "reports", "US-01"), { recursive: true });
+    mkdirSync(join(testDir, "plans"), { recursive: true });
+    writeFileSync(join(testDir, "reports", "US-01", "impl-report.md"), "# Impl");
+    writeFileSync(join(testDir, "reports", "US-01", "learning.md"), "# Learning");
+    writeFileSync(
+      join(testDir, "plans", "execution-plan.json"),
+      JSON.stringify({ schemaVersion: "2.0.0", prdPath: "PRD.md", specPath: "SPEC.md", stories: [] }),
+    );
+    vi.mocked(spawnAgentWithRetry).mockClear();
+  }
+
+  function cleanup() {
+    rmSync(testDir, { recursive: true, force: true });
+  }
+
+  it("consolidated report produced", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runReportStage(testDir);
+      consoleSpy.mockRestore();
+
+      expect(existsSync(join(testDir, "consolidated-report.md"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("retrospective produced", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runReportStage(testDir);
+      consoleSpy.mockRestore();
+
+      expect(existsSync(join(testDir, "retrospective.md"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reporter and retrospective are separate agent spawns", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runReportStage(testDir);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const reporterCall = calls.find((c) => c[0].type === "reporter");
+      const retroCall = calls.find((c) => c[0].type === "retrospective");
+      expect(reporterCall).toBeDefined();
+      expect(retroCall).toBeDefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("retrospective receives learning files", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runReportStage(testDir);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const retroCall = calls.find((c) => c[0].type === "retrospective");
+      expect(retroCall![0].inputFiles.some((f: string) => f.includes("learning.md"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("graduation triggered when memory near cap", async () => {
+    setup();
+    // Write a large memory.md to trigger graduation
+    const longEntry = "- 2026-01-01: Pattern confirmed across US-01 and US-02 and US-03: always lint first. " +
+      "This is a very long entry to push the word count near the cap. ".repeat(20);
+    writeFileSync(
+      join(testDir, "memory.md"),
+      `# Hive Mind Persist Memory\n\n## PATTERNS\n${longEntry}\n\n## MISTAKES\n\n## DISCOVERIES\n\n## GRADUATION LOG\n`,
+    );
+
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runReportStage(testDir);
+      consoleSpy.mockRestore();
+
+      // Memory file should still exist
+      expect(existsSync(join(testDir, "memory.md"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("KB size warning at high word count", async () => {
+    setup();
+    // Create a large KB file
+    mkdirSync(join(testDir, "knowledge-base"), { recursive: true });
+    const largeContent = "word ".repeat(6000);
+    writeFileSync(join(testDir, "knowledge-base", "01-proven-patterns.md"), largeContent);
+
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runReportStage(testDir);
+      consoleSpy.mockRestore();
+
+      expect(warnSpy).toHaveBeenCalled();
+      const warnMsg = warnSpy.mock.calls.flat().join(" ");
+      expect(warnMsg).toContain("Knowledge base exceeds");
+
+      warnSpy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+});

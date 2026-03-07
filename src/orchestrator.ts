@@ -25,6 +25,7 @@ import { runCommit } from "./stages/execute-commit.js";
 import { runLearn } from "./stages/execute-learn.js";
 import { parseRequiredTooling, detectAllTools } from "./tooling/detect.js";
 import { runToolingSetup } from "./tooling/setup.js";
+import { runReportStage as reportStage } from "./stages/report-stage.js";
 
 export async function runPipeline(
   prdPath: string,
@@ -237,8 +238,6 @@ export async function runExecuteStage(
 export async function runReportStage(
   hiveMindDir: string,
 ): Promise<void> {
-  // Delegated to src/stages/report-stage.ts (US-17)
-  // Placeholder until Wave 5
   console.log("Running REPORT stage...");
-  void hiveMindDir;
+  await reportStage(hiveMindDir);
 }
