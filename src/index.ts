@@ -63,7 +63,8 @@ export async function main(): Promise<void> {
         console.error(`Error: PRD file not found: ${parsed.prdPath}`);
         process.exit(1);
       }
-      const claudeCheck = await runShell("command -v claude || where claude 2>/dev/null");
+      const claudeCmd = process.platform === "win32" ? "where claude" : "command -v claude";
+      const claudeCheck = await runShell(claudeCmd);
       if (claudeCheck.exitCode !== 0) {
         console.error("Error: claude CLI not found on PATH");
         process.exit(1);

@@ -2,8 +2,40 @@ import type { AgentConfig } from "../types/agents.js";
 import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
-import { readFileSafe, ensureDir, fileExists } from "../utils/file-io.js";
+import { readFileSafe, writeFileAtomic, ensureDir, fileExists } from "../utils/file-io.js";
 import { join } from "node:path";
+
+function extractStepFiles(planJsonPath: string, stepsDir: string): void {
+  const content = readFileSafe(planJsonPath);
+  if (!content) return;
+
+  let plan: Record<string, unknown>;
+  try {
+    plan = JSON.parse(content);
+  } catch {
+    console.warn("Warning: execution-plan.json is not valid JSON, skipping step extraction.");
+    return;
+  }
+
+  const stories = plan.stories as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(stories)) return;
+
+  for (const story of stories) {
+    if (typeof story.stepContent === "string" && typeof story.stepFile === "string") {
+      const stepPath = join(stepsDir, "..", "..", story.stepFile as string);
+      ensureDir(stepsDir);
+      writeFileAtomic(stepPath, story.stepContent);
+    }
+  }
+
+  // Remove stepContent from the plan file to keep it clean
+  const cleanStories = stories.map((s) => {
+    const { stepContent, ...rest } = s;
+    return rest;
+  });
+  plan.stories = cleanStories;
+  writeFileAtomic(planJsonPath, JSON.stringify(plan, null, 2) + "\n");
+}
 
 const ROLE_KEYWORDS: Record<string, string[]> = {
   security: [
@@ -89,15 +121,42 @@ export async function runPlanStage(
     }
   }
 
-  // Step 3: Synthesizer — Phase A: Planner (produces execution-plan.json)
-  console.log("Running synthesizer planner...");
+  // Step 3: Synthesizer — produces execution-plan.json with embedded step content
+  console.log("Running synthesizer...");
   const planJsonPath = join(plansDir, "execution-plan.json");
+
+  const EXECUTION_PLAN_SCHEMA = `Output ONLY valid JSON (no markdown fences). Required schema:
+{
+  "schemaVersion": "2.0.0",
+  "prdPath": "<relative path to PRD>",
+  "specPath": "<relative path to SPEC>",
+  "stories": [
+    {
+      "id": "US-01",
+      "title": "Short title",
+      "specSections": ["§3.1"],
+      "dependencies": [],
+      "sourceFiles": ["src/file.ts"],
+      "complexity": "low",
+      "rolesUsed": ["analyst"],
+      "stepFile": "plans/steps/US-01.md",
+      "stepContent": "Full step file content as markdown with ## SPEC REFERENCES, ## ACCEPTANCE CRITERIA (AC-0 is always lint+typecheck), ## EXIT CRITERIA (binary shell commands that echo PASS/FAIL), ## INPUT, ## OUTPUT (exact exports)",
+      "status": "not-started",
+      "attempts": 0,
+      "maxAttempts": 3,
+      "committed": false,
+      "commitHash": null
+    }
+  ]
+}
+CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all fields listed above. stepContent must be self-contained (P16).`;
+
   await spawnAgentWithRetry({
     type: "synthesizer",
     model: "opus",
     inputFiles: [specPath, ...roleReportPaths],
     outputFile: planJsonPath,
-    rules: getAgentRules("synthesizer"),
+    rules: [EXECUTION_PLAN_SCHEMA],
     memoryContent: feedbackMemory,
   });
 
@@ -105,21 +164,10 @@ export async function runPlanStage(
     throw new Error("Synthesizer failed to produce execution-plan.json");
   }
 
-  // Step 4: Synthesizer — Phase B: Step writers (produce step files)
-  console.log("Running step writer agents...");
-  await spawnAgentWithRetry({
-    type: "synthesizer",
-    model: "opus",
-    inputFiles: [planJsonPath, specPath, ...roleReportPaths],
-    outputFile: join(stepsDir, ".done"),
-    rules: [
-      ...getAgentRules("synthesizer"),
-      `STEP-FILES: Write one step file per story in ${stepsDir}/. Each step file must be self-contained with SPEC REFERENCES, ACs (AC-0 is always lint), ECs, INPUT, OUTPUT with exact exports.`,
-    ],
-    memoryContent: feedbackMemory,
-  });
+  // Extract step files from embedded stepContent
+  extractStepFiles(planJsonPath, stepsDir);
 
-  // Step 5: Synthesizer — Phase C: AC consolidator
+  // Step 4: AC consolidator
   console.log("Running AC consolidator...");
   const acPath = join(plansDir, "acceptance-criteria.md");
   await spawnAgentWithRetry({

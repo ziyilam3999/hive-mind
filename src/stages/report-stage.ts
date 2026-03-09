@@ -1,6 +1,6 @@
 import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
-import { readMemory, writeMemory, checkMemorySize } from "../memory/memory-manager.js";
+import { readMemory, writeMemory, checkMemorySize, appendToMemory } from "../memory/memory-manager.js";
 import {
   identifyGraduationCandidates,
   formatForKnowledgeBase,
@@ -8,6 +8,7 @@ import {
   removeGraduatedEntries,
   logGraduation,
 } from "../memory/graduation.js";
+import { checkEli5Presence } from "../reports/parser.js";
 import { readFileSafe, fileExists } from "../utils/file-io.js";
 import { estimateWordCount } from "../utils/token-count.js";
 import { join } from "node:path";
@@ -40,6 +41,17 @@ export async function runReportStage(hiveMindDir: string): Promise<void> {
     memoryContent,
   });
 
+  // ELI5 check on consolidated report
+  const consolidatedContent = readFileSafe(consolidatedPath);
+  if (consolidatedContent) {
+    const eli5Check = checkEli5Presence(consolidatedContent);
+    if (!eli5Check.hasEli5) {
+      console.warn(
+        `Warning: consolidated-report.md has ${eli5Check.sectionCount} sections but no ELI5 blockquotes.`,
+      );
+    }
+  }
+
   // 2. Retrospective agent — retrospective.md + memory updates
   console.log("Running retrospective agent...");
   const learningFiles = collectLearningFiles(reportsDir);
@@ -54,6 +66,34 @@ export async function runReportStage(hiveMindDir: string): Promise<void> {
     rules: getAgentRules("retrospective"),
     memoryContent,
   });
+
+  // ELI5 check on retrospective
+  const retrospectiveContent = readFileSafe(retrospectivePath);
+  if (retrospectiveContent) {
+    const eli5Check = checkEli5Presence(retrospectiveContent);
+    if (!eli5Check.hasEli5) {
+      console.warn(
+        `Warning: retrospective.md has ${eli5Check.sectionCount} sections but no ELI5 blockquotes.`,
+      );
+    }
+  }
+
+  // 2b. Parse retrospective for memory updates and append to memory.md
+  if (retrospectiveContent) {
+    const memoryUpdates = parseMemoryUpdates(retrospectiveContent);
+    if (memoryUpdates.totalEntries > 0) {
+      for (const { section, entry } of memoryUpdates.entries) {
+        try {
+          appendToMemory(memoryPath, section, entry);
+        } catch (err) {
+          console.warn(`Warning: Failed to append to memory.md section "${section}": ${err}`);
+        }
+      }
+      console.log(`Appended ${memoryUpdates.totalEntries} entries to memory.md from retrospective.`);
+    } else {
+      console.warn("Warning: Retrospective agent did not produce memory updates in expected format -- memory.md will not be updated this run.");
+    }
+  }
 
   // 3. Graduation check
   const { nearCap } = checkMemorySize(memoryPath);
@@ -148,4 +188,36 @@ function getKnowledgeBaseWordCount(kbDir: string): number {
     }
   }
   return totalWords;
+}
+
+const MEMORY_SECTIONS = ["PATTERNS", "MISTAKES", "DISCOVERIES"] as const;
+
+export function parseMemoryUpdates(
+  retrospectiveContent: string,
+): { entries: { section: string; entry: string }[]; totalEntries: number } {
+  const entries: { section: string; entry: string }[] = [];
+
+  const memorySection = retrospectiveContent.split("## MEMORY UPDATES")[1];
+  if (!memorySection) return { entries, totalEntries: 0 };
+
+  for (const section of MEMORY_SECTIONS) {
+    const sectionHeader = `### ${section}`;
+    const sectionStart = memorySection.indexOf(sectionHeader);
+    if (sectionStart === -1) continue;
+
+    // Extract text between this subsection and the next ### or end of ## MEMORY UPDATES
+    const afterHeader = memorySection.slice(sectionStart + sectionHeader.length);
+    const nextSection = afterHeader.search(/^###\s|^##\s/m);
+    const sectionText = nextSection === -1 ? afterHeader : afterHeader.slice(0, nextSection);
+
+    // Extract bullet items (lines starting with "- ")
+    const bullets = sectionText.match(/^- .+$/gm);
+    if (bullets) {
+      for (const bullet of bullets) {
+        entries.push({ section, entry: bullet });
+      }
+    }
+  }
+
+  return { entries, totalEntries: entries.length };
 }

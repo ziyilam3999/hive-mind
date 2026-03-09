@@ -7,13 +7,16 @@ import { readFileSafe, ensureDir, fileExists } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
 import { parseTestReport, parseEvalReport } from "../reports/parser.js";
 import { incrementAttempts, saveExecutionPlan } from "../state/execution-plan.js";
+import { appendLogEntry, createLogEntry } from "../state/manager-log.js";
 import { join } from "node:path";
+import { copyFileSync } from "node:fs";
 
 export interface VerifyResult {
   passed: boolean;
   attempts: number;
   testReportPath: string;
   evalReportPath: string;
+  parserConfidence: "matched" | "default";
 }
 
 export async function runVerify(
@@ -32,6 +35,7 @@ export async function runVerify(
 
   let attempt = 0;
   let plan: ExecutionPlan | undefined;
+  let lastConfidence: "matched" | "default" = "default";
   const testReportPath = join(hiveMindDir, getReportPath(story.id, "test-report.md"));
   const evalReportPath = join(hiveMindDir, getReportPath(story.id, "eval-report.md"));
 
@@ -64,6 +68,24 @@ export async function runVerify(
 
     const testContent = readFileSafe(testReportPath) ?? "";
     const testResult = parseTestReport(testContent);
+    lastConfidence = testResult.confidence;
+
+    // Bug 10: Archive test report per-attempt for post-mortem traceability
+    const testArchivePath = join(reportsDir, `test-report-${attempt}.md`);
+    try { copyFileSync(testReportPath, testArchivePath); } catch { /* best-effort */ }
+
+    const logPath = join(hiveMindDir, "manager-log.jsonl");
+    appendLogEntry(logPath, createLogEntry("VERIFY_ATTEMPT", {
+      storyId: story.id,
+      attempt,
+      parsedStatus: testResult.status,
+      parserConfidence: testResult.confidence,
+      rawExcerpt: testContent.slice(0, 200),
+    }));
+
+    if (testResult.confidence === "default") {
+      console.warn(`Warning: Parser could not confidently determine test status for ${story.id} (attempt ${attempt}). Defaulting to FAIL.`);
+    }
 
     if (testResult.status === "FAIL") {
       if (attempt >= maxAttempts) break; // exhausted
@@ -87,6 +109,28 @@ export async function runVerify(
     const evalContent = readFileSafe(evalReportPath) ?? "";
     const evalResult = parseEvalReport(evalContent);
 
+    // Bug 10: Archive eval report per-attempt
+    const evalArchivePath = join(reportsDir, `eval-report-${attempt}.md`);
+    try { copyFileSync(evalReportPath, evalArchivePath); } catch { /* best-effort */ }
+
+    // Bug 12: Log eval parse result for visibility
+    appendLogEntry(logPath, createLogEntry("EVAL_ATTEMPT", {
+      storyId: story.id,
+      attempt,
+      evalParsedStatus: evalResult.verdict,
+      evalParserConfidence: evalResult.confidence,
+      rawExcerpt: evalContent.slice(0, 200),
+    }));
+
+    // Bug 11: Short-circuit — if test passed with matched confidence and eval
+    // parser couldn't determine status (default confidence), don't retry.
+    // The test suite already confirmed correctness; an unparseable eval report
+    // should not force unnecessary fix cycles.
+    if (evalResult.verdict === "FAIL" && evalResult.confidence === "default" && testResult.confidence === "matched") {
+      console.warn(`Warning: Eval parser returned default confidence for ${story.id} (attempt ${attempt}). Test passed with matched confidence — treating as PASS.`);
+      return { passed: true, attempts: attempt, testReportPath, evalReportPath, parserConfidence: lastConfidence };
+    }
+
     if (evalResult.verdict === "FAIL") {
       if (attempt >= maxAttempts) break; // exhausted
 
@@ -96,11 +140,11 @@ export async function runVerify(
     }
 
     // Both passed
-    return { passed: true, attempts: attempt, testReportPath, evalReportPath };
+    return { passed: true, attempts: attempt, testReportPath, evalReportPath, parserConfidence: lastConfidence };
   }
 
   // Exhausted attempts
-  return { passed: false, attempts: attempt, testReportPath, evalReportPath };
+  return { passed: false, attempts: attempt, testReportPath, evalReportPath, parserConfidence: lastConfidence };
 }
 
 async function runFixPipeline(

@@ -48,6 +48,13 @@ export async function runPipeline(
 
   await runSpecStage(prdPath, hiveMindDir);
 
+  const logPath0 = join(hiveMindDir, "manager-log.jsonl");
+  const specDir = join(hiveMindDir, "spec");
+  const specFiles = fileExists(specDir) ? (await import("node:fs")).readdirSync(specDir).filter((f: string) => f.endsWith(".md")) : [];
+  appendLogEntry(logPath0, createLogEntry("SPEC_COMPLETE", {
+    artifactCount: specFiles.length,
+  }));
+
   writeCheckpoint(hiveMindDir, {
     awaiting: "approve-spec",
     message: getCheckpointMessage("approve-spec"),
@@ -87,6 +94,20 @@ export async function resumeFromCheckpoint(
       }
 
       await runPlanStage(hiveMindDir, feedback);
+
+      const planLogPath = join(hiveMindDir, "manager-log.jsonl");
+      const planFilePath = join(hiveMindDir, "plans", "execution-plan.json");
+      if (fileExists(planFilePath)) {
+        try {
+          const planData = loadExecutionPlan(planFilePath);
+          appendLogEntry(planLogPath, createLogEntry("PLAN_COMPLETE", {
+            storyCount: planData.stories.length,
+            storyIds: planData.stories.map((s) => s.id),
+          }));
+        } catch {
+          console.warn("Warning: execution-plan.json is not valid JSON, skipping PLAN_COMPLETE log.");
+        }
+      }
 
       writeCheckpoint(hiveMindDir, {
         awaiting: "approve-plan",
@@ -180,8 +201,16 @@ export async function runExecuteStage(
       // BUILD sub-pipeline (US-13)
       await runBuild(story, hiveMindDir);
 
+      appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
+        storyId: story.id,
+      }));
+
       // VERIFY sub-pipeline (US-14)
       const verifyResult = await runVerify(story, hiveMindDir, planPath);
+
+      // Reload plan from disk -- runVerify writes attempt increments via saveExecutionPlan.
+      // Without this reload, the stale in-memory plan overwrites the incremented attempts to 0.
+      plan = loadExecutionPlan(planPath);
 
       if (verifyResult.passed) {
         // COMMIT sub-pipeline (US-15)
@@ -190,6 +219,17 @@ export async function runExecuteStage(
 
         if (commitResult.committed && commitResult.commitHash) {
           plan = markCommitted(plan, story.id, commitResult.commitHash);
+
+          appendLogEntry(logPath, createLogEntry("COMMIT_COMPLETE", {
+            storyId: story.id,
+            commitHash: commitResult.commitHash,
+          }));
+        } else {
+          console.warn(`Warning: Commit failed for ${story.id}: ${commitResult.error ?? "unknown error"}`);
+          appendLogEntry(logPath, createLogEntry("COMMIT_FAILED", {
+            storyId: story.id,
+            error: commitResult.error ?? "unknown error",
+          }));
         }
 
         appendLogEntry(logPath, createLogEntry("COMPLETED", {

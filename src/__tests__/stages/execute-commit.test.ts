@@ -59,6 +59,7 @@ describe("execute-commit", () => {
       attempts: 1,
       testReportPath: join(testDir, "reports", "US-01", "test-report.md"),
       evalReportPath: join(testDir, "reports", "US-01", "eval-report.md"),
+      parserConfidence: "matched",
     };
 
     const message = buildCommitMessage(testStory, verifyResult);

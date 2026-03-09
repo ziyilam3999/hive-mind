@@ -5,7 +5,13 @@ export type LogAction =
   | "COMMIT_FAILED"
   | "TOOLING_VERIFIED"
   | "TOOLING_INSTALLED"
-  | "TOOLING_SETUP_FAILED";
+  | "TOOLING_SETUP_FAILED"
+  | "SPEC_COMPLETE"
+  | "PLAN_COMPLETE"
+  | "BUILD_COMPLETE"
+  | "VERIFY_ATTEMPT"
+  | "COMMIT_COMPLETE"
+  | "EVAL_ATTEMPT";
 
 export interface ManagerLogEntry {
   timestamp: string;
@@ -23,4 +29,13 @@ export interface ManagerLogEntry {
   version?: string;
   agent?: string;
   report?: string;
+  artifactCount?: number;
+  storyCount?: number;
+  storyIds?: string[];
+  parsedStatus?: string;
+  parserConfidence?: "matched" | "default";
+  rawExcerpt?: string;
+  error?: string;
+  evalParsedStatus?: string;
+  evalParserConfidence?: "matched" | "default";
 }

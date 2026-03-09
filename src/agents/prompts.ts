@@ -1,5 +1,10 @@
 import type { AgentType, AgentConfig } from "../types/agents.js";
 
+const ELI5_AGENTS: Set<AgentType> = new Set([
+  "reporter", "retrospective", "diagnostician",
+  "spec-drafter", "spec-corrector", "critic",
+]);
+
 const AGENT_JOBS: Record<AgentType, string> = {
   "researcher": "Read PRD + codebase + knowledge-base/*, produce research-report.md",
   "justifier": "For each implementation item, justify WHY and HOW in ELI5",
@@ -46,12 +51,19 @@ const AGENT_RULES: Record<string, string[]> = {
     "REPORT-FORMAT: Output must follow eval-report.md template exactly.",
     "ALL-ECS: Run every EC listed. Do not skip any.",
   ],
+  "reporter": [
+    "ELI5-SECTION: Every major section must start with a > **ELI5:** blockquote using a plain-language analogy. [Wrong: jumping straight into technical findings] [Right: '> **ELI5:** Think of this report as...']",
+    "COMPLETENESS: Cover every story outcome. Do not omit failed or skipped stories.",
+    "EVIDENCE: Cite specific file paths, test counts, and status values from the execution plan.",
+    "STRUCTURE: Use ## headings for each story, a summary table at top, and a conclusion.",
+    "CONCISE: Keep each section to 3-5 key points. Link to full reports for details.",
+  ],
   "diagnostician": [
+    "ELI5-DIAGNOSIS: Start the diagnosis with a > **ELI5:** blockquote explaining the bug in plain language. [Wrong: 'The regex failed to match Unicode'] [Right: '> **ELI5:** The grade scanner couldn't read emoji checkmarks']",
     "FILE-ARTIFACT: Write diagnosis-report.md BEFORE any fix is attempted. No 'mentally noted' diagnoses. [Wrong: 'I think the issue is...'] [Right: wrote diagnosis-report.md with root cause]",
     "ROOT-CAUSE: Identify the actual root cause, not just the symptom.",
     "EVIDENCE: Cite specific file:line, error messages, or logic chains as evidence.",
     "PREVIOUS-ATTEMPTS: Review all previous fix attempts to avoid repeating failed approaches.",
-    "SINGLE-FIX: Recommend ONE targeted fix. Do not propose sweeping changes.",
   ],
   "critic": [
     "INDEPENDENCE: You see ONLY the artifact. No shared context with drafter/researcher. [Wrong: 'Building on the research report...'] [Right: 'Reading only the SPEC draft, I find...']",
@@ -66,6 +78,13 @@ const AGENT_RULES: Record<string, string[]> = {
     "HONEST: Report failures and surprises, not just successes.",
     "BRIEF: Each learning should be 1-2 sentences.",
     "ACTIONABLE: Each 'what to do differently' must be a concrete instruction.",
+  ],
+  "retrospective": [
+    "MEMORY-FORMAT: Include a ## MEMORY UPDATES section with ### PATTERNS, ### MISTAKES, ### DISCOVERIES subsections. Each entry as a bullet (- entry). These are parsed mechanically.",
+    "SYNTHESIS: Combine all per-story learnings into consolidated, deduplicated entries.",
+    "EVIDENCE: Cite specific story IDs and outcomes for each learning.",
+    "HONEST: Report failures and surprises, not just successes.",
+    "ACTIONABLE: Each entry must be a concrete, reusable instruction.",
   ],
   "fixer": [
     "FULL-RE-UAT: After applying fixes, VERIFY re-runs from E.3 (tester). Compilation-only verification is NEVER sufficient. [Wrong: 'tsc passes so the fix works'] [Right: 'Applied fix, awaiting full re-test from E.3']",
@@ -105,7 +124,14 @@ ${rulesBlock}
 ${inputBlock}
 
 ## OUTPUT
-${config.outputFile}
+Write your output to: ${config.outputFile}
+Use the Write tool to create this file. You have full tool access (Write, Read, Edit, Bash, Glob, Grep).
+If you also need to create source code files, use the Write tool for those too.
+${ELI5_AGENTS.has(config.type) ? `
+## ELI5 REQUIREMENT
+For each major section or finding, include a blockquote explanation in plain language:
+> **ELI5:** [analogy a non-programmer can understand]
+Use everyday analogies (factory workers, recipe books, filing cabinets). Avoid jargon. The ELI5 explains WHY this matters, not just WHAT it is.` : ""}
 
 ## MEMORY
 ${config.memoryContent}`;

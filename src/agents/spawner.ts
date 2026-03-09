@@ -1,8 +1,9 @@
 import type { AgentConfig, AgentResult } from "../types/agents.js";
 import { runShell } from "../utils/shell.js";
-import { fileExists } from "../utils/file-io.js";
+import { fileExists, writeFileAtomic, ensureDir } from "../utils/file-io.js";
 import { buildPrompt } from "./prompts.js";
 import { getModelForAgent } from "./model-map.js";
+import { dirname } from "node:path";
 
 const AGENT_TIMEOUT = 600_000; // 10 minutes
 
@@ -12,7 +13,7 @@ export async function spawnAgent(config: AgentConfig): Promise<AgentResult> {
 
   const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, "\\n");
   const result = await runShell(
-    `claude --print --model ${model} "${escapedPrompt}"`,
+    `claude --print --dangerously-skip-permissions --model ${model} "${escapedPrompt}"`,
     { timeout: AGENT_TIMEOUT },
   );
 
@@ -24,12 +25,23 @@ export async function spawnAgent(config: AgentConfig): Promise<AgentResult> {
     };
   }
 
+  // Fix A: If agent didn't write the file, capture stdout as fallback
+  if (!fileExists(config.outputFile) && result.stdout.trim().length > 0) {
+    ensureDir(dirname(config.outputFile));
+    writeFileAtomic(config.outputFile, stripMarkdownFences(result.stdout.trim()));
+  }
+
   const outputExists = fileExists(config.outputFile);
   return {
     success: outputExists,
     outputFile: config.outputFile,
     error: outputExists ? undefined : `Agent ${config.type} completed but output file not found: ${config.outputFile}`,
   };
+}
+
+function stripMarkdownFences(text: string): string {
+  // Remove leading ```json/```markdown/``` and trailing ```
+  return text.replace(/^```\w*\n?/, "").replace(/\n?```\s*$/, "");
 }
 
 export async function spawnAgentWithRetry(

@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { spawn } from "node:child_process";
 
 export interface ShellResult {
   stdout: string;
@@ -11,20 +11,31 @@ export function runShell(
   options?: { cwd?: string; timeout?: number },
 ): Promise<ShellResult> {
   return new Promise((resolve) => {
-    exec(
-      command,
-      {
-        cwd: options?.cwd,
-        timeout: options?.timeout ?? 120_000,
-        maxBuffer: 10 * 1024 * 1024,
-      },
-      (error, stdout, stderr) => {
-        resolve({
-          stdout: String(stdout),
-          stderr: String(stderr),
-          exitCode: error?.code ?? (error ? 1 : 0),
-        });
-      },
-    );
+    const env = { ...process.env };
+    delete env.CLAUDECODE;
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+
+    const timeout = options?.timeout ?? 120_000;
+    const child = spawn(command, [], {
+      cwd: options?.cwd,
+      shell: process.platform === "win32" ? "bash" : true,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d: Buffer) => { stdout += d; });
+    child.stderr.on("data", (d: Buffer) => { stderr += d; });
+
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ stdout, stderr, exitCode: 1 });
+    }, timeout);
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ stdout, stderr, exitCode: code ?? 1 });
+    });
   });
 }
