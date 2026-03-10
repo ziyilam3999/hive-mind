@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTestReport, parseEvalReport, parseReportStatus } from "../../reports/parser.js";
+import { parseTestReport, parseEvalReport, parseReportStatus, parseImplReport } from "../../reports/parser.js";
 
 describe("parser handles malformed input", () => {
   it("returns FAIL with default confidence for empty string", () => {
@@ -118,5 +118,61 @@ describe("parser handles emoji-prefixed status lines", () => {
     const result = parseReportStatus(markdown);
     expect(result.status).toBe("PASS");
     expect(result.confidence).toBe("matched");
+  });
+});
+
+describe("parseImplReport scopes to FILES CREATED section", () => {
+  it("ignores Exports, AC, and EC tables outside FILES CREATED section", () => {
+    const markdown = `# Implementation Report: US-02
+
+## Status: PASS
+
+## Source Files
+- \`src/task.ts\` (created)
+
+## Exports
+| Export | Type | Present |
+|--------|------|---------|
+| \`createTask(id: string, title: string): Task\` | function | YES |
+| \`transition(task: Task, to: TaskStatus): Task\` | function | YES |
+
+## Exit Criteria
+| EC | Description | Result |
+|----|-------------|--------|
+| EC-1 | File exists at src/task.ts | PASS |
+
+## Acceptance Criteria Coverage
+| AC | Description | Covered |
+|----|-------------|---------|
+| AC-0 | Code passes lint | YES |
+`;
+    const result = parseImplReport(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.filesCreated).toEqual(["src/task.ts"]);
+    // Must NOT contain export signatures or table headers
+    expect(result.filesCreated).not.toContain("createTask(id: string, title: string): Task");
+    expect(result.filesCreated).not.toContain("Export");
+    expect(result.filesCreated).not.toContain("EC-1");
+  });
+
+  it("parses FILES CREATED table format", () => {
+    const markdown = `# Report
+## STATUS: PASS
+## FILES CREATED
+| File | Lines | Exports |
+|------|:-----:|---------|
+| src/types.ts | 50 | TaskStatus |
+| src/utils.ts | 30 | helper |
+## NOTES
+Some notes here.
+`;
+    const result = parseImplReport(markdown);
+    expect(result.filesCreated).toEqual(["src/types.ts", "src/utils.ts"]);
+  });
+
+  it("returns empty filesCreated when no FILES CREATED section exists", () => {
+    const markdown = `# Report\n## STATUS: PASS\nNo files section here.`;
+    const result = parseImplReport(markdown);
+    expect(result.filesCreated).toEqual([]);
   });
 });

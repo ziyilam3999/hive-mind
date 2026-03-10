@@ -70,12 +70,13 @@ export async function runCommit(
     if (content) fixContents.push(content);
   }
 
-  const modifiedFiles = computeModifiedFiles(story, implContent, fixContents);
+  const modifiedFiles = computeModifiedFiles(story, implContent, fixContents)
+    .filter(f => f.includes("/") || f.includes("."));
   if (modifiedFiles.length === 0) {
     return { committed: false, commitHash: null, error: "No modified files to commit" };
   }
 
-  const fileList = modifiedFiles.join(" ");
+  const fileList = modifiedFiles.map(f => `"${f}"`).join(" ");
   const commitMessage = buildCommitMessage(story, verifyResult);
 
   // Attempt 1: git add + commit (hooks always run)
