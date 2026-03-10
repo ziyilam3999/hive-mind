@@ -1,0 +1,444 @@
+# Hive Mind — Consolidated Roadmap & Backlog
+
+> **ELI5: What is this file?**
+> This is the single source of truth for everything Hive Mind plans to build. It merges two previous documents — the Enhancement Backlog (feature ideas) and the Production Reliability Roadmap (infrastructure fixes) — into one prioritized list. Items are ordered by urgency: P0 items must land before Hive Mind is production-usable, P1 items build production confidence, P2 items add polish, and everything beyond is future vision.
+
+**Principle:** Never ship a feature without evidence it works. Each version produces learnings. Those learnings justify the next version's features.
+
+**ID Scheme:**
+- **RD-xx** — Production reliability items (from roadmap analysis)
+- **ENH-xx** — Pipeline enhancement items (from backlog)
+- **PRD-xx** — Long-term vision items (from original PRD)
+
+---
+
+## Quick Reference
+
+| ID | Name | Priority | Target | Blocked By | Status |
+|----|------|----------|--------|------------|--------|
+| RD-01 | Exponential backoff + retry | P0 | v3.1 | — | Not started |
+| RD-02 | Graceful error recovery | P0 | v3.1 | — | Not started |
+| RD-03 | Config file support | P0 | v3.1 | — | Not started |
+| RD-04 | Structured output parsing | P0 | v3.1 | — | Not started |
+| RD-05 | Cost/token tracking | P1 | v3.1 | — | Not started |
+| ENH-02 | Dependency-aware story scheduling | P1 | v3.1 | E2E pass | Not started |
+| ENH-03 | Parallel story execution | P1 | v3.1 | ENH-02 | Not started |
+| RD-06 | Provider abstraction | P1 | v3.1 | — | Not started |
+| RD-07 | Mid-story checkpointing | P1 | v3.1 | — | Not started |
+| ENH-01 | DC feedback loop port | P2 | v3.1 | E2E Bugs 5+6 | Not started |
+| ENH-04 | Tooling dependency detection | P2 | v3.1 | E2E pass | Not started |
+| ENH-05 | Output truncation monitoring | P2 | v3.1 | E2E pass | Not started |
+| RD-08 | KB deduplication | P2 | v3.1 | — | Not started |
+| RD-09 | CLI help & discoverability | P2 | v3.1 | — | Not started |
+| RD-10 | Plan stage parallelism | P2 | v3.1 | — | Not started |
+| RD-11 | Test coverage for critical paths | P2 | v3.1 | — | Not started |
+| ENH-06 | Cross-story pattern mining | P3 | v3.2 | Retrospective data | Not started |
+| ENH-07 | Synthesizer split | P3 | v3.2 | Quality measurements | Not started |
+| ENH-08 | `/hive` Claude Code skill | P3 | v3.3 | v3.0 CLI stable | Not started |
+| ENH-09 | Session recovery / --resume | P3 | v3.4 | Crash data | Not started |
+| ENH-10 | Reverify with updated ACs | P3 | v3.4 | ENH-09 | Not started |
+| ENH-11 | Multi-project orchestration | P3 | v3.5 | Single-project solid | Not started |
+| ENH-12 | Adaptive role weighting | P3 | v3.6 | Multi-chain data | Not started |
+| PRD-01 | Stress tier system (Low–Critical) | P3 | v1.1 | MVP baseline | Not started |
+| PRD-02 | System Flood (full reset) | P3 | v1.1 | PRD-01 | Not started |
+| PRD-03 | LLM-as-Judge verify phase | P3 | v1.1 | MVP verify data | Not started |
+| PRD-04 | Anti-phantom SHIP gate | P3 | v1.1 | PRD-03 | Not started |
+| PRD-05 | code-reviewer agent | P3 | v1.1 | Workflow validated | Not started |
+| PRD-06 | log-summarizer agent | P3 | v1.1 | Workflow validated | Not started |
+| PRD-07 | Docker sandbox for tests | P3 | v1.2 | Isolation need proven | Not started |
+| PRD-08 | Auto-spec gen (AST extraction) | P3 | v1.2 | Hand-written specs baseline | Not started |
+| PRD-09 | Scenario suite extraction (agent) | P3 | v1.2 | Hand-written scenarios baseline | Not started |
+| PRD-10 | Evidence registry | P3 | v1.2 | Execution data accumulated | Not started |
+| PRD-11 | Full QCS 0-5 with auto-calc | P3 | v1.2 | v1.1 3-level data | Not started |
+| PRD-12 | Dynamic agent creation | P3 | v1.2 | Agent type data | Not started |
+| PRD-13 | Parallel evolution / evolutionary selector | P3 | v1.3 | Failure rate data | Not started |
+| PRD-14 | Noah's Ark archive (prompt DNA) | P3 | v1.3 | PRD-02 | Not started |
+| PRD-15 | Neural feedback loop (win/loss) | P3 | v1.3 | Execution patterns | Not started |
+| PRD-16 | Auto-spec gen phase 2 (runtime) | P3 | v1.3 | PRD-08 | Not started |
+| PRD-17 | Scenario extraction phase 2 (runtime) | P3 | v1.3 | PRD-09 | Not started |
+| PRD-18 | VS Code adapter | P3 | v1.3 | CLI stable | Not started |
+| PRD-19 | Slack adapter | P3 | v1.3 | CLI stable | Not started |
+| PRD-20 | KB graduation full automation | P3 | TBD | Manual graduation proven | Not started |
+
+---
+
+## P0 — Critical (Must Fix to Be Usable in Production)
+
+> **ELI5:** These are the seatbelts and airbags. The car runs, but you wouldn't drive it on the highway without these safety features. Each one prevents a different class of silent failure.
+
+### RD-01: Exponential Backoff + Retry
+
+**Priority:** P0 | **Effort:** Small | **File:** `src/agents/spawner.ts:47-57`
+
+**Problem:** `spawnAgentWithRetry()` has only 1 retry with no delay between attempts. Transient failures (network timeouts, rate limits, API blips) get no backoff. No jitter means parallel retries all fire simultaneously.
+
+**Current:**
+```typescript
+export async function spawnAgentWithRetry(
+  config: AgentConfig,
+  maxRetries: number = 1,  // Only 1 retry — 2 attempts total
+): Promise<AgentResult> {
+  let lastResult: AgentResult | undefined;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    lastResult = await spawnAgent(config);
+    if (lastResult.success) return lastResult;
+    // No delay between retries. No backoff. No jitter.
+  }
+  return lastResult!;
+}
+```
+
+**Fix:**
+- Default `maxRetries` to 3 (4 attempts total)
+- Add exponential backoff: 1s, 2s, 4s, 8s between retries
+- Add ±20% jitter to prevent thundering herd
+- Make all values configurable via config file (see RD-03)
+
+---
+
+### RD-02: Graceful Error Recovery
+
+**Priority:** P0 | **Effort:** Medium | **Files:** `src/orchestrator.ts:200-266`, `src/index.ts`, `src/types/execution-plan.ts`
+**Absorbs:** ENH-09 (session recovery) partially — the `--from` and `--skip-failed` flags
+
+**Problem:**
+1. Error details only go to `console.error` — not persisted in execution plan
+2. No way to resume from a specific story (`hive-mind resume --from US-03`)
+3. No option to skip failed stories (`--skip-failed`)
+4. `process.exit(1)` in 5+ places — no graceful shutdown
+
+**Fix:**
+- Add `errorMessage` and `lastFailedStage` fields to story type in `src/types/execution-plan.ts`
+- Persist error details on catch, not just status change
+- Add `--from <story-id>` and `--skip-failed` CLI flags in `src/index.ts`
+- Replace `process.exit(1)` with thrown errors caught at top level
+
+---
+
+### RD-03: Config File Support
+
+**Priority:** P0 | **Effort:** Medium | **Files:** New `src/config/loader.ts` + ~8 files with hardcoded constants
+
+**Problem:** 12+ constants hardcoded across the codebase:
+
+| Constant | File | Value |
+|---|---|---|
+| Agent timeout | `spawner.ts` | `600_000` (10 min) |
+| Shell timeout | `shell.ts` | `120_000` (2 min) |
+| Tool detect timeout | `detect.ts` | `30_000` |
+| Max retries | `spawner.ts` | `1` |
+| Memory word cap | `memory-manager.ts` | `400` |
+| Graduation threshold | `memory-manager.ts` | `300` |
+| KB size warning | `report-stage.ts` | `5000` words |
+| Model assignments | `model-map.ts` | Static map (20 agents) |
+
+**Fix:** Create `src/config/loader.ts` that reads `.hivemindrc.json` from project root. All hardcoded values become defaults overridable by config.
+
+---
+
+### RD-04: Structured Output Parsing
+
+**Priority:** P0 | **Effort:** Medium | **Files:** `src/reports/parser.ts`, `src/agents/prompts.ts`
+
+**Problem:** A 5-level regex cascade tries increasingly desperate patterns to extract PASS/FAIL from agent output. A report saying "this did NOT PASS" would match Level 4 as PASS.
+
+**Fix:**
+- Add JSON status block requirement to agent prompts: `<!-- STATUS: {"result": "PASS", "details": "..."} -->`
+- Parse JSON block first (Level 0). Fall back to existing regex cascade only if JSON missing.
+- Log a warning when falling back to regex.
+
+---
+
+## P1 — High Priority (Needed for Production Confidence)
+
+> **ELI5:** P0 keeps the car from crashing. P1 adds the dashboard gauges (cost tracking), GPS (dependency scheduling), cruise control (parallelism), and a spare tire (checkpointing). You can drive without them, but you wouldn't want to drive far.
+
+### RD-05: Cost/Token Tracking
+
+**Priority:** P1 | **Effort:** Medium | **Files:** `src/agents/spawner.ts`, new `src/utils/cost-tracker.ts`
+
+**Problem:** Zero token tracking. A Hive Mind run spawns 25-35+ agent calls per story with no visibility into cost.
+
+**Fix:**
+- Parse Claude CLI output for token usage (via `--output-format json`)
+- Add `tokensUsed` field to `AgentResult` interface
+- Log tokens to `manager-log.jsonl` with each agent invocation
+- Display cumulative cost at end of each stage
+- Add `--budget <dollars>` and `--dry-run` CLI flags
+
+**Note:** Neither Superpowers nor GSD tracks costs — this would be a unique differentiator.
+
+---
+
+### ENH-02: Dependency-Aware Story Scheduling
+
+**Priority:** P1 | **Effort:** Medium | **Blocked by:** E2E pass
+**File:** `src/execution-plan.ts:113-115`
+**Source:** e2e-bug-fix-plan.md, SPEC-v1.0.md:1207
+
+> **ELI5:** You can't put on your shoes before your socks. Right now the pipeline grabs whatever story is next by array position — it doesn't check if prerequisites finished first.
+
+**Problem:** `getNextStory()` returns first not-started story by array position, ignoring `dependencies` field.
+
+**Fix:** Skip stories whose dependencies haven't all reached `passed`. The `dependencies` array already exists in `execution-plan.json` schema.
+
+---
+
+### ENH-03: Parallel Story Execution
+
+**Priority:** P1 | **Effort:** Large | **Blocked by:** ENH-02
+**File:** `src/orchestrator.ts:193-269`
+**Source:** PRD-v3.md:179, SPEC-v1.0.md:195
+**Merged with:** Roadmap item 3.2 (wave-based parallelism)
+
+> **ELI5:** If the salad has nothing to do with the pasta, you don't wait for the salad to finish before boiling water.
+
+**Problem:** Sequential execution only. Stories with no mutual dependencies could run in parallel.
+
+**Blockers to parallelism:**
+1. Shared `memory.md` — `appendToMemory()` reads entire file, modifies, writes. No locking.
+2. Shared `execution-plan.json` — concurrent reads/writes would corrupt JSON.
+3. Unused `dependencies` field — exists in schema but never read or validated.
+
+**Fix:**
+- Use `dependencies` field to build dependency graph
+- Group stories into waves (topological sort)
+- Execute each wave with `Promise.all()`
+- Add file-level mutex for `memory.md` writes
+- Use atomic read-modify-write for execution plan updates
+
+---
+
+### RD-06: Provider Abstraction
+
+**Priority:** P1 | **Effort:** Large | **File:** `src/agents/spawner.ts:15-18`
+
+**Problem:** Hardcoded to Claude CLI (`claude --print`). No way to use Anthropic API directly, OpenAI models, or local models.
+
+**Fix:**
+```typescript
+interface IAgentProvider {
+  spawn(config: AgentConfig): Promise<AgentResult>;
+  isAvailable(): Promise<boolean>;
+}
+```
+Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicAPIProvider` (direct API). Config file selects provider.
+
+---
+
+### RD-07: Mid-Story Checkpointing
+
+**Priority:** P1 | **Effort:** Medium | **File:** `src/stages/execute-verify.ts:42-147`
+**Absorbs:** ENH-09 (session recovery) partially — the sub-stage resume capability
+
+**Problem:** Stories are all-or-nothing. If the pipeline crashes during VERIFY sub-stage, the entire story must restart from BUILD.
+
+**Fix:**
+- Add `currentAttempt`, `lastCompletedSubStage` fields to story type
+- Persist after each sub-stage (BUILD, VERIFY, REFACTOR, COMMIT)
+- On resume, skip completed sub-stages within a story
+
+---
+
+## P2 — Medium Priority (Polish & Competitive Edge)
+
+> **ELI5:** These are the heated seats, backup camera, and Bluetooth. The car is fully functional without them, but they make the daily experience noticeably better.
+
+### ENH-01: Port Double-Critique Feedback Loop
+
+**Priority:** P2 | **Effort:** Small | **Blocked by:** E2E Bugs 5+6
+**Source:** `/double-critique` skill stages 10-12
+
+> **ELI5:** A "shift supervisor" who reviews each worker's contribution after every run, tracks performance over weeks, and writes up what's working and what's not.
+
+**Problem:** v3 retrospective evaluates story outcomes but not stage effectiveness.
+
+**What to port:**
+| DC Concept | v3 Adaptation | File |
+|------------|---------------|------|
+| Extractor (per-stage effectiveness) | Extend retrospective to analyze `manager-log.jsonl` | `agents/prompts.ts` |
+| Effectiveness (cross-run trends) | New `effectiveness-{date}.md` output | `report-stage.ts` |
+| KEEP/CHANGE/ADD/DROP framework | Structure retrospective prompt | `agents/prompts.ts` |
+
+**Scope:** Modify `report-stage.ts`, `agents/prompts.ts`. No new files.
+
+---
+
+### ENH-04: Tooling Dependency Detection
+
+**Priority:** P2 | **Effort:** Small | **Blocked by:** E2E pass
+**Source:** e2e-bug-fix-plan.md:220-231
+
+> **ELI5:** A recipe says "bake at 350°" but doesn't mention you need an oven. This fix teaches the pipeline to detect implicit tool requirements.
+
+**Problem:** `parseRequiredTooling()` only finds explicit tables. Implicit deps (`.ts` files → TypeScript) undetected.
+
+**Fix:** (1) Spec-drafter prompt adds Required Tooling table, (2) mechanical validation if table missing, (3) fallback detection for common implicit deps.
+
+**Scope:** Modify `detect.ts`, `agents/prompts.ts`.
+
+---
+
+### ENH-05: Output Truncation Monitoring
+
+**Priority:** P2 | **Effort:** Small | **Blocked by:** E2E pass
+**Source:** e2e-bug-fix-plan.md:235-248
+
+> **ELI5:** A "tape check" that warns you when agent output might have been cut short.
+
+**Problem:** `claude --print` output bounded by model max tokens. Large SPECs or plans could silently truncate.
+
+**Scope:** Modify `spawner.ts`.
+
+---
+
+### RD-08: Knowledge Base Deduplication
+
+**Priority:** P2 | **Effort:** Small | **File:** `src/memory/graduation.ts`
+
+**Problem:** Entries graduate from `memory.md` to `knowledge-base/` without checking if a similar pattern already exists. Over many runs, the KB accumulates duplicates.
+
+**Fix:** Before graduating, fuzzy-match the first sentence against existing KB entries. Merge or skip duplicates.
+
+---
+
+### RD-09: CLI Help & Discoverability
+
+**Priority:** P2 | **Effort:** Small | **File:** `src/index.ts`
+
+**Problem:** No `--help` flag, no `--version`, no usage documentation accessible from the CLI.
+
+**Fix:** Add `--help` with usage docs, `--version` flag, `--dry-run` to estimate costs.
+
+---
+
+### RD-10: Plan Stage Parallelism
+
+**Priority:** P2 | **Effort:** Small | **File:** `src/stages/plan-stage.ts:103-122`
+
+**Problem:** Role agents (analyst, architect, security, tester-role, reviewer) spawn sequentially in a for-loop, even though they are fully independent.
+
+**Fix:** Replace the sequential for-loop with `Promise.all()`.
+
+---
+
+### RD-11: Test Coverage for Critical Paths
+
+**Priority:** P2 | **Effort:** Medium | **File:** `src/agents/spawner.ts` (0 tests currently)
+
+**Problem:** The agent spawner — the most critical component — has zero test coverage.
+
+**Fix:** Unit tests for retry logic, integration tests with mock Claude CLI, e2e test with sample PRD.
+
+---
+
+## P3 — Low Priority (Future Versions)
+
+> **ELI5:** These are the "after you've lived in the house for a year" improvements. You need real usage data to know what's worth building.
+
+### v3.2
+
+| ID | Feature | Blocked By |
+|----|---------|------------|
+| ENH-06 | Automated cross-story pattern mining | Retrospective data |
+| ENH-07 | Synthesizer split (planner → AC-gen → EC-gen) | Quality measurements |
+
+### v3.3
+
+| ID | Feature | Blocked By |
+|----|---------|------------|
+| ENH-08 | `/hive` Claude Code skill | v3.0 CLI stable |
+
+### v3.4
+
+| ID | Feature | Blocked By |
+|----|---------|------------|
+| ENH-09 | Session recovery / --resume (full) | Crash data; partially covered by RD-02 + RD-07 |
+| ENH-10 | Reverify (re-run VERIFY with updated ACs) | ENH-09 |
+
+### v3.5
+
+| ID | Feature | Blocked By |
+|----|---------|------------|
+| ENH-11 | Multi-project orchestration | Single-project solid |
+
+### v3.6
+
+| ID | Feature | Blocked By |
+|----|---------|------------|
+| ENH-12 | Adaptive role weighting | Multi-chain data |
+
+---
+
+## Long-Term Vision (PRD v1.x)
+
+> **ELI5:** The v3.x/RD items (above) are about making the current pipeline better. The v1.x items (below) are from the original Hive Mind vision — self-healing, self-improving, and multi-platform support. Think of above as "tune-ups for the car" and below as "building a whole fleet."
+
+These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to the protocol framework, not just v3.
+
+### v1.1
+
+| ID | Feature | Source |
+|----|---------|--------|
+| PRD-01 | Stress tier system (Low/Medium/High/Critical) | PRD.md:1301-1312 |
+| PRD-02 | System Flood (full reset on cascade failures) | PRD.md:1314-1322 |
+| PRD-03 | LLM-as-Judge automated verify phase | PRD.md:1958, 1985 |
+| PRD-04 | Anti-phantom SHIP gate (claims → evidence) | PRD.md:1986 |
+| PRD-05 | code-reviewer agent | PRD.md:1984 |
+| PRD-06 | log-summarizer agent | PRD.md:1984 |
+
+### v1.2
+
+| ID | Feature | Source |
+|----|---------|--------|
+| PRD-07 | Docker sandbox for test execution | PRD.md:1965, 1997 |
+| PRD-08 | Auto-spec gen phase 1 (ts-morph AST) | PRD.md:1724, 1762 |
+| PRD-09 | Scenario suite extraction (agent-driven) | PRD.md:1789, 1815 |
+| PRD-10 | Evidence registry | PRD.md:1960, 1998 |
+| PRD-11 | Full QCS 0-5 with auto-calculation | PRD.md:1999 |
+| PRD-12 | Dynamic agent creation | PRD.md:2000 |
+
+### v1.3
+
+| ID | Feature | Source |
+|----|---------|--------|
+| PRD-13 | Parallel evolution / evolutionary selector | PRD.md:1324-1356 |
+| PRD-14 | Noah's Ark archive (prompt DNA) | PRD.md:1358-1387 |
+| PRD-15 | Neural feedback loop (win/loss tracking) | PRD.md:1389-1404 |
+| PRD-16 | Auto-spec gen phase 2 (runtime enrichment) | PRD.md:1725 |
+| PRD-17 | Scenario extraction phase 2 (runtime) | PRD.md:1790 |
+| PRD-18 | VS Code adapter | PRD.md:445 |
+| PRD-19 | Slack adapter | PRD.md:446 |
+
+### TBD
+
+| ID | Feature | Source |
+|----|---------|--------|
+| PRD-20 | KB graduation full automation | SPEC Risks section |
+
+---
+
+## Maturity Progression
+
+| Dimension | Today | After P0 | After P0+P1 | After All |
+|---|---|---|---|---|
+| **Reliability** | Fragile — halts on failures | Usable with monitoring | Production-grade | Production-grade |
+| **Cost awareness** | None | Manual tracking | Budget controls + tracking | Budget + dry-run |
+| **Parallelism** | Sequential only | Sequential only | Wave-based stories | Wave-based + plan stage |
+| **Provider flexibility** | Claude CLI only | Claude CLI only | Multi-provider | Multi-provider |
+| **Resumability** | Stage-level only | Stage + story-level | Stage + story + mid-story | Full |
+| **Recommendation** | "Interesting, but not yet" | "Yes, with caveats" | "Yes, for complex projects" | "Recommend over others for audit-heavy work" |
+
+### When to Recommend Each Framework (Post-Improvements)
+
+| Scenario | Best Choice | Why |
+|---|---|---|
+| Solo dev, quick feature | GSD | Fresh context per task, minimal ceremony |
+| Portable dev habits across tools | Superpowers | Tool-agnostic skills, works everywhere |
+| Complex multi-story project with audit needs | **Hive Mind** | 21 specialists, memory graduation, full audit trail |
+| Team wanting to enforce TDD | Superpowers | TDD baked into workflow, not optional |
+| Long-running autonomous pipeline | **Hive Mind** (after P0+P1) | Checkpoints, escalation, cost controls |
+
+---
+
+*Consolidated from: Enhancement Backlog + Production Reliability Roadmap (2026-03-11)*
