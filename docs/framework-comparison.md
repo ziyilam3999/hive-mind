@@ -279,6 +279,138 @@ Think of it as a **well-designed prototype**: the blueprints are excellent, the 
 
 ---
 
+## Hive Mind's Niche: Who It's For, Why It Matters, How Easy It Is
+
+### The Niche — Structured Multi-Story Projects with Audit Requirements
+
+Hive Mind's sweet spot is **teams building features that span 3-15 user stories, where traceability and oversight aren't optional**. Think:
+
+- **Fintech/healthtech/govtech** — regulatory audit trails for every design decision
+- **Agencies and consultancies** — shipping similar project types repeatedly, where institutional memory across engagements is transformative
+- **Enterprise product teams** — where multiple specialist perspectives (security, architecture, testing) are required at every milestone, and human sign-off is mandated by process
+
+**What these teams struggle with today:**
+
+1. **Code review bottleneck** — getting security, architecture, and testing perspectives requires scheduling 3 different reviewers who all have calendar conflicts
+2. **Knowledge loss between projects** — the team learns "always use parameterized queries for X" on project A, then makes the same mistake on project B
+3. **Unstructured debugging** — when tests fail, developers context-switch between "what's broken?" and "how do I fix it?" with no separation of concerns
+4. **PRD-to-code drift** — the spec says "implement auth flow" but the code implements something subtly different, and nobody catches it until QA
+
+**What they currently use:** Manual processes, or Superpowers/GSD — which solve *adjacent* problems. Superpowers enforces good dev habits but has no orchestration or memory. GSD keeps context fresh but has no specialist agents or audit trail. Neither system *learns across projects*.
+
+### Why Hive Mind Is Valuable for This Niche — 6 Capabilities Nobody Else Has
+
+Each of Hive Mind's innovations maps directly to a pain point this niche faces:
+
+**1. 21 specialist agents → replaces the multi-reviewer scheduling bottleneck**
+
+Instead of waiting for security, architecture, and testing reviewers to find time on their calendars, Hive Mind spawns the right specialist agents automatically based on keywords in the spec. If the spec mentions "authentication" or "payment," a security analyst agent joins the plan stage. If it mentions "API" or "interface," an architect agent joins.
+
+*Hours of reviewer coordination → minutes of automated analysis.*
+
+**2. Memory graduation → solves cross-project knowledge loss**
+
+The Learner agent captures patterns, mistakes, and discoveries after every story. When a pattern has been cited across 2+ stories and proven stable, it "graduates" from scratch-pad memory into a persistent knowledge base. Hardcoded paths are filtered out (they wouldn't generalize). Graduated patterns get numbered series IDs for tracking.
+
+*No other framework does this.* Superpowers has no persistent memory. GSD has state files that persist but don't self-curate. Hive Mind's knowledge base compounds — run 10 is genuinely better than run 1.
+
+**3. Critic isolation → eliminates confirmation bias in review**
+
+Reviewers who see how code was built are biased toward approving it. Hive Mind deliberately blindfolds its critics: during the SPEC stage, the critic agent receives ONLY the draft document. It never sees the research, justification, or PRD that produced it. This is like a blind taste test — the chef knows the recipe, the critic only tastes the dish.
+
+*Independent review quality without coordination overhead.*
+
+**4. Fix escalation pipeline → structured debugging instead of context-switching**
+
+When tests fail, most teams throw a developer at it and hope. Hive Mind separates diagnosis from repair:
+
+- **Attempt 1**: Lightweight fixer tries a quick patch (cheap, fast — like going to the pharmacy for a headache)
+- **Attempt 2+**: Diagnostician performs root-cause analysis reading ALL prior fix attempts, THEN the fixer applies a diagnosis-guided repair (like getting a full diagnostic workup when the headache persists)
+
+*Matches how experienced teams actually debug, without the human context-switching cost.*
+
+**5. Mandatory human checkpoints → the `.hive-mind/` directory IS your audit trail**
+
+Four approval gates (approve-spec, approve-plan, verify, ship) with structured artifacts at each:
+
+```
+.hive-mind/
+├── spec/          ← 7 documents: research, drafts, critiques, final spec
+├── plans/         ← execution plan, role reports, acceptance criteria
+├── reports/       ← per-story: impl, refactor, test, diagnosis, fix, eval, learning
+├── consolidated-report.md
+├── retrospective.md
+└── manager-log.jsonl   ← structured event log
+```
+
+When an auditor asks "why did you make this design decision?", you point them at `spec/research-report.md` and `spec/critique-1.md`. When they ask "was this tested?", you point at `reports/US-03/test-report.md`. Every decision is documented.
+
+**6. Self-contained step files → spec-to-code traceability**
+
+Each user story produces a step file containing SPEC REFERENCES, ACCEPTANCE CRITERIA (as executable bash commands), EXIT CRITERIA, inputs, and expected outputs. The implementer agent gets this file and nothing else — it can't drift because the spec section is embedded in its input.
+
+*Verifiable traceability from requirement → spec → story → code → test. No other framework provides this chain.*
+
+### How Easy Is It to Benefit? — An Honest Assessment
+
+#### Setup (30 minutes) — Easy for the niche
+
+These are dev teams. They already have Node.js.
+
+```bash
+npm i -g hive-mind     # one command
+# Prerequisite: Claude CLI installed and authenticated
+```
+
+No config files, no database, no Docker. Zero production dependencies.
+
+**One friction point**: Claude CLI must be authenticated with an API key that has Opus-tier access. This means an Anthropic account with billing.
+
+#### First Run (30-60 minutes wall-clock) — Moderate learning curve
+
+```bash
+hive-mind start --prd ./my-feature.md   # kick off the pipeline
+# ... wait 5-10 min for SPEC stage (7 agents) ...
+hive-mind approve                        # approve the spec
+# ... wait 5-8 min for PLAN stage (4-6 agents) ...
+hive-mind approve                        # approve the plan
+# ... wait 10-20 min per story for EXECUTE stage ...
+hive-mind approve                        # approve shipping
+```
+
+**Cost**: ~$3-15 for a 1-story run (24-28 API calls across Opus/Sonnet/Haiku tiers). Multi-story features scale linearly.
+
+**Where new users stumble**:
+
+1. **PRD quality matters** — the 7-agent SPEC pipeline improves a mediocre PRD, but can't rescue a fundamentally unclear one. Use the `/prd` command in Claude Code for guided creation.
+2. **4 approval checkpoints** — good for compliance, but interruptive for flow state. No "auto-approve" option exists yet.
+3. **No progress bar** — you wait 5-10 minutes with console output but no structured progress indicator.
+4. **Cost unpredictability** — no budget controls or pre-run cost estimation (see [roadmap](./hive-mind-roadmap.md) P1.1).
+5. **No built-in PRD template** — the PRD workflow exists as a Claude Code slash command (`.claude/commands/prd.md`), not as a standalone template file you can copy.
+
+#### Ongoing Use (where the niche *really* benefits) — Easy and compounding
+
+This is where Hive Mind separates from the field:
+
+- **Memory graduation compounds** — run 2 is better than run 1. Run 10 is significantly better. The knowledge base grows with project-specific patterns, mistakes, and discoveries.
+- **Teams can share knowledge** — copy `.hive-mind/knowledge-base/` across repositories. An agency's learnings from Client A's project benefit Client B's.
+- **Audit artifacts accumulate** — the `.hive-mind/` directory is ready for compliance review at any time.
+- **Superpowers and GSD don't get better over time.** They start at the same quality on project 100 as project 1.
+
+#### Who Should (and Shouldn't) Adopt
+
+| Team Profile | Ease of Adoption | Expected Value |
+|---|---|---|
+| **Agency shipping similar projects** | Easy (familiar with structured processes) | **Very High** — memory graduation is transformative |
+| **Enterprise with compliance needs** | Easy (checkpoints = audit trail they already need) | **Very High** — built-in traceability |
+| **Startup, moving fast** | Medium (checkpoints slow them down) | Medium — memory helps but cost and ceremony hurt |
+| **Solo dev, small features** | Hard (too much ceremony for the task size) | Low — overkill |
+| **Open source maintainer** | Hard (cost per run, Claude lock-in) | Low — community review is better than automated review |
+
+**The niche verdict**: If you're a team that ships 3-15 story features, needs audit trails, and values institutional learning — Hive Mind is the only framework that addresses all three. Setup is easy, the first run has a moderate learning curve, and the value compounds with every subsequent run. The friction points (cost unpredictability, Claude lock-in, no config file) are real but solvable — see the [improvement roadmap](./hive-mind-roadmap.md) for the path forward.
+
+---
+
 *Comparison reflects the state of these frameworks as of March 2026. See their repositories for the latest:*
 - *[Superpowers](https://github.com/obra/superpowers)*
 - *[GSD](https://github.com/gsd-build/get-shit-done)*
