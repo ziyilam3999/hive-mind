@@ -119,6 +119,27 @@ describe("parser handles emoji-prefixed status lines", () => {
     expect(result.status).toBe("PASS");
     expect(result.confidence).toBe("matched");
   });
+
+  it("parses 'Result:' synonym (Bug 14)", () => {
+    const markdown = `**Result**: ✅ **ALL TESTS PASSED (4/4)**`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("matched");
+  });
+
+  it("parses 'Outcome:' synonym", () => {
+    const markdown = `\n**Outcome**: PASS\n`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("matched");
+  });
+
+  it("parses 'Test Status:' with word prefix (Bug 14 variant)", () => {
+    const markdown = `**Test Status:** ✅ ALL TESTS PASSED (24/24)`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("matched");
+  });
 });
 
 describe("parseImplReport scopes to FILES CREATED section", () => {

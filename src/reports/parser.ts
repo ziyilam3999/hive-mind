@@ -12,7 +12,7 @@ export function parseReportStatus(markdown: string): ParseResult {
   //    Agents prepend qualifiers ("ALL PASS", "13/13 RUNTIME TESTS PASS"), so we capture
   //    the full status line and find the last known keyword rather than the first \w+.
   const inlineMatch = markdown.match(
-    /(?:^|\n)\s*\*?\*?(?:Final\s+)?Status\*?\*?:\s*(.+)/i,
+    /(?:^|\n)\s*\*?\*?(?:\w+\s+)?(?:Status|Result|Verdict|Outcome)\*?\*?:\s*(.+)/i,
   );
   if (inlineMatch) {
     const statusLine = inlineMatch[1];
