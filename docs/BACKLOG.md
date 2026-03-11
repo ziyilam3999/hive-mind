@@ -41,6 +41,7 @@
 | FW-06 | Quick mode / fast-forward for small changes | P2 | v3.1 | RD-09 | Not started |
 | ENH-13 | Checkpoint sound notification | P2 | v3.1 | — | Not started |
 | ENH-14 | Bug-fix mode (`--bug`) | P2 | v3.2 | FW-06 | Not started |
+| ENH-15 | AI-first manifest file (live) | P1 | v3.1 | — | Not started |
 | FW-07 | Spec self-update during implementation | P2 | v3.2 | RD-04 | Not started |
 | FW-11 | Docker-sandboxed agent execution | P2 | v3.2 | PRD-07 | Not started |
 | FW-15 | Agent profiles / permission scoping | P2 | v3.2 | RD-03 | Not started |
@@ -309,6 +310,24 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 - Read `.hive-mind/constitution.md` if it exists (via config loader from RD-03)
 - Inject constitution into researcher, spec-drafter, synthesizer, and critic prompts as a `## Project Principles` section
 - Constitution is advisory (agents can note conflicts) not blocking
+
+---
+
+### ENH-15: AI-First Manifest File (Live)
+
+**Priority:** P1 | **Effort:** Small–Medium | **Files:** New `src/manifest/generator.ts`, `src/orchestrator.ts`, `src/index.ts`
+
+> **ELI5:** When a new worker shows up at the job site, instead of wandering around opening every door to figure out where things are, they get a site map at the front gate. The map auto-updates every time a room is finished.
+
+**Problem:** AI agents waste tokens exploring ~10 files every session to orient themselves. No single-file entry point exists for navigating the codebase and `.hive-mind/` artifacts.
+
+**Fix:**
+- `.hive-mind/MANIFEST.md` with two parts: static sections (architecture, source map, navigation hints — manually maintained, ~500 tokens) and a dynamic artifact inventory (auto-generated)
+- `updateManifest()` called at pipeline stage boundaries (after SPEC, PLAN, EXECUTE, REPORT) — scans `.hive-mind/` and regenerates inventory
+- `hive-mind manifest` CLI command for manual refresh outside pipeline runs
+- Parent `CLAUDE.md` updated with pointer so agents discover it on session start
+
+**Plan:** `.hive-mind/plans/manifest-plan.md`
 
 ---
 
@@ -847,4 +866,4 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 
 ---
 
-*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11. AI-first reports item (FW-16) added 2026-03-11. Checkpoint sound notification (ENH-13) added 2026-03-11.*
+*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11. AI-first reports item (FW-16) added 2026-03-11. Checkpoint sound notification (ENH-13) added 2026-03-11. AI-first manifest (ENH-15) added 2026-03-11.*
