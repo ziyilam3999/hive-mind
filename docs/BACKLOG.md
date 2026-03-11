@@ -40,6 +40,7 @@
 | FW-05 | Delta markers for brownfield iteration | P2 | v3.1 | — | Not started |
 | FW-06 | Quick mode / fast-forward for small changes | P2 | v3.1 | RD-09 | Not started |
 | ENH-13 | Checkpoint sound notification | P2 | v3.1 | — | Not started |
+| ENH-14 | Bug-fix mode (`--bug`) | P2 | v3.2 | FW-06 | Not started |
 | FW-07 | Spec self-update during implementation | P2 | v3.2 | RD-04 | Not started |
 | FW-11 | Docker-sandboxed agent execution | P2 | v3.2 | PRD-07 | Not started |
 | FW-15 | Agent profiles / permission scoping | P2 | v3.2 | RD-03 | Not started |
@@ -470,6 +471,29 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 - Future enhancement: `node-notifier` integration behind a `--notify` flag for OS-native notifications
 
 **Review:** `.hive-mind/reviews/sound-notification-feature-review.md`
+
+---
+
+### ENH-14: Bug-Fix Mode (`--bug`)
+
+**Priority:** P2 | **Effort:** Medium | **Blocked by:** FW-06 (quick mode infrastructure)
+**Files:** `src/index.ts`, `src/orchestrator.ts`, new `src/stages/diagnose-stage.ts`, `src/agents/prompts.ts`
+
+> **ELI5:** When a pipe bursts, you don't call the architect to redesign the house — you call a plumber who diagnoses the leak, fixes it, and checks that water flows again. Bug-fix mode sends the plumber, not the architect.
+
+**Problem:** Hive Mind only accepts a PRD as input and runs the full 4-stage pipeline. Bug reports describe symptoms and expected behavior, not product requirements. Running researcher → justifier → spec-drafter → 2 critic rounds to fix a null pointer exception wastes time and tokens. Developers default to fixing bugs outside Hive Mind, missing the audit trail and verify loop benefits.
+
+**How it differs from FW-06 (quick mode):**
+- FW-06 skips SPEC/PLAN for *any* small change — still takes a one-line description as input
+- ENH-14 replaces the agent pipeline entirely with a diagnosis-first flow designed for defects — takes a bug report (symptoms, repro steps, expected vs actual behavior) as input
+
+**Fix:**
+- `hive-mind bug --report <path>` accepts a bug report (markdown with symptoms, repro steps, logs)
+- New DIAGNOSE stage replaces SPEC: diagnostician agent searches codebase for root cause, produces a diagnosis report with code locations and recommended fix
+- Single human checkpoint after DIAGNOSE (approve diagnosis before fix attempt)
+- Reuses EXECUTE sub-pipeline (implementer → tester → fixer → evaluator → committer) from the standard flow
+- Skips PLAN stage entirely — no story decomposition needed for single-issue fixes
+- For complex bugs touching multiple subsystems, diagnostician can recommend escalating to full pipeline mode
 
 ---
 
