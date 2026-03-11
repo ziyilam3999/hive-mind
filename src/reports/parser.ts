@@ -12,7 +12,7 @@ export function parseReportStatus(markdown: string): ParseResult {
   //    Agents prepend qualifiers ("ALL PASS", "13/13 RUNTIME TESTS PASS"), so we capture
   //    the full status line and find the last known keyword rather than the first \w+.
   const inlineMatch = markdown.match(
-    /(?:^|\n)\s*\*?\*?(?:Final\s+)?Status\*?\*?:\s*(.+)/i,
+    /(?:^|\n)\s*\*?\*?(?:\w+\s+)?(?:Status|Result|Verdict|Outcome)\*?\*?:\s*(.+)/i,
   );
   if (inlineMatch) {
     const statusLine = inlineMatch[1];
@@ -78,15 +78,30 @@ export function parseImplReport(
 ): { status: string; confidence: "matched" | "default"; filesCreated: string[] } {
   const { status, confidence } = parseReportStatus(markdown);
   const filesCreated: string[] = [];
-  const rows = markdown.match(/^\|[^|]+\|[^|]+\|[^|]+\|$/gm);
-  if (rows) {
-    for (const row of rows) {
-      const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
-      if (cells.length >= 1 && !cells[0].startsWith("File") && !cells[0].startsWith("-")) {
-        filesCreated.push(cells[0]);
+
+  // Scope to "Files Created" / "Source Files" section only (like parseFixReport)
+  const filesSection = markdown.split(/^##\s+(?:FILES\s+CREATED|Source\s+Files\b)[^\n]*/im)[1]?.split(/^##/m)[0];
+  if (filesSection) {
+    // Parse table rows (3-column: | File | Lines | Exports |)
+    const rows = filesSection.match(/^\|[^|]+\|[^|]+\|[^|]+\|$/gm);
+    if (rows) {
+      for (const row of rows) {
+        const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
+        if (cells.length >= 1 && !cells[0].startsWith("File") && !cells[0].startsWith("-")) {
+          filesCreated.push(cells[0].replace(/`/g, ""));
+        }
+      }
+    }
+    // Parse bullet items (- `src/file.ts`) — agents use both formats
+    const bullets = filesSection.match(/^-\s+`([^`]+)`/gm);
+    if (bullets) {
+      for (const bullet of bullets) {
+        const match = bullet.match(/^-\s+`([^`]+)`/);
+        if (match) filesCreated.push(match[1]);
       }
     }
   }
+
   return { status, confidence, filesCreated };
 }
 

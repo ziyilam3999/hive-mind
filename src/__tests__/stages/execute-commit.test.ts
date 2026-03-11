@@ -71,6 +71,25 @@ describe("execute-commit", () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
+  it("computeModifiedFiles ignores non-file entries from impl report", () => {
+    // Simulates the old bug where Exports tables leaked into filesCreated
+    // After Bug 13 fix, parseImplReport only returns files from FILES CREATED section
+    const implReport = `# Report
+## Source Files
+- \`src/task.ts\`
+## Exports
+| Export | Type | Present |
+|--------|------|---------|
+| \`createTask(id: string)\` | function | YES |
+`;
+    const files = computeModifiedFiles(testStory, implReport, []);
+    expect(files).toContain("src/task.ts");
+    expect(files).toContain("src/types/index.ts");
+    expect(files).toContain("src/utils/file-io.ts");
+    // Should NOT contain export signatures
+    expect(files.some(f => f.includes("createTask"))).toBe(false);
+  });
+
   it("--no-verify never used in source", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve, dirname } = await import("node:path");
