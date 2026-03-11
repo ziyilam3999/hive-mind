@@ -1,6 +1,6 @@
 # AI-Assisted Development Frameworks: An ELI5 Comparison
 
-Six frameworks that help AI agents write better code — each with a very different philosophy. Three are **orchestrators** (they run agents for you), and three are **spec layers** (they structure your thinking before agents build).
+Seven frameworks that help AI agents write better code — each with a very different philosophy. Four are **orchestrators** (they run agents for you), and three are **spec layers** (they structure your thinking before agents build).
 
 ## What Are They?
 
@@ -11,6 +11,8 @@ Six frameworks that help AI agents write better code — each with a very differ
 **Superpowers** is like a **cookbook that any AI chef must follow**. It doesn't build things itself — instead, it's a library of "skills" (structured prompts and workflows) that teach AI agents how to brainstorm, plan, write tests first, review code, and finish branches properly. Any kitchen can use it: Claude Code, Cursor, Codex, or OpenCode.
 
 **GSD (Get Shit Done)** is like a **project manager who grabs a fresh notepad for every task**. Its big insight: AI quality degrades as conversations get longer ("context rot"). So GSD spawns a brand-new AI worker with a clean 200K-token context for each task, while keeping a master binder of project state so nothing gets lost between tasks.
+
+**Warp Oz** is like a **cloud-based factory floor that can spin up hundreds of assembly lines at once**. You describe a task (or a cron schedule, webhook, or Slack message triggers it automatically), and Oz launches AI coding agents in isolated Docker sandboxes on Warp's cloud infrastructure. Each agent gets its own container with full terminal control — it can interact with REPLs, debuggers, database shells, and long-running servers, not just run shell commands. It's built for teams, not individuals: every run generates shareable links, audit trails, and access-controlled results.
 
 ### Spec Layers — They Structure the Thinking
 
@@ -59,6 +61,17 @@ Initialize → Discuss → Plan → Execute → Verify → Complete
 4. **Execute**: Run tasks in dependency-aware "waves" — independent tasks run in parallel, dependent ones wait.
 5. **Verify**: Walk through deliverables; auto-diagnose failures.
 6. **Complete**: Tag a release, move to the next phase.
+
+### Warp Oz — 4 Stages
+
+```
+Trigger → Plan → Execute (Docker) → Deliver
+```
+
+1. **Trigger**: A task starts from a CLI command (`oz agent run`), API call, SDK invocation, cron schedule, webhook, or integration event (Slack, Linear, GitHub Actions).
+2. **Plan**: The `/plan` slash command prompts the agent to research the codebase and create a versioned implementation plan. Plans can be saved, attached to PRs, and executed in phases.
+3. **Execute**: The agent runs in an isolated Docker container with full terminal control — it can interact with REPLs, debuggers, database shells, and long-running servers. Optionally, Computer Use lets the agent take screenshots to visually verify UI changes.
+4. **Deliver**: Results are shareable via links with access control. Agents can create PRs, post to Slack, or trigger downstream workflows. Every run generates an audit trail.
 
 ### OpenSpec — 3 Phases
 
@@ -109,6 +122,8 @@ Each agent sees only what it needs — implementers get a self-contained step fi
 
 **GSD** spawns **fresh subagents per task**. Each gets a clean 200K-token context loaded with only the relevant slice of project state. The main session stays lightweight and responsive because heavy work happens in throwaway subprocesses.
 
+**Warp Oz** runs agents in **two modes**: Local agents embedded in the Warp terminal for interactive coding, and Cloud agents that run autonomously in Docker sandboxes on Warp's infrastructure (or self-hosted). Oz is **multi-model** — agents can use Claude, Codex, Gemini, or GPT-5 — and **multi-interface**: CLI (`oz agent run`), Python SDK, TypeScript SDK, HTTP API, web UI, or the Warp desktop app. Agent Profiles control permissions, model choice, and behavioral defaults per agent type.
+
 **OpenSpec** has **no agents of its own**. It's a spec layer — your existing AI coding assistant (Copilot, Claude Code, Cursor, etc.) does the work. OpenSpec just ensures it follows a spec before writing code. Works with 20+ assistants via slash commands.
 
 **Spec-Kit** is the same model — **no built-in agents**. It provides slash commands that any of 18+ supported AI agents execute. The agent reads the spec artifacts and follows the process. This makes it the most portable format: write specs once, any agent can implement.
@@ -123,6 +138,8 @@ Each agent sees only what it needs — implementers get a self-contained step fi
 
 **GSD** keeps a family of state files: `PROJECT.md` (vision), `REQUIREMENTS.md` (scope), `ROADMAP.md` (phases), and `STATE.md` (decisions, blockers, current position). These persist across sessions and get loaded into each fresh subagent's context as needed.
 
+**Warp Oz** uses **WARP.md** (a project-level context file, compatible with `agents.md` and `claude.md`) plus **Skills** — reusable `SKILL.md` markdown instruction sets stored in `.agents/skills/` that agents auto-discover and invoke when relevant. **Warp Drive** is a shared team workspace for workflows, notebooks, prompts, and environment variables, synced so agents and humans always have the right context. **MCP (Model Context Protocol)** extends agents with external data sources (Linear, Figma, Slack, Sentry, GitHub). Context is shared across local and cloud agents — you can start a task in the cloud and take over locally without losing progress.
+
 **OpenSpec** persists change folders in `openspec/changes/` with full proposal, specs, design, and tasks. Completed changes archive with timestamps. But specs **don't self-update during implementation** — if the agent modifies its approach mid-task, the proposal doesn't automatically reflect the change. No cross-project learning.
 
 **Spec-Kit** stores feature specs in `.speckit/` directories. The **constitution** document carries project-level principles across all features — the closest thing to institutional memory in the spec-layer category. But there's no cross-session learning beyond what's in the spec files.
@@ -136,6 +153,8 @@ Each agent sees only what it needs — implementers get a self-contained step fi
 **Superpowers**: **Lighter touch.** Skills enforce structural discipline (you can't skip TDD or code review), but there's no formal approval gate. Humans stay in control by reviewing branches and pull requests.
 
 **GSD**: **Flexible involvement.** The Discuss stage captures your preferences upfront. Verify checks your work after execution. A "quick mode" lets you skip the full ceremony for small tasks.
+
+**Warp Oz**: **Spectrum from interactive to fully autonomous.** Local agents run interactively in the Warp terminal where you can follow changes in real time and add comments during execution (Interactive Code Review). Cloud agents run fully autonomously, triggered by schedules or events. The `/plan` command lets you review and approve implementation plans before execution. Plans can be revised mid-run. Every run generates shareable links with access control for team review.
 
 **OpenSpec**: **Lightest touch.** Review the proposal before applying — that's it. You can iterate on specs freely, edit anything directly. No mandatory gates. The fast-forward command (`/opsx:ff`) lets you skip even the review for straightforward changes.
 
@@ -169,23 +188,27 @@ Each agent sees only what it needs — implementers get a self-contained step fi
 - **Strengths**: Full IDE integration, EARS notation for unambiguous requirements, agent hooks for automated routine tasks, automated spec generation, design-first or requirements-first flexibility
 - **Weaknesses**: IDE lock-in (must use Kiro, can't use your own editor), Claude-only models, $20/month after preview, overkill for small tasks ("sledgehammer to crack a nut"), no cross-project learning
 
+### Warp Oz
+- **Strengths**: Cloud-first orchestration (hundreds of parallel agents), Docker-sandboxed execution (SOC 2 compliant, zero data retention), full terminal control (REPLs, debuggers, database shells), multi-model (Claude, Codex, Gemini, GPT-5), event-driven triggers (cron, webhook, Slack, Linear, GitHub Actions), multi-repo changes, Computer Use for visual verification, team collaboration (shareable links, audit trails, access control), self-hostable, SDKs (Python, TypeScript, HTTP API)
+- **Weaknesses**: Requires Warp ecosystem (not a standalone tool), credit-based pricing adds up at scale ($20-45/mo + usage credits), no cross-project learning or memory graduation, no spec-layer structure (no formal requirements → design → tasks pipeline), no critic isolation or fix escalation patterns, younger platform (launched Feb 2026), closed-source orchestrator
+
 ## Summary Comparison Table
 
 ### Orchestrators
 
-| Aspect | Hive Mind | Superpowers | GSD |
-|--------|-----------|-------------|-----|
-| **One-liner** | Factory with 21 specialists | Portable skills cookbook | Fresh-notepad project manager |
-| **Type** | CLI orchestrator | Prompt/skill library | CLI orchestrator |
-| **Workflow stages** | 4 (SPEC/PLAN/EXECUTE/REPORT) | 7 (Brainstorm through Finish) | 6 (Initialize through Complete) |
-| **Agent model** | 21 typed agents, 3 model tiers | Composable skills, no fixed agents | Subagents with fresh 200K context |
-| **Memory** | memory.md + knowledge base graduation | Git worktrees/branches | PROJECT.md + STATE.md family |
-| **Human checkpoints** | Mandatory at every stage | Code review gates | Verify stage + quick mode |
-| **TDD / Testing** | Tester + Evaluator agents | Mandatory RED-GREEN-REFACTOR | Task verification step |
-| **Tool support** | Claude CLI only | Claude Code, Cursor, Codex, OpenCode | Claude Code, OpenCode, Gemini CLI, Codex |
-| **Parallelism** | Sequential stories | Git worktree parallelism | Wave-based dependency-aware |
-| **Cost** | ~$3-15/story (API calls) | Free (MIT) | Free (MIT) |
-| **Best for** | Complex multi-story projects with audit needs | Teams wanting portable dev habits | Solo builders wanting zero context rot |
+| Aspect | Hive Mind | Superpowers | GSD | Warp Oz |
+|--------|-----------|-------------|-----|---------|
+| **One-liner** | Factory with 21 specialists | Portable skills cookbook | Fresh-notepad project manager | Cloud factory with hundreds of lines |
+| **Type** | CLI orchestrator | Prompt/skill library | CLI orchestrator | Cloud agent orchestration platform |
+| **Workflow stages** | 4 (SPEC/PLAN/EXECUTE/REPORT) | 7 (Brainstorm through Finish) | 6 (Initialize through Complete) | 4 (Trigger/Plan/Execute/Deliver) |
+| **Agent model** | 21 typed agents, 3 model tiers | Composable skills, no fixed agents | Subagents with fresh 200K context | Local + Cloud agents, multi-model |
+| **Memory** | memory.md + knowledge base graduation | Git worktrees/branches | PROJECT.md + STATE.md family | WARP.md + Skills + Warp Drive |
+| **Human checkpoints** | Mandatory at every stage | Code review gates | Verify stage + quick mode | Interactive review or fully autonomous |
+| **TDD / Testing** | Tester + Evaluator agents | Mandatory RED-GREEN-REFACTOR | Task verification step | Full terminal + Computer Use |
+| **Tool support** | Claude CLI only | Claude Code, Cursor, Codex, OpenCode | Claude Code, OpenCode, Gemini CLI, Codex | Claude, Codex, Gemini, GPT-5 |
+| **Parallelism** | Sequential stories | Git worktree parallelism | Wave-based dependency-aware | Hundreds of parallel cloud agents |
+| **Cost** | ~$3-15/story (API calls) | Free (MIT) | Free (MIT) | $20-45/mo + usage credits |
+| **Best for** | Complex multi-story projects with audit needs | Teams wanting portable dev habits | Solo builders wanting zero context rot | Teams needing cloud-scale agent orchestration |
 
 ### Spec Layers
 
@@ -205,14 +228,16 @@ Each agent sees only what it needs — implementers get a self-contained step fi
 
 ### Cross-Category Comparison
 
-| Dimension | Hive Mind | Superpowers | GSD | OpenSpec | Spec-Kit | Kiro |
-|-----------|-----------|-------------|-----|---------|----------|------|
-| **Spec generation** | 7-agent pipeline | Manual planning skill | Discussion + plan stage | Manual with templates | Manual with constitution | Auto-generated (EARS) |
-| **Code execution** | Build + test + fix loops | TDD cycle | Wave-based task execution | Delegated to AI assistant | Delegated to AI agent | Task-by-task via IDE |
-| **Cross-project learning** | Yes (memory graduation) | No | No | No | No | No |
-| **Vendor lock-in** | Claude only | None | None | None | None | AWS/Claude only |
-| **Brownfield support** | Yes | Yes | Yes | Best (delta markers) | Weak (greenfield focus) | Weak (greenfield focus) |
-| **Setup time** | 30 min | 5 min | 10 min | 5 min | 10 min | Download IDE |
+| Dimension | Hive Mind | Superpowers | GSD | OpenSpec | Spec-Kit | Kiro | Warp Oz |
+|-----------|-----------|-------------|-----|---------|----------|------|---------|
+| **Spec generation** | 7-agent pipeline | Manual planning skill | Discussion + plan stage | Manual with templates | Manual with constitution | Auto-generated (EARS) | `/plan` researches + generates |
+| **Code execution** | Build + test + fix loops | TDD cycle | Wave-based task execution | Delegated to AI assistant | Delegated to AI agent | Task-by-task via IDE | Docker-sandboxed, full terminal |
+| **Cross-project learning** | Yes (memory graduation) | No | No | No | No | No | No (Skills are reusable but static) |
+| **Vendor lock-in** | Claude only | None | None | None | None | AWS/Claude only | Warp ecosystem (multi-model) |
+| **Brownfield support** | Yes | Yes | Yes | Best (delta markers) | Weak (greenfield focus) | Weak (greenfield focus) | Yes |
+| **Setup time** | 30 min | 5 min | 10 min | 5 min | 10 min | Download IDE | Account signup + install |
+| **Execution isolation** | None (host OS) | None (host OS) | None (host OS) | N/A | N/A | N/A | Docker containers per agent |
+| **Event-driven triggers** | CLI only | CLI only | CLI only | CLI only | CLI only | IDE only | Cron, webhook, Slack, Linear, GH Actions |
 
 ## Which One Should You Pick?
 
@@ -221,6 +246,7 @@ Each agent sees only what it needs — implementers get a self-contained step fi
 - **Pick Hive Mind** if you want a full assembly line with specialist agents, mandatory human sign-off at every stage, and a system that learns from its own mistakes across projects.
 - **Pick Superpowers** if you want portable development discipline (TDD, code review, structured planning) that works regardless of which AI tool your team uses.
 - **Pick GSD** if you're a solo builder who wants fresh AI context on every task, minimal ceremony, and dependency-aware parallel execution.
+- **Pick Warp Oz** if you need to run hundreds of agents in parallel on cloud infrastructure, want event-driven triggers (cron, webhooks, Slack), need Docker-sandboxed execution, or want multi-model support and team collaboration features out of the box.
 
 ### If you need a spec layer (structures thinking before building):
 
@@ -230,13 +256,13 @@ Each agent sees only what it needs — implementers get a self-contained step fi
 
 ### Mix and match
 
-These categories complement each other. You could use **OpenSpec or Spec-Kit** for structured spec creation, then feed those specs into **Hive Mind** or **GSD** for orchestrated execution. Superpowers' skills could complement any combination.
+These categories complement each other. You could use **OpenSpec or Spec-Kit** for structured spec creation, then feed those specs into **Hive Mind** or **GSD** for orchestrated execution. Superpowers' skills could complement any combination. **Warp Oz** could serve as the cloud execution layer for any of these — its Docker sandboxes and event triggers are infrastructure, not methodology.
 
 ---
 
 ## Where Hive Mind Has an Edge
 
-These are things Hive Mind does that none of the other five frameworks offer — verified against the actual source code.
+These are things Hive Mind does that none of the other six frameworks offer — verified against the actual source code. (Note: Warp Oz excels at cloud infrastructure — sandboxing, parallelism, triggers, multi-model — but lacks the spec-layer innovations below.)
 
 ### 1. Memory That Learns and Graduates
 
@@ -247,7 +273,7 @@ Imagine a student who takes notes on a scratch pad (capped at 400 words). When a
 - Entries with hardcoded paths are filtered out (they wouldn't generalize)
 - Graduated patterns get numbered series IDs (P25+, F31+) for tracking
 
-None of the other five frameworks do anything like this. Superpowers has no persistent memory. GSD's state files persist but don't self-curate. OpenSpec archives change folders but doesn't learn from them. Spec-Kit's constitution is static — you write it, it doesn't grow. Kiro's specs are version-controlled but project-scoped. This is genuine **institutional learning** — the system gets smarter over time.
+None of the other six frameworks do anything like this. Superpowers has no persistent memory. GSD's state files persist but don't self-curate. OpenSpec archives change folders but doesn't learn from them. Spec-Kit's constitution is static — you write it, it doesn't grow. Kiro's specs are version-controlled but project-scoped. Warp Oz has reusable Skills and WARP.md but these are static — human-authored, not self-curating. This is genuine **institutional learning** — the system gets smarter over time.
 
 *Source: `src/memory/graduation.ts:42-51`, `src/memory/memory-manager.ts`*
 
@@ -280,7 +306,7 @@ Hive Mind assigns AI models by task complexity, not uniformly:
 | Precise analysis | Sonnet | Critic, Diagnostician, Fixer, Refactorer | These need careful but focused work |
 | Fast execution | Haiku | Tester, Evaluator, Reporter, Learner | These run commands and summarize — speed matters more than depth |
 
-Superpowers, GSD, OpenSpec, and Spec-Kit all use whatever model the host tool provides — no tiering. Kiro uses Claude models but doesn't expose tier selection. Hive Mind's tiering means you spend Opus dollars only where Opus reasoning is needed.
+Superpowers, GSD, OpenSpec, and Spec-Kit all use whatever model the host tool provides — no tiering. Kiro uses Claude models but doesn't expose tier selection. Warp Oz supports multiple models but assigns them per-profile, not per-task-complexity. Hive Mind's tiering means you spend Opus dollars only where Opus reasoning is needed.
 
 *Source: `src/agents/model-map.ts`*
 
@@ -386,10 +412,11 @@ Running `hive-mind --help` returns an error. The CLI has good error messages for
 - **OpenSpec** if you want lightweight spec agreement before iterating on existing code — lowest ceremony of all six
 - **Spec-Kit** if you want a portable spec format with project-level principles that any of 18+ AI agents can follow
 - **Kiro** if you want an all-in-one IDE that auto-generates formal specs and handles implementation with agent hooks
+- **Warp Oz** if you need cloud-scale agent orchestration with Docker sandboxing, event-driven triggers, multi-model support, and team collaboration features
 
 ### Bottom Line
 
-Hive Mind is **architecturally innovative** — memory graduation, critic isolation, and fix escalation are genuinely novel ideas that neither Superpowers nor GSD have. But it's **operationally fragile** — no cost controls, fragile parsing, no error recovery, and Claude-only lock-in.
+Hive Mind is **architecturally innovative** — memory graduation, critic isolation, and fix escalation are genuinely novel ideas that no other framework has (including Warp Oz, which excels at infrastructure but not methodology). But it's **operationally fragile** — no cost controls, fragile parsing, no error recovery, and Claude-only lock-in. Oz's Docker isolation, cloud parallelism, and event triggers represent the infrastructure future that Hive Mind should aspire to.
 
 Think of it as a **well-designed prototype**: the blueprints are excellent, the assembly line is clever, but the factory floor still needs guardrails, fire exits, and a budget office.
 
@@ -416,7 +443,7 @@ Hive Mind's sweet spot is **teams building features that span 3-15 user stories,
 3. **Unstructured debugging** — when tests fail, developers context-switch between "what's broken?" and "how do I fix it?" with no separation of concerns
 4. **PRD-to-code drift** — the spec says "implement auth flow" but the code implements something subtly different, and nobody catches it until QA
 
-**What they currently use:** Manual processes, or other frameworks that solve *adjacent* problems. Superpowers enforces good dev habits but has no orchestration or memory. GSD keeps context fresh but has no specialist agents or audit trail. OpenSpec and Spec-Kit structure specs but don't orchestrate execution or learn. Kiro auto-generates specs but is greenfield-focused and doesn't learn across projects. None of these systems *get smarter over time*.
+**What they currently use:** Manual processes, or other frameworks that solve *adjacent* problems. Superpowers enforces good dev habits but has no orchestration or memory. GSD keeps context fresh but has no specialist agents or audit trail. OpenSpec and Spec-Kit structure specs but don't orchestrate execution or learn. Kiro auto-generates specs but is greenfield-focused and doesn't learn across projects. Warp Oz excels at cloud-scale parallel execution and Docker isolation but has no spec-layer pipeline, no fix escalation, and no self-curating memory. None of these systems *get smarter over time*.
 
 ### Why Hive Mind Is Valuable for This Niche — 6 Capabilities Nobody Else Has
 
@@ -515,7 +542,7 @@ This is where Hive Mind separates from the field:
 - **Memory graduation compounds** — run 2 is better than run 1. Run 10 is significantly better. The knowledge base grows with project-specific patterns, mistakes, and discoveries.
 - **Teams can share knowledge** — copy `.hive-mind/knowledge-base/` across repositories. An agency's learnings from Client A's project benefit Client B's.
 - **Audit artifacts accumulate** — the `.hive-mind/` directory is ready for compliance review at any time.
-- **None of the other five frameworks get better over time.** They all start at the same quality on project 100 as project 1.
+- **None of the other six frameworks get better over time.** They all start at the same quality on project 100 as project 1.
 
 #### Who Should (and Shouldn't) Adopt
 
@@ -526,6 +553,7 @@ This is where Hive Mind separates from the field:
 | **Startup, moving fast** | Medium (checkpoints slow them down) | Medium — memory helps but cost and ceremony hurt |
 | **Solo dev, small features** | Hard (too much ceremony for the task size) | Low — overkill |
 | **Open source maintainer** | Hard (cost per run, Claude lock-in) | Low — community review is better than automated review |
+| **Team needing cloud-scale agent orchestration** | N/A — use Warp Oz instead | Low — Oz handles this niche better |
 
 **The niche verdict**: If you're a team that ships 3-15 story features, needs audit trails, and values institutional learning — Hive Mind is the only framework that addresses all three. Setup is easy, the first run has a moderate learning curve, and the value compounds with every subsequent run. The friction points (cost unpredictability, Claude lock-in, no config file) are real but solvable — see the [improvement roadmap](./hive-mind-roadmap.md) for the path forward.
 
@@ -537,3 +565,4 @@ This is where Hive Mind separates from the field:
 - *[OpenSpec](https://github.com/Fission-AI/OpenSpec)*
 - *[Spec-Kit](https://github.com/github/spec-kit)*
 - *[Kiro](https://kiro.dev/)*
+- *[Warp Oz](https://www.warp.dev/oz)*

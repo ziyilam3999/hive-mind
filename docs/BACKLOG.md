@@ -9,7 +9,7 @@
 - **RD-xx** — Production reliability items (from roadmap analysis)
 - **ENH-xx** — Pipeline enhancement items (from backlog)
 - **PRD-xx** — Long-term vision items (from original PRD)
-- **FW-xx** — Framework-inspired items (from comparison with Superpowers, GSD, OpenSpec, Spec-Kit, Kiro)
+- **FW-xx** — Framework-inspired items (from comparison with Superpowers, GSD, OpenSpec, Spec-Kit, Kiro, Warp Oz)
 
 ---
 
@@ -40,6 +40,8 @@
 | FW-05 | Delta markers for brownfield iteration | P2 | v3.1 | — | Not started |
 | FW-06 | Quick mode / fast-forward for small changes | P2 | v3.1 | RD-09 | Not started |
 | FW-07 | Spec self-update during implementation | P2 | v3.2 | RD-04 | Not started |
+| FW-11 | Docker-sandboxed agent execution | P2 | v3.2 | PRD-07 | Not started |
+| FW-15 | Agent profiles / permission scoping | P2 | v3.2 | RD-03 | Not started |
 | ENH-06 | Cross-story pattern mining | P3 | v3.2 | Retrospective data | Not started |
 | ENH-07 | Synthesizer split | P3 | v3.2 | Quality measurements | Not started |
 | ENH-08 | `/hive` Claude Code skill | P3 | v3.3 | v3.0 CLI stable | Not started |
@@ -50,6 +52,9 @@
 | FW-08 | Context hygiene / filtered memory per story | P3 | v3.3 | ENH-03 | Not started |
 | FW-09 | Design-first workflow variant | P3 | v3.4 | RD-09 | Not started |
 | FW-10 | Agent hooks for automated side-effects | P3 | v3.4 | RD-03 | Not started |
+| FW-12 | Event-driven pipeline triggers | P3 | v3.4 | RD-03 | Not started |
+| FW-13 | Visual verification / Computer Use for UI stories | P3 | v3.5 | FW-11 | Not started |
+| FW-14 | Multi-repo orchestration | P3 | v3.5 | ENH-11 | Not started |
 | PRD-01 | Stress tier system (Low–Critical) | P3 | v1.1 | MVP baseline | Not started |
 | PRD-02 | System Flood (full reset) | P3 | v1.1 | PRD-01 | Not started |
 | PRD-03 | LLM-as-Judge verify phase | P3 | v1.1 | MVP verify data | Not started |
@@ -465,6 +470,43 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 
 ---
 
+### FW-11: Docker-Sandboxed Agent Execution
+
+**Priority:** P2 | **Effort:** Large | **Blocked by:** PRD-07
+**Files:** `src/agents/spawner.ts`, new `src/agents/docker-executor.ts`, `src/config/loader.ts`
+**Inspired by:** Warp Oz (every agent run gets its own Docker container)
+
+> **ELI5:** Instead of letting every contractor work in your living room, you give each one a separate workshop with its own tools. If one makes a mess, it doesn't affect the others.
+
+**Problem:** Agents run in the host OS with full filesystem access. No isolation between agent runs. PRD-07 only sandboxes *tests*, not the agents themselves. A misbehaving agent can modify files outside its story's scope, read sensitive files, or interfere with concurrent agents (once ENH-03 lands).
+
+**Fix:**
+- Wrap `spawnAgent()` in an optional Docker executor. When `execution.sandbox: true` in `.hivemindrc.json`, each story runs in a container built from a configurable base image
+- Container mounts only the story's target files as read-write; everything else is read-only
+- Secrets injected via env vars, not filesystem
+- Falls back to host execution when Docker is unavailable or sandbox is disabled
+- Extends PRD-07 (which sandboxes tests only) to sandbox the entire agent lifecycle
+
+---
+
+### FW-15: Agent Profiles / Permission Scoping
+
+**Priority:** P2 | **Effort:** Medium | **Blocked by:** RD-03 (config file support)
+**Files:** `src/config/loader.ts`, `src/agents/spawner.ts`, `src/agents/model-map.ts`
+**Inspired by:** Warp Oz (Agent Profiles control permissions, model choice, and defaults per agent type)
+
+> **ELI5:** The electrician should only touch wiring, the plumber should only touch pipes. Right now, every worker has the master key to every room.
+
+**Problem:** All agents run with the same permissions and behavioral defaults. No way to restrict what a fixer agent can do vs. what an implementer can do (e.g., "fixer can only modify files listed in the step file"). No per-agent model overrides beyond the static model-map.
+
+**Fix:**
+- Add `profiles` section to `.hivemindrc.json`
+- Each agent type gets a profile specifying: allowed file patterns (glob), model override, timeout override, max output tokens, and behavioral flags (e.g., `canCreateFiles: false` for fixers)
+- Spawner reads profile before invoking agent and injects constraints into the prompt
+- Default profiles match current behavior (no breaking changes)
+
+---
+
 ## P3 — Low Priority (Future Versions)
 
 > **ELI5:** These are the "after you've lived in the house for a year" improvements. You need real usage data to know what's worth building.
@@ -491,12 +533,15 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 | ENH-10 | Reverify (re-run VERIFY with updated ACs) | ENH-09 |
 | FW-09 | Design-first workflow variant | RD-09 (CLI discoverability) |
 | FW-10 | Agent hooks for automated side-effects | RD-03 (config file support) |
+| FW-12 | Event-driven pipeline triggers | RD-03 (config file support) |
 
 ### v3.5
 
 | ID | Feature | Blocked By |
 |----|---------|------------|
 | ENH-11 | Multi-project orchestration | Single-project solid |
+| FW-13 | Visual verification / Computer Use for UI stories | FW-11 (Docker sandbox) |
+| FW-14 | Multi-repo orchestration | ENH-11 (multi-project) |
 
 ### v3.6
 
@@ -555,6 +600,62 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 - Each hook specifies a shell command to run
 - Hook failures are logged but non-blocking by default (configurable to blocking)
 - Example: `"post-build": ["npx eslint --fix src/", "npx audit-ci"]`
+
+---
+
+### FW-12: Event-Driven Pipeline Triggers
+
+**Priority:** P3 | **Effort:** Medium | **Blocked by:** RD-03
+**Files:** new `src/triggers/webhook-server.ts`, new `src/triggers/file-watcher.ts`, `src/index.ts`
+**Inspired by:** Warp Oz (cron schedules, Slack/Linear/GitHub Actions integrations, webhooks, API calls)
+
+> **ELI5:** Instead of walking to the factory and pressing the start button every time, you set up automatic triggers — the factory starts itself when a customer places an order, when the clock hits 6 AM, or when new materials arrive.
+
+**Problem:** The pipeline only starts via manual CLI invocation (`hive-mind start --prd`). No way to trigger automatically from CI, webhooks, or schedules. Teams wanting to run Hive Mind on every PR or on a nightly schedule must build their own wrapper scripts.
+
+**Fix:**
+- `hive-mind serve` mode: starts an HTTP server that listens for webhook triggers (GitHub webhooks, generic POST requests)
+- `--watch <glob>` flag: monitors file changes and auto-triggers pipeline when matched files change
+- GitHub Action wrapper: `hive-mind-action` that runs the pipeline in CI with configurable triggers
+- All triggers log to `manager-log.jsonl` with trigger source metadata
+
+---
+
+### FW-13: Visual Verification / Computer Use for UI Stories
+
+**Priority:** P3 | **Effort:** Large | **Blocked by:** FW-11 (Docker sandbox)
+**Files:** new `src/stages/visual-verify.ts`, `src/stages/execute-verify.ts`, `src/agents/prompts.ts`
+**Inspired by:** Warp Oz (Computer Use — agents take screenshots and verify visual output)
+
+> **ELI5:** Instead of just checking that the paint cans are the right color, you take a photo of the finished wall and compare it to the design mockup.
+
+**Problem:** Verification is bash-command-only. UI stories ("add dark mode toggle," "redesign the settings page") can't be visually verified — the verifier can only check if code compiles and tests pass, not if the button looks right or the layout matches the design.
+
+**Fix:**
+- For stories tagged `ui: true` in the step file, add an optional visual verification step after standard verification
+- Launch a headless browser (Playwright) inside the Docker sandbox to render the relevant page
+- Take a screenshot and pass it to a vision-capable model (Claude with vision)
+- The evaluator agent receives the screenshot and judges visual correctness against the story's AC descriptions
+- Visual verification failures are advisory (logged but non-blocking by default), configurable to blocking
+
+---
+
+### FW-14: Multi-Repo Orchestration
+
+**Priority:** P3 | **Effort:** Large | **Blocked by:** ENH-11 (multi-project orchestration)
+**Files:** `src/index.ts`, `src/orchestrator.ts`, `src/stages/execute-commit.ts`
+**Inspired by:** Warp Oz (agents can modify files across multiple repositories in a single run)
+
+> **ELI5:** When the restaurant changes its menu, someone needs to update the website, the delivery app, and the in-store display — all at once, not one at a time hoping they stay in sync.
+
+**Problem:** The pipeline operates on a single repository. Cross-repo changes (e.g., update API contract in server repo + client repo, or update internal docs alongside code) require separate runs with no coordination. Changes can drift out of sync.
+
+**Fix:**
+- `--repos repo1,repo2` flag accepts multiple repository paths
+- Synthesizer generates stories scoped to specific repos (each story gets a `targetRepo` field)
+- Implementer receives repo context for its story's target repo only
+- Commit stage creates coordinated PRs in each repo, linked by a shared run ID
+- Verification runs per-repo (each repo's test suite runs independently)
 
 ---
 
@@ -617,7 +718,9 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 | **Resumability** | Stage-level only | Stage + story-level | Stage + story + mid-story | Full |
 | **Task granularity** | Whole-story only | Whole-story only | Sub-task decomposition | Sub-task + filtered context |
 | **Spec quality** | Free-form ACs | Free-form ACs | EARS-style WHEN/THEN ACs | EARS + delta markers + self-update |
-| **Ceremony flexibility** | Full pipeline always | Full pipeline always | Quick mode + fast-forward | Quick + design-first + hooks |
+| **Ceremony flexibility** | Full pipeline always | Full pipeline always | Quick mode + fast-forward | Quick + design-first + hooks + triggers |
+| **Execution isolation** | None (host OS) | None (host OS) | Docker sandbox available | Docker sandbox + visual verify |
+| **Trigger flexibility** | CLI only | CLI only | CLI only | CLI + webhook + watch + CI |
 | **Recommendation** | "Interesting, but not yet" | "Yes, with caveats" | "Yes, for complex projects" | "Recommend over others for audit-heavy work" |
 
 ### When to Recommend Each Framework (Post-Improvements)
@@ -631,7 +734,10 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 | Long-running autonomous pipeline | **Hive Mind** (after P0+P1) | Checkpoints, escalation, cost controls |
 | Quick fix or single-file change | **Hive Mind** `--quick` (after P2) | Minimal ceremony, still audited |
 | Architecture-first team | **Hive Mind** `--design` (after P3) | Design doc entry point, no PRD reformatting |
+| Cloud-scale parallel agents | **Warp Oz** (today) | Docker isolation, event triggers, multi-model — Oz's sweet spot |
+| Event-driven / CI-triggered pipeline | **Hive Mind** `serve` (after P3) or **Warp Oz** | Webhook/cron triggers with audit trail |
+| UI-heavy feature with visual verification | **Hive Mind** `ui: true` (after P3) or **Warp Oz** | Screenshot-based verification for visual correctness |
 
 ---
 
-*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11)*
+*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11.*
