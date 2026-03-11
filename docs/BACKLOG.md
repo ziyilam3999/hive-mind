@@ -9,6 +9,7 @@
 - **RD-xx** — Production reliability items (from roadmap analysis)
 - **ENH-xx** — Pipeline enhancement items (from backlog)
 - **PRD-xx** — Long-term vision items (from original PRD)
+- **FW-xx** — Framework-inspired items (from comparison with Superpowers, GSD, OpenSpec, Spec-Kit, Kiro)
 
 ---
 
@@ -25,6 +26,9 @@
 | ENH-03 | Parallel story execution | P1 | v3.1 | ENH-02 | Not started |
 | RD-06 | Provider abstraction | P1 | v3.1 | — | Not started |
 | RD-07 | Mid-story checkpointing | P1 | v3.1 | — | Not started |
+| FW-01 | Sub-task decomposition for complex stories | P1 | v3.1 | ENH-02 | Not started |
+| FW-02 | Clean baseline verification before execution | P1 | v3.1 | — | Not started |
+| FW-03 | Project constitution / principles document | P1 | v3.1 | RD-03 | Not started |
 | ENH-01 | DC feedback loop port | P2 | v3.1 | E2E Bugs 5+6 | Not started |
 | ENH-04 | Tooling dependency detection | P2 | v3.1 | E2E pass | Not started |
 | ENH-05 | Output truncation monitoring | P2 | v3.1 | E2E pass | Not started |
@@ -32,6 +36,10 @@
 | RD-09 | CLI help & discoverability | P2 | v3.1 | — | Not started |
 | RD-10 | Plan stage parallelism | P2 | v3.1 | — | Not started |
 | RD-11 | Test coverage for critical paths | P2 | v3.1 | — | Not started |
+| FW-04 | EARS-style acceptance criteria formalization | P2 | v3.1 | — | Not started |
+| FW-05 | Delta markers for brownfield iteration | P2 | v3.1 | — | Not started |
+| FW-06 | Quick mode / fast-forward for small changes | P2 | v3.1 | RD-09 | Not started |
+| FW-07 | Spec self-update during implementation | P2 | v3.2 | RD-04 | Not started |
 | ENH-06 | Cross-story pattern mining | P3 | v3.2 | Retrospective data | Not started |
 | ENH-07 | Synthesizer split | P3 | v3.2 | Quality measurements | Not started |
 | ENH-08 | `/hive` Claude Code skill | P3 | v3.3 | v3.0 CLI stable | Not started |
@@ -39,6 +47,9 @@
 | ENH-10 | Reverify with updated ACs | P3 | v3.4 | ENH-09 | Not started |
 | ENH-11 | Multi-project orchestration | P3 | v3.5 | Single-project solid | Not started |
 | ENH-12 | Adaptive role weighting | P3 | v3.6 | Multi-chain data | Not started |
+| FW-08 | Context hygiene / filtered memory per story | P3 | v3.3 | ENH-03 | Not started |
+| FW-09 | Design-first workflow variant | P3 | v3.4 | RD-09 | Not started |
+| FW-10 | Agent hooks for automated side-effects | P3 | v3.4 | RD-03 | Not started |
 | PRD-01 | Stress tier system (Low–Critical) | P3 | v1.1 | MVP baseline | Not started |
 | PRD-02 | System Flood (full reset) | P3 | v1.1 | PRD-01 | Not started |
 | PRD-03 | LLM-as-Judge verify phase | P3 | v1.1 | MVP verify data | Not started |
@@ -240,6 +251,59 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 
 ---
 
+### FW-01: Sub-Task Decomposition for Complex Stories
+
+**Priority:** P1 | **Effort:** Large | **Blocked by:** ENH-02
+**Files:** `src/types/execution-plan.ts`, `src/stages/plan-stage.ts`, `src/stages/execute-build.ts`, `src/stages/execute-verify.ts`, `src/state/execution-plan.ts`
+**Inspired by:** Kiro (tasks), Spec-Kit (steps), GSD (sub-tasks), Superpowers (TDD cycles)
+
+> **ELI5:** Instead of handing a chef the entire banquet menu and saying "cook everything," you give them one dish at a time with its own recipe card and taste test.
+
+**Problem:** The `Story` type has no `subTasks` field. The implementer agent receives the entire story as one atomic unit — all ACs, all source files, all at once. For complex stories touching 5+ files, this leads to incomplete implementations and wasted verify cycles.
+
+**Fix:**
+- Add optional `SubTask[]` to the `Story` type in `src/types/execution-plan.ts`
+- Synthesizer generates sub-tasks for stories marked `complexity: "high"` — each sub-task has a subset of ACs and target files
+- Execute sub-tasks sequentially: BUILD sub-task → VERIFY sub-task ACs → next sub-task
+- Sub-task failures only retry the failed sub-task, not the entire story
+
+---
+
+### FW-02: Clean Baseline Verification Before Execution
+
+**Priority:** P1 | **Effort:** Small–Medium
+**Files:** `src/orchestrator.ts`, new `src/stages/baseline-check.ts`
+**Inspired by:** Superpowers (mandatory green-before-start)
+
+> **ELI5:** Before adding a new floor to the building, check that the foundation isn't already cracked. If existing tests fail before you even start, you'll waste every retry attempt chasing ghosts.
+
+**Problem:** The EXECUTE stage assumes the codebase compiles and existing tests pass. If they don't, the implementer's changes get blamed for pre-existing failures, burning through all retry attempts.
+
+**Fix:**
+- New `baseline-check` stage runs before first story: `npm run build` + `npm test` (or configured equivalents)
+- If baseline fails: halt with clear message ("Fix existing failures before running Hive Mind")
+- Store baseline result in execution plan for audit trail
+- Skip on `--skip-baseline` flag for known-broken codebases
+
+---
+
+### FW-03: Project Constitution / Principles Document
+
+**Priority:** P1 | **Effort:** Small–Medium | **Blocked by:** RD-03 (config file support)
+**Files:** `src/stages/spec-stage.ts`, `src/stages/plan-stage.ts`, `src/agents/prompts.ts`
+**Inspired by:** Spec-Kit (constitution.md)
+
+> **ELI5:** Instead of telling every new contractor "we only use metric, never use nails in drywall, and the client hates blue" — you post the house rules on the wall once, and every contractor reads them on day one.
+
+**Problem:** Project-wide constraints (e.g., "always use the ORM, never raw SQL", "all APIs must be RESTful", "use Tailwind not inline styles") must be restated in every PRD. If omitted, agents make inconsistent choices.
+
+**Fix:**
+- Read `.hive-mind/constitution.md` if it exists (via config loader from RD-03)
+- Inject constitution into researcher, spec-drafter, synthesizer, and critic prompts as a `## Project Principles` section
+- Constitution is advisory (agents can note conflicts) not blocking
+
+---
+
 ## P2 — Medium Priority (Polish & Competitive Edge)
 
 > **ELI5:** These are the heated seats, backup camera, and Bluetooth. The car is fully functional without them, but they make the daily experience noticeably better.
@@ -332,6 +396,75 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 
 ---
 
+### FW-04: EARS-Style Acceptance Criteria Formalization
+
+**Priority:** P2 | **Effort:** Small
+**Files:** `src/stages/plan-stage.ts`, `src/agents/prompts.ts`
+**Inspired by:** Kiro (EARS-style requirements → acceptance criteria)
+
+> **ELI5:** Instead of "make sure login works," you write "WHEN the user submits valid credentials, THEN they see the dashboard within 2 seconds." Precise enough that a machine can verify it.
+
+**Problem:** ACs are free-form bash commands with no consistent structure. Some are testable (`npm test -- --grep "login"`), others are vague ("verify the component renders correctly"). The verifier agent must guess intent.
+
+**Fix:**
+- Update synthesizer prompt to require WHEN/THEN format for all ACs
+- Each AC must include: trigger condition (WHEN), expected outcome (THEN), and verification command
+- Validate AC format mechanically before EXECUTE stage — reject stories with malformed ACs
+
+---
+
+### FW-05: Delta Markers for Brownfield Iteration
+
+**Priority:** P2 | **Effort:** Small
+**Files:** `src/stages/plan-stage.ts`, `src/agents/prompts.ts`
+**Inspired by:** OpenSpec (ADDED/MODIFIED/REMOVED markers per step)
+
+> **ELI5:** A renovation blueprint marks walls as "keep," "knock down," or "build new." Right now, the blueprint just lists every wall without saying what to do with it.
+
+**Problem:** Step source files in the execution plan don't distinguish between new files to create, existing files to modify, and files to remove. The implementer must infer intent from context, leading to errors like creating a file that should have been modified.
+
+**Fix:**
+- Add `changeType: "ADDED" | "MODIFIED" | "REMOVED"` to source file entries in the step schema
+- Update synthesizer prompt to classify each file
+- Implementer prompt uses change type to select strategy (create vs. edit vs. delete)
+
+---
+
+### FW-06: Quick Mode / Fast-Forward for Small Changes
+
+**Priority:** P2 | **Effort:** Medium | **Blocked by:** RD-09 (CLI discoverability)
+**Files:** `src/index.ts`, `src/orchestrator.ts`
+**Inspired by:** OpenSpec (quick-start), GSD (single-task focus)
+
+> **ELI5:** You don't need a full building inspection to hang a picture frame. Quick mode skips the architect and just hands the task to the builder.
+
+**Problem:** The full 4-stage pipeline (SPEC → PLAN → EXECUTE → REPORT) with 4 human approval checkpoints runs even for trivial changes like typo fixes, dependency bumps, or single-file refactors.
+
+**Fix:**
+- `--quick` flag: skips SPEC and PLAN stages entirely. User provides a one-line description, implementer builds it directly, VERIFY runs ACs, REPORT summarizes.
+- `--fast-forward` flag: runs full pipeline but auto-approves all checkpoints (no human pauses). Useful for CI/CD integration.
+- Both flags logged in execution plan for audit trail.
+
+---
+
+### FW-07: Spec Self-Update During Implementation
+
+**Priority:** P2 | **Effort:** Medium | **Blocked by:** RD-04 (structured output parsing)
+**Files:** `src/agents/prompts.ts`, new `src/stages/reconcile-stage.ts`, `src/orchestrator.ts`
+**Inspired by:** Addresses a known OpenSpec weakness (static specs drift from reality)
+
+> **ELI5:** If the builder discovers the wall is load-bearing and can't be removed, they update the blueprint instead of pretending they followed it.
+
+**Problem:** Step files are static. When the implementer deviates from the plan (e.g., discovers a file needs different changes, or an additional file is required), the deviation isn't tracked. The execution plan becomes fiction.
+
+**Fix:**
+- Implementer's impl-report already lists FILES CREATED / FILES MODIFIED — parse these as actual changes
+- New `reconcile` sub-stage after EXECUTE compares planned vs. actual files
+- If deviations found: update execution plan with actual file list + log deviation reason
+- No blocking — deviations are recorded, not rejected
+
+---
+
 ## P3 — Low Priority (Future Versions)
 
 > **ELI5:** These are the "after you've lived in the house for a year" improvements. You need real usage data to know what's worth building.
@@ -348,6 +481,7 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 | ID | Feature | Blocked By |
 |----|---------|------------|
 | ENH-08 | `/hive` Claude Code skill | v3.0 CLI stable |
+| FW-08 | Context hygiene / filtered memory per story | ENH-03 (parallel execution) |
 
 ### v3.4
 
@@ -355,6 +489,8 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 |----|---------|------------|
 | ENH-09 | Session recovery / --resume (full) | Crash data; partially covered by RD-02 + RD-07 |
 | ENH-10 | Reverify (re-run VERIFY with updated ACs) | ENH-09 |
+| FW-09 | Design-first workflow variant | RD-09 (CLI discoverability) |
+| FW-10 | Agent hooks for automated side-effects | RD-03 (config file support) |
 
 ### v3.5
 
@@ -367,6 +503,58 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 | ID | Feature | Blocked By |
 |----|---------|------------|
 | ENH-12 | Adaptive role weighting | Multi-chain data |
+
+### FW-08: Context Hygiene / Filtered Memory Per Story
+
+**Priority:** P3 | **Effort:** Small–Medium | **Blocked by:** ENH-03
+**Files:** `src/memory/memory-manager.ts`, `src/stages/execute-build.ts`
+**Inspired by:** GSD (fresh context per task)
+
+> **ELI5:** You don't hand a plumber the electrician's notes. Each worker gets only the lessons relevant to their current job.
+
+**Problem:** `memory.md` grows with learnings from all stories. By story 5, the implementer agent receives patterns from stories 1-4 that may be irrelevant (e.g., "React component patterns" when the current story is backend-only). This wastes context window and can mislead the agent.
+
+**Fix:**
+- Before injecting memory into the implementer prompt, filter entries by relevance to the current story's `specSections` and `sourceFiles`
+- Simple keyword/file-path matching first; upgrade to semantic similarity later if needed
+- Unfiltered memory still available to the retrospective agent (needs full picture)
+
+---
+
+### FW-09: Design-First Workflow Variant
+
+**Priority:** P3 | **Effort:** Medium | **Blocked by:** RD-09
+**Files:** `src/index.ts`, `src/stages/spec-stage.ts`, `src/agents/prompts.ts`
+**Inspired by:** Kiro (design doc → specs → tasks)
+
+> **ELI5:** Some teams start with "here's the architecture diagram" instead of "here's the product requirements." This mode lets them enter through the architect's door instead of the product manager's door.
+
+**Problem:** Hive Mind only accepts a PRD as input. Teams with an architecture-first or design-first workflow must reformat their design documents into PRD format, which adds friction.
+
+**Fix:**
+- `--design <path>` flag accepts an architecture/design document instead of a PRD
+- Researcher and spec-drafter receive alternate prompts that derive requirements from the design
+- Synthesizer generates stories that implement the design rather than satisfying product requirements
+- All downstream stages (EXECUTE, REPORT) remain unchanged
+
+---
+
+### FW-10: Agent Hooks for Automated Side-Effects
+
+**Priority:** P3 | **Effort:** Medium | **Blocked by:** RD-03
+**Files:** new `src/hooks/runner.ts`, `src/stages/execute-build.ts`, `src/config/loader.ts`
+**Inspired by:** Kiro (event-driven hooks for automated actions)
+
+> **ELI5:** After the builder finishes a wall, a checklist automatically triggers: inspector checks the studs, electrician verifies no wires were cut, painter preps the surface. No one has to remember to call each person — it happens automatically.
+
+**Problem:** No event-driven automations after implement or refactor stages. Users who want automated security scans, import checks, or lint passes after each implementation must run them manually.
+
+**Fix:**
+- Hooks config in `.hivemindrc.json` under a `hooks` key
+- Supported hook points: `post-build`, `post-verify`, `post-refactor`, `post-commit`
+- Each hook specifies a shell command to run
+- Hook failures are logged but non-blocking by default (configurable to blocking)
+- Example: `"post-build": ["npx eslint --fix src/", "npx audit-ci"]`
 
 ---
 
@@ -427,6 +615,9 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 | **Parallelism** | Sequential only | Sequential only | Wave-based stories | Wave-based + plan stage |
 | **Provider flexibility** | Claude CLI only | Claude CLI only | Multi-provider | Multi-provider |
 | **Resumability** | Stage-level only | Stage + story-level | Stage + story + mid-story | Full |
+| **Task granularity** | Whole-story only | Whole-story only | Sub-task decomposition | Sub-task + filtered context |
+| **Spec quality** | Free-form ACs | Free-form ACs | EARS-style WHEN/THEN ACs | EARS + delta markers + self-update |
+| **Ceremony flexibility** | Full pipeline always | Full pipeline always | Quick mode + fast-forward | Quick + design-first + hooks |
 | **Recommendation** | "Interesting, but not yet" | "Yes, with caveats" | "Yes, for complex projects" | "Recommend over others for audit-heavy work" |
 
 ### When to Recommend Each Framework (Post-Improvements)
@@ -438,7 +629,9 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 | Complex multi-story project with audit needs | **Hive Mind** | 21 specialists, memory graduation, full audit trail |
 | Team wanting to enforce TDD | Superpowers | TDD baked into workflow, not optional |
 | Long-running autonomous pipeline | **Hive Mind** (after P0+P1) | Checkpoints, escalation, cost controls |
+| Quick fix or single-file change | **Hive Mind** `--quick` (after P2) | Minimal ceremony, still audited |
+| Architecture-first team | **Hive Mind** `--design` (after P3) | Design doc entry point, no PRD reformatting |
 
 ---
 
-*Consolidated from: Enhancement Backlog + Production Reliability Roadmap (2026-03-11)*
+*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11)*
