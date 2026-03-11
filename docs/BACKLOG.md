@@ -42,6 +42,7 @@
 | FW-07 | Spec self-update during implementation | P2 | v3.2 | RD-04 | Not started |
 | FW-11 | Docker-sandboxed agent execution | P2 | v3.2 | PRD-07 | Not started |
 | FW-15 | Agent profiles / permission scoping | P2 | v3.2 | RD-03 | Not started |
+| FW-16 | AI-first reports / code anchors | P2 | v3.2 | RD-04 | Not started |
 | ENH-06 | Cross-story pattern mining | P3 | v3.2 | Retrospective data | Not started |
 | ENH-07 | Synthesizer split | P3 | v3.2 | Quality measurements | Not started |
 | ENH-08 | `/hive` Claude Code skill | P3 | v3.3 | v3.0 CLI stable | Not started |
@@ -507,6 +508,67 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 
 ---
 
+### FW-16: AI-First Reports / Code Anchors
+
+**Priority:** P2 | **Effort:** Medium | **Blocked by:** RD-04 (structured output parsing)
+**Files:** `src/types/reports.ts`, `src/reports/templates.ts`, `src/reports/parser.ts`, `src/agents/prompts.ts`
+**Inspired by:** Warp Oz (Skills with embedded code context), general AI-agent navigation patterns
+
+> **ELI5:** After building a house, the contractor forgets where every wire and pipe goes. Right now, the as-built drawings just say "kitchen" — but if they said "kitchen, north wall, stud #3, 42 inches from floor," any future electrician could find the wire in seconds instead of scanning the whole house.
+
+**Problem:** After development completes, an agent has no memory of what was built. It must either re-read the entire source code (slow, token-expensive) or read the reports. Current reports contain bare file paths (e.g., `src/foo.ts`) but no precise code pointers. An agent reading an ImplReport cannot jump to the `createWidget` function without grepping the entire file. This is wasteful when the report *already knows* exactly where that symbol lives.
+
+**Design — Dual-Anchor `CodeAnchor` type:**
+```typescript
+interface CodeAnchor {
+  file: string;                   // e.g., "src/utils/parser.ts"
+  symbol: string;                 // e.g., "parseConfig" — primary stable anchor
+  lineRange?: [number, number];   // e.g., [42, 58] — fast but fragile secondary anchor
+  generatedAt?: string;           // ISO timestamp — enables staleness detection
+}
+```
+
+The symbol is the **primary anchor** (survives insertions/deletions). The lineRange is the **fast path** (direct jump, no grep needed). The `generatedAt` timestamp lets consumers detect staleness: if the file's mtime is newer than `generatedAt`, fall back to symbol search.
+
+**Classification of all 12 report types:**
+
+| Category | Reports | Anchor Type | Rationale |
+|----------|---------|-------------|-----------|
+| **AI-First (High)** | ImplReport, FixReport, DiagnosisReport | `file:lineRange:symbol` + `generatedAt` | Short-lived, consumed in same pipeline run — line numbers always fresh |
+| **AI-First (Medium)** | ResearchReport, RefactorReport, RoleReport | `file:symbol` only (no lineRange) | Long-lived, referenced across runs — line numbers would mislead |
+| **Human-First** | TestReport, EvalReport, CritiqueReport, LearningReport, ConsolidatedReport, RetrospectiveReport | No change | Command-based, summary-level, or ELI5 — code pointers add no value |
+
+**High-priority report changes:**
+
+1. **ImplReport** — `filesCreated.exports: string[]` → `CodeAnchor[]`; `outputContractVerification.location: string` → `CodeAnchor`. The commit stage (`execute-commit.ts`) parses this via `parseImplReport` — parser must handle both old and new formats.
+
+2. **FixReport** — `fixesApplied` gains `lineRange?` and `symbols?` fields; `acFixMapping` gains `targets?: CodeAnchor[]`. The commit stage uses `parseFixReport` to extract file paths — backward-compatible enhancement.
+
+3. **DiagnosisReport** — `rootCause` gains `codeLocations: CodeAnchor[]` for structured evidence; `recommendedFix.files: string[]` → `recommendedFix.targets: CodeAnchor[]`. The fixer agent receives this as primary input — structured locations eliminate the need to re-search for root cause code.
+
+**Medium-priority report changes:**
+
+4. **ResearchReport** — `codebaseAnalysis.relevantFiles: string[]` → `{ file, symbols?, role }[]`; `existingPatterns` gains `exemplar?: { file, symbol }`.
+
+5. **RefactorReport** — `changes` gains `symbols?: string[]` for affected symbols.
+
+6. **RoleReport** — `findings: string[]` → `{ finding, codeRefs?: CodeAnchor[] }[]` (optional — not all roles reference code).
+
+**Staleness mitigation strategy:**
+- Short-lived reports (High): `lineRange` is always fresh — no other agent modifies files between generation and consumption within the same pipeline run
+- Long-lived reports (Medium): `lineRange` omitted entirely — prevents false confidence from stale line numbers
+- Resolution algorithm for consumers: (1) If `generatedAt` is fresh → trust `lineRange`; (2) Else → grep for `symbol` in `file`; (3) If symbol not found → flag as stale, fall back to reading full file
+- Optional `validateAnchor()` utility function for programmatic staleness checking
+
+**Implementation phases:**
+1. Add `CodeAnchor` type and update 3 High-priority interfaces (all new fields optional for backward compat)
+2. Update template functions to render anchor columns in markdown tables
+3. Update `parseImplReport` and `parseFixReport` to extract anchors (backward-compatible with old format)
+4. Add CODE-ANCHORS rules to agent prompts (implementer, fixer, diagnostician, researcher)
+5. Update 3 Medium-priority interfaces and templates
+
+---
+
 ## P3 — Low Priority (Future Versions)
 
 > **ELI5:** These are the "after you've lived in the house for a year" improvements. You need real usage data to know what's worth building.
@@ -721,6 +783,7 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 | **Ceremony flexibility** | Full pipeline always | Full pipeline always | Quick mode + fast-forward | Quick + design-first + hooks + triggers |
 | **Execution isolation** | None (host OS) | None (host OS) | Docker sandbox available | Docker sandbox + visual verify |
 | **Trigger flexibility** | CLI only | CLI only | CLI only | CLI + webhook + watch + CI |
+| **Report code anchoring** | Bare file paths only | Bare file paths only | Dual-anchor (symbol + line) for 3 high-priority reports | Full anchoring across 6 AI-first reports |
 | **Recommendation** | "Interesting, but not yet" | "Yes, with caveats" | "Yes, for complex projects" | "Recommend over others for audit-heavy work" |
 
 ### When to Recommend Each Framework (Post-Improvements)
@@ -740,4 +803,4 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 
 ---
 
-*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11.*
+*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11. AI-first reports item (FW-16) added 2026-03-11.*
