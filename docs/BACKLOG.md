@@ -3,6 +3,8 @@
 > **ELI5: What is this file?**
 > This is the single source of truth for everything Hive Mind plans to build. It merges two previous documents — the Enhancement Backlog (feature ideas) and the Production Reliability Roadmap (infrastructure fixes) — into one prioritized list. Items are ordered by urgency: P0 items must land before Hive Mind is production-usable, P1 items build production confidence, P2 items add polish, and everything beyond is future vision.
 
+**MVP Plan:** 15 items across 5 phases selected for production readiness. See `.hive-mind/plans/mvp-plan.md` for full design and dependency graph. Items marked "MVP Phase N" in the table below are included.
+
 **Principle:** Never ship a feature without evidence it works. Each version produces learnings. Those learnings justify the next version's features.
 
 **ID Scheme:**
@@ -17,17 +19,17 @@
 
 | ID | Name | Priority | Target | Blocked By | Status |
 |----|------|----------|--------|------------|--------|
-| RD-01 | Exponential backoff + retry | P0 | v3.1 | — | Not started |
-| RD-02 | Graceful error recovery | P0 | v3.1 | — | Not started |
-| RD-03 | Config file support | P0 | v3.1 | — | Not started |
-| RD-04 | Structured output parsing | P0 | v3.1 | — | Not started |
-| RD-05 | Cost/token tracking | P1 | v3.1 | — | Not started |
-| ENH-02 | Dependency-aware story scheduling | P1 | v3.1 | E2E pass | Not started |
-| ENH-03 | Parallel story execution | P1 | v3.1 | ENH-02 | Not started |
+| RD-01 | Exponential backoff + retry | P0 | v3.1 | — | MVP Phase 2 |
+| RD-02 | Graceful error recovery | P0 | v3.1 | — | MVP Phase 2 |
+| RD-03 | Config file support | P0 | v3.1 | — | MVP Phase 1 |
+| RD-04 | Structured output parsing | P0 | v3.1 | — | MVP Phase 2 |
+| RD-05 | Cost/token tracking | P1 | v3.1 | — | MVP Phase 3 |
+| ENH-02 | Dependency-aware story scheduling | P1 | v3.1 | E2E pass | MVP Phase 3 |
+| ENH-03 | Parallel story execution | P1 | v3.1 | ENH-02 | MVP Phase 5 |
 | RD-06 | Provider abstraction | P1 | v3.1 | — | Not started |
 | RD-07 | Mid-story checkpointing | P1 | v3.1 | — | Not started |
-| FW-01 | Sub-task decomposition for complex stories | P1 | v3.1 | ENH-02 | Not started |
-| FW-02 | Clean baseline verification before execution | P1 | v3.1 | — | Not started |
+| FW-01 | Sub-task decomposition for complex stories | P1 | v3.1 | ENH-02 | MVP Phase 5 |
+| FW-02 | Clean baseline verification before execution | P1 | v3.1 | — | MVP Phase 3 |
 | FW-03 | Project constitution / principles document | P1 | v3.1 | RD-03 | Not started |
 | ENH-01 | DC feedback loop port | P2 | v3.1 | E2E Bugs 5+6 | Not started |
 | ENH-04 | Tooling dependency detection | P2 | v3.1 | E2E pass | Not started |
@@ -39,15 +41,15 @@
 | FW-04 | EARS-style acceptance criteria formalization | P2 | v3.1 | — | Not started |
 | FW-05 | Delta markers for brownfield iteration | P2 | v3.1 | — | Not started |
 | FW-06 | Quick mode / fast-forward for small changes | P2 | v3.1 | RD-09 | Not started |
-| ENH-13 | Checkpoint sound notification | P2 | v3.1 | — | Not started |
+| ENH-13 | Checkpoint sound notification | P2 | v3.1 | — | MVP Phase 3 |
 | ENH-14 | Bug-fix mode (`--bug`) | P2 | v3.2 | FW-06 | Not started |
-| ENH-15 | AI-first manifest file (live) | P1 | v3.1 | — | Not started |
+| ENH-15 | AI-first manifest file (live) | P1 | v3.1 | — | MVP Phase 3 |
 | FW-07 | Spec self-update during implementation | P2 | v3.2 | RD-04 | Not started |
 | FW-11 | Docker-sandboxed agent execution | P2 | v3.2 | PRD-07 | Not started |
 | FW-15 | Agent profiles / permission scoping | P2 | v3.2 | RD-03 | Not started |
 | FW-16 | AI-first reports / code anchors | P2 | v3.2 | RD-04 | Not started |
 | ENH-06 | Cross-story pattern mining | P3 | v3.2 | Retrospective data | Not started |
-| ENH-07 | Synthesizer split | P3 | v3.2 | Quality measurements | Not started |
+| ENH-07 | Synthesizer split | P1 | v3.1 | — | MVP Phase 4 |
 | ENH-08 | `/hive` Claude Code skill | P3 | v3.3 | v3.0 CLI stable | Not started |
 | ENH-09 | Session recovery / --resume | P3 | v3.4 | Crash data | Not started |
 | ENH-10 | Reverify with updated ACs | P3 | v3.4 | ENH-09 | Not started |
@@ -63,8 +65,8 @@
 | PRD-02 | System Flood (full reset) | P3 | v1.1 | PRD-01 | Not started |
 | PRD-03 | LLM-as-Judge verify phase | P3 | v1.1 | MVP verify data | Not started |
 | PRD-04 | Anti-phantom SHIP gate | P3 | v1.1 | PRD-03 | Not started |
-| PRD-05 | code-reviewer agent | P3 | v1.1 | Workflow validated | Not started |
-| PRD-06 | log-summarizer agent | P3 | v1.1 | Workflow validated | Not started |
+| PRD-05 | code-reviewer agent | P1 | v3.1 | — | MVP Phase 4 |
+| PRD-06 | log-summarizer agent | P1 | v3.1 | — | MVP Phase 4 |
 | PRD-07 | Docker sandbox for tests | P3 | v1.2 | Isolation need proven | Not started |
 | PRD-08 | Auto-spec gen (AST extraction) | P3 | v1.2 | Hand-written specs baseline | Not started |
 | PRD-09 | Scenario suite extraction (agent) | P3 | v1.2 | Hand-written scenarios baseline | Not started |
@@ -866,4 +868,4 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 
 ---
 
-*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11. AI-first reports item (FW-16) added 2026-03-11. Checkpoint sound notification (ENH-13) added 2026-03-11. AI-first manifest (ENH-15) added 2026-03-11.*
+*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11. AI-first reports item (FW-16) added 2026-03-11. Checkpoint sound notification (ENH-13) added 2026-03-11. AI-first manifest (ENH-15) added 2026-03-11. MVP plan (15 items, 5 phases) created 2026-03-11 — ENH-07, PRD-05, PRD-06 promoted from P3 to P1.*
