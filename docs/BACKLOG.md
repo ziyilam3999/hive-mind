@@ -39,6 +39,7 @@
 | FW-04 | EARS-style acceptance criteria formalization | P2 | v3.1 | — | Not started |
 | FW-05 | Delta markers for brownfield iteration | P2 | v3.1 | — | Not started |
 | FW-06 | Quick mode / fast-forward for small changes | P2 | v3.1 | RD-09 | Not started |
+| ENH-13 | Checkpoint sound notification | P2 | v3.1 | — | Not started |
 | FW-07 | Spec self-update during implementation | P2 | v3.2 | RD-04 | Not started |
 | FW-11 | Docker-sandboxed agent execution | P2 | v3.2 | PRD-07 | Not started |
 | FW-15 | Agent profiles / permission scoping | P2 | v3.2 | RD-03 | Not started |
@@ -453,6 +454,25 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 
 ---
 
+### ENH-13: Checkpoint Sound Notification
+
+**Priority:** P2 | **Effort:** Small | **Files:** `src/orchestrator.ts`, new `src/utils/notify.ts`
+
+> **ELI5:** The oven timer goes off when your food is done. Right now, Hive Mind finishes cooking and just sits there quietly — you have to keep checking.
+
+**Problem:** When the pipeline reaches a checkpoint, it writes the checkpoint file and exits with a console message. If the human is away from the terminal (likely during 10+ minute stages), they don't know it's time to review.
+
+**Fix:**
+- New `notifyCheckpoint()` utility that writes the ASCII BEL character (`\x07`) to stdout
+- Call at all 4 checkpoint exit points in `src/orchestrator.ts` (lines 65, 119, 136, 150)
+- Works cross-platform including SSH sessions (bell is forwarded by terminal)
+- Optional `--silent` flag to suppress for CI/scripted environments
+- Future enhancement: `node-notifier` integration behind a `--notify` flag for OS-native notifications
+
+**Review:** `.hive-mind/reviews/sound-notification-feature-review.md`
+
+---
+
 ### FW-07: Spec Self-Update During Implementation
 
 **Priority:** P2 | **Effort:** Medium | **Blocked by:** RD-04 (structured output parsing)
@@ -803,4 +823,4 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 
 ---
 
-*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11. AI-first reports item (FW-16) added 2026-03-11.*
+*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11. AI-first reports item (FW-16) added 2026-03-11. Checkpoint sound notification (ENH-13) added 2026-03-11.*
