@@ -68,7 +68,7 @@
 - [~] Tier 3 (Dogfood trial — recommended) — skipped (Phase 4 Tier 3 will cover)
 
 **Learnings captured:** [x] → `learnings/phase-3-learnings.md`
-**Committed:** [x] → PENDING
+**Committed:** [x] → `23aee9a` (2026-03-12)
 
 ---
 
