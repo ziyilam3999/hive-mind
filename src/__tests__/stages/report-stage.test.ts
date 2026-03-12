@@ -70,7 +70,7 @@ describe("report-stage", () => {
     }
   });
 
-  it("reporter and retrospective are spawned in parallel", async () => {
+  it("reporter and retrospective are spawned in parallel (batch 2)", async () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -78,10 +78,11 @@ describe("report-stage", () => {
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentsParallel).mock.calls;
-      expect(calls.length).toBeGreaterThanOrEqual(1);
-      const configs = calls[0][0];
-      const reporterConfig = configs.find((c: { type: string }) => c.type === "reporter");
-      const retroConfig = configs.find((c: { type: string }) => c.type === "retrospective");
+      // Batch 1 = code-reviewer + log-summarizer, Batch 2 = reporter + retrospective
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+      const batch2Configs = calls[1][0];
+      const reporterConfig = batch2Configs.find((c: { type: string }) => c.type === "reporter");
+      const retroConfig = batch2Configs.find((c: { type: string }) => c.type === "retrospective");
       expect(reporterConfig).toBeDefined();
       expect(retroConfig).toBeDefined();
     } finally {
@@ -97,8 +98,9 @@ describe("report-stage", () => {
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentsParallel).mock.calls;
-      const configs = calls[0][0];
-      const retroConfig = configs.find((c: { type: string }) => c.type === "retrospective");
+      // Batch 2 is at index 1
+      const batch2Configs = calls[1][0];
+      const retroConfig = batch2Configs.find((c: { type: string }) => c.type === "retrospective");
       expect(retroConfig!.inputFiles.some((f: string) => f.includes("learning.md"))).toBe(true);
     } finally {
       cleanup();

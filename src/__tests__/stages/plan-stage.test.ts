@@ -1,11 +1,38 @@
 import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../../agents/spawner.js", () => {
+  const mockPlanJson = JSON.stringify({
+    schemaVersion: "2.0.0",
+    prdPath: "PRD.md",
+    specPath: "spec/SPEC-v1.0.md",
+    stories: [
+      {
+        id: "US-01",
+        title: "Test Story",
+        specSections: ["§1.1"],
+        dependencies: [],
+        sourceFiles: ["src/test.ts"],
+        complexity: "low",
+        rolesUsed: ["analyst"],
+        stepFile: "plans/steps/US-01.md",
+        status: "not-started",
+        attempts: 0,
+        maxAttempts: 3,
+        committed: false,
+        commitHash: null,
+      },
+    ],
+  });
+
   const impl = async (config: { outputFile: string; type: string }) => {
     const { writeFileSync, mkdirSync } = await import("node:fs");
     const { dirname } = await import("node:path");
     mkdirSync(dirname(config.outputFile), { recursive: true });
-    writeFileSync(config.outputFile, `# Mock output for ${config.type}`);
+    if (config.type === "planner") {
+      writeFileSync(config.outputFile, mockPlanJson);
+    } else {
+      writeFileSync(config.outputFile, `# Mock output for ${config.type}`);
+    }
     return { success: true, outputFile: config.outputFile };
   };
   return {

@@ -41,12 +41,12 @@ The framework comparison ([framework-comparison.md](../../docs/framework-compari
 | 12 | ENH-07 | Synthesizer split | 4: Pipeline Quality | Medium | Below |
 | 13 | PRD-05 | Code-reviewer agent | 4: Pipeline Quality | Small-Medium | Below |
 | 14 | PRD-06 | Log-summarizer agent | 4: Pipeline Quality | Small | Below |
-| 17 | ENH-16 | Role-report feedback loop | 4: Pipeline Quality | Medium | [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) |
-| 15 | ENH-03 | Parallel story execution | 5: Execution Power | Large | Below |
-| 16 | FW-01 | Sub-task decomposition | 5: Execution Power | Large | Below |
-| 18 | ENH-11 | Multi-repo module config + CWD threading | 6: Multi-Repo | Medium | Below |
-| 19 | FW-14 | Integration verification stage | 6: Multi-Repo | Medium | Below |
-| 20 | — | Module-aware story ordering + contracts | 6: Multi-Repo | Small-Medium | Below |
+| 15 | ENH-16 | Role-report feedback loop | 4: Pipeline Quality | Medium | [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) |
+| 16 | ENH-03 | Parallel story execution | 5: Execution Power | Large | Below |
+| 17 | FW-01 | Sub-task decomposition | 5: Execution Power | Large | Below |
+| 18 | ENH-11 | Multi-repo module config + CWD threading | 6: Post-MVP Multi-Repo | Medium | Below |
+| 19 | FW-14 | Integration verification stage | 6: Post-MVP Multi-Repo | Medium | Below |
+| 20 | — | Module-aware story ordering + contracts | 6: Post-MVP Multi-Repo | Small-Medium | Below |
 
 ### Dependency Graph
 
@@ -517,7 +517,7 @@ Steps 2 and 3 can run per-story in parallel (independent inputs).
 - `src/agents/model-map.ts` — assign Haiku
 - `src/stages/report-stage.ts` — spawn log-summarizer before reporter
 
-### 17. ENH-16: Role-Report Feedback Loop
+### 15. ENH-16: Role-Report Feedback Loop
 
 See [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) for full design. Summary:
 
@@ -567,7 +567,7 @@ See [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) for f
 
 ## Phase 5: Execution Power
 
-### 15. ENH-03: Parallel Story Execution
+### 16. ENH-03: Parallel Story Execution
 
 **Problem:** Stories execute one at a time. Independent stories with no mutual dependencies could run in parallel.
 
@@ -600,7 +600,7 @@ Wave 2: [US-02, US-04]                 ← run after wave 1 completes
 - `src/memory/memory-manager.ts` — add write mutex for `appendToMemory()`
 - Config: `maxConcurrency` option via RD-03
 
-### 16. FW-01: Sub-Task Decomposition
+### 17. FW-01: Sub-Task Decomposition
 
 **Problem:** The `Story` type has no sub-task concept. The implementer receives an entire story as one atomic unit. For complex stories touching 5+ files, this leads to incomplete implementations and wasted verify cycles.
 
@@ -673,7 +673,9 @@ Else:
 
 ---
 
-## Phase 6: Multi-Repo
+## Phase 6: Post-MVP Multi-Repo Enhancement
+
+> **Note:** The pre-Phase-6 state (after Phase 5) is production-usable. Phase 6 adds valuable multi-repo support but is not required for MVP. Consider shipping after Phase 5 and implementing Phase 6 as a follow-up.
 
 > Multi-repo support enables Hive Mind to orchestrate changes across multiple repositories in a single pipeline run. The full design is in `.hive-mind/design/multi-repo-enhancements.md` — this section summarizes the 3 MVP items covering all 7 design components across 5 implementation waves.
 

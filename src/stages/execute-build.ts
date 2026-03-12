@@ -1,6 +1,6 @@
 import type { Story } from "../types/execution-plan.js";
 import { spawnAgentWithRetry } from "../agents/spawner.js";
-import { getAgentRules } from "../agents/prompts.js";
+import { getAgentRules, buildRoleReportContents } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, ensureDir } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
@@ -13,6 +13,7 @@ export async function runBuild(
   hiveMindDir: string,
   config: HiveMindConfig,
   costTracker?: CostTracker,
+  roleReportsDir?: string,
 ): Promise<{ implReportPath: string; refactorReportPath: string }> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -30,6 +31,10 @@ export async function runBuild(
   const implReportPath = join(hiveMindDir, getReportPath(story.id, "impl-report.md"));
   console.log(`E.1: Running implementer for ${story.id}...`);
 
+  const implRoleContents = roleReportsDir
+    ? buildRoleReportContents("implementer", story.rolesUsed, roleReportsDir)
+    : undefined;
+
   const implResult = await spawnAgentWithRetry({
     type: "implementer",
     model: "opus",
@@ -37,6 +42,7 @@ export async function runBuild(
     outputFile: implReportPath,
     rules: getAgentRules("implementer"),
     memoryContent,
+    roleReportContents: implRoleContents,
   }, config);
   costTracker?.recordAgentCost(story.id, "implementer", implResult.costUsd, implResult.durationMs);
 
@@ -45,6 +51,10 @@ export async function runBuild(
   console.log(`E.2: Running refactorer for ${story.id}...`);
 
   const sourceFiles = story.sourceFiles.map((f) => join(hiveMindDir, f));
+  const refactorRoleContents = roleReportsDir
+    ? buildRoleReportContents("refactorer", story.rolesUsed, roleReportsDir)
+    : undefined;
+
   const refactorResult = await spawnAgentWithRetry({
     type: "refactorer",
     model: "sonnet",
@@ -52,6 +62,7 @@ export async function runBuild(
     outputFile: refactorReportPath,
     rules: getAgentRules("refactorer"),
     memoryContent,
+    roleReportContents: refactorRoleContents,
   }, config);
   costTracker?.recordAgentCost(story.id, "refactorer", refactorResult.costUsd, refactorResult.durationMs);
 

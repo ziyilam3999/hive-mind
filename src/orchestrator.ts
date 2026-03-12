@@ -245,14 +245,15 @@ export async function runExecuteStage(
 
     try {
       // BUILD sub-pipeline (US-13)
-      await runBuild(story, hiveMindDir, config, costTracker);
+      const roleReportsDir = join(hiveMindDir, "plans", "role-reports");
+      await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir);
 
       appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
         storyId: story.id,
       }));
 
       // VERIFY sub-pipeline (US-14)
-      const verifyResult = await runVerify(story, hiveMindDir, planPath, config, costTracker);
+      const verifyResult = await runVerify(story, hiveMindDir, planPath, config, costTracker, roleReportsDir);
 
       // Reload plan from disk -- runVerify writes attempt increments via saveExecutionPlan.
       // Without this reload, the stale in-memory plan overwrites the incremented attempts to 0.
@@ -307,7 +308,7 @@ export async function runExecuteStage(
       await safeUpdateManifest(hiveMindDir);
 
       // LEARN sub-pipeline (US-16) -- always, even if failed
-      await runLearn(story, hiveMindDir, config, costTracker);
+      await runLearn(story, hiveMindDir, config, costTracker, roleReportsDir);
 
       // Check budget after each story
       costTracker?.enforceBudget();

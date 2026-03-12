@@ -97,4 +97,42 @@ describe("execute-build", () => {
       cleanup();
     }
   });
+
+  it("roleReportsDir threaded — role-report content in agent config", async () => {
+    setup();
+    // Create role-reports directory with an analyst report
+    const roleReportsDir = join(testDir, "plans", "role-reports");
+    mkdirSync(roleReportsDir, { recursive: true });
+    writeFileSync(join(roleReportsDir, "analyst-report.md"), "# Analyst findings");
+    writeFileSync(join(roleReportsDir, "architect-report.md"), "# Architect findings");
+
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runBuild(testStory, testDir, config, undefined, roleReportsDir);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const implCall = calls.find((c) => c[0].type === "implementer");
+      // implementer maps to ["architect", "security", "analyst"] but story only has rolesUsed: ["analyst"]
+      expect(implCall![0].roleReportContents).toBeDefined();
+      expect(implCall![0].roleReportContents).toContain("analyst");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("missing roleReportsDir — no injection (backward compatible)", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runBuild(testStory, testDir, config);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const implCall = calls.find((c) => c[0].type === "implementer");
+      expect(implCall![0].roleReportContents).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
 });

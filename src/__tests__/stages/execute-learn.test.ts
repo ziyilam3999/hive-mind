@@ -104,4 +104,39 @@ describe("execute-learn", () => {
       cleanup();
     }
   });
+
+  it("roleReportsDir threaded — role-report content in learner config", async () => {
+    setup();
+    const roleReportsDir = join(testDir, "plans", "role-reports");
+    mkdirSync(roleReportsDir, { recursive: true });
+    writeFileSync(join(roleReportsDir, "analyst-report.md"), "# Analyst findings");
+
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runLearn(makeStory(), testDir, config, undefined, roleReportsDir);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const learnerCall = calls.find((c) => c[0].type === "learner");
+      expect(learnerCall![0].roleReportContents).toBeDefined();
+      expect(learnerCall![0].roleReportContents).toContain("analyst");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("missing roleReportsDir — no injection (backward compatible)", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runLearn(makeStory(), testDir, config);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const learnerCall = calls.find((c) => c[0].type === "learner");
+      expect(learnerCall![0].roleReportContents).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
 });

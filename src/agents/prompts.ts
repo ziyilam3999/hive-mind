@@ -1,4 +1,7 @@
 import type { AgentType, AgentConfig } from "../types/agents.js";
+import type { RoleName } from "../types/execution-plan.js";
+import { readFileSafe, fileExists } from "../utils/file-io.js";
+import { join } from "node:path";
 
 const ELI5_AGENTS: Set<AgentType> = new Set([
   "reporter", "retrospective", "diagnostician",
@@ -217,4 +220,34 @@ The following role-report excerpts are relevant to your task:
 ${config.roleReportContents}
 ` : ""}## MEMORY
 ${config.memoryContent}`;
+}
+
+const MAX_ROLE_REPORT_WORDS = 2000;
+
+function truncateToWords(text: string, maxWords: number): string {
+  const words = text.split(/\s+/);
+  if (words.length <= maxWords) return text;
+  return words.slice(0, maxWords).join(" ") + "\n...(truncated)";
+}
+
+export function buildRoleReportContents(
+  agentType: AgentType,
+  rolesUsed: RoleName[],
+  roleReportsDir: string,
+): string | undefined {
+  if (!fileExists(roleReportsDir)) return undefined;
+
+  const relevantRoles = getRoleReportsForAgent(agentType, rolesUsed as AgentType[]);
+  if (relevantRoles.length === 0) return undefined;
+
+  const parts: string[] = [];
+  for (const role of relevantRoles) {
+    const reportPath = join(roleReportsDir, `${role}-report.md`);
+    const content = readFileSafe(reportPath);
+    if (content) {
+      parts.push(`### ${role} report\n${truncateToWords(content, MAX_ROLE_REPORT_WORDS)}`);
+    }
+  }
+
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
 }

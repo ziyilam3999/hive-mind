@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 3 — Visibility & DX (complete) | **Next Action:** Commit Phase 3, begin Phase 4 | **Updated:** 2026-03-12
+**Phase:** 4 — Pipeline Quality (complete) | **Next Action:** Phase 4 Tier 3 dogfood, then begin Phase 5 | **Updated:** 2026-03-12
 
 ---
 
@@ -10,8 +10,8 @@
 
 | Metric | Baseline | Current |
 |--------|----------|---------|
-| Test files | 25 | 36 |
-| Total tests | 95 | 207 |
+| Test files | 25 | 40 |
+| Total tests | 95 | 239 |
 | Source files | 38 | 50 |
 | TypeScript errors | 0 | 0 |
 
@@ -29,6 +29,7 @@
 - [x] Tier 2 (Integration) — pass date: 2026-03-12 (6 integration tests)
 
 **Learnings captured:** [x] → `learnings/phase-1-learnings.md`
+**Knowledge-base synced:** [x] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md` (2026-03-12)
 **Committed:** [x] → `3ad7bc3` (2026-03-12)
 
 ---
@@ -47,6 +48,7 @@
 - [x] Tier 3 (Live — MANDATORY) — pass date: 2026-03-12 (2 stories, no crash, errors persisted, pipeline continued past failures)
 
 **Learnings captured:** [x] → `learnings/phase-2-learnings.md`
+**Knowledge-base synced:** [x] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md` (2026-03-12)
 **Committed:** [x] → `98d7cb2` (2026-03-12)
 
 ---
@@ -68,6 +70,7 @@
 - [~] Tier 3 (Dogfood trial — recommended) — skipped (Phase 4 Tier 3 will cover)
 
 **Learnings captured:** [x] → `learnings/phase-3-learnings.md`
+**Knowledge-base synced:** [x] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md` (2026-03-12)
 **Committed:** [x] → `23aee9a` (2026-03-12)
 
 ---
@@ -76,18 +79,19 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 12 | ENH-07 | Synthesizer split | [ ] | — |
-| 13 | PRD-05 | Code-reviewer agent | [ ] | — |
-| 14 | PRD-06 | Log-summarizer agent | [ ] | — |
-| 17 | ENH-16 | Role-report feedback loop | [ ] | — |
+| 12 | ENH-07 | Synthesizer split | [x] | 2026-03-12 |
+| 13 | PRD-05 | Code-reviewer agent | [x] | 2026-03-12 |
+| 14 | PRD-06 | Log-summarizer agent | [x] | 2026-03-12 |
+| 15 | ENH-16 | Role-report feedback loop | [x] | 2026-03-12 |
 
 **Smoke Test Gate:**
-- [ ] Tier 1 (Unit) — pass date: —
-- [ ] Tier 2 (Integration) — pass date: —
-- [ ] Tier 3 (Dogfood — at least 1 run) — pass date: —
+- [x] Tier 1 (Unit) — pass date: 2026-03-12 (239 tests, 40 files)
+- [x] Tier 2 (Integration) — pass date: 2026-03-12 (2 new integration test files)
+- [ ] Tier 3 (Dogfood — at least 1 run) — pass date: — (pending)
 
-**Learnings captured:** [ ] → `learnings/phase-4-learnings.md`
-**Committed:** [ ] → —
+**Learnings captured:** [x] → `learnings/phase-4-learnings.md`
+**Knowledge-base synced:** [ ] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md`
+**Committed:** [x] → (pending commit hash)
 
 ---
 
@@ -95,8 +99,8 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 15 | ENH-03 | Parallel story execution | [ ] | — |
-| 16 | FW-01 | Sub-task decomposition | [ ] | — |
+| 16 | ENH-03 | Parallel story execution | [ ] | — |
+| 17 | FW-01 | Sub-task decomposition | [ ] | — |
 
 **Smoke Test Gate:**
 - [ ] Tier 1 (Unit) — pass date: —
@@ -104,11 +108,12 @@
 - [ ] Tier 3 (Dogfood — MANDATORY) — pass date: —
 
 **Learnings captured:** [ ] → `learnings/phase-5-learnings.md`
+**Knowledge-base synced:** [ ] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md`
 **Committed:** [ ] → —
 
 ---
 
-## Phase 6: Multi-Repo
+## Phase 6: Post-MVP Multi-Repo Enhancement
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
@@ -122,4 +127,5 @@
 - [ ] Tier 3 (Dogfood — recommended) — pass date: —
 
 **Learnings captured:** [ ] → `learnings/phase-6-learnings.md`
+**Knowledge-base synced:** [ ] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md`
 **Committed:** [ ] → —

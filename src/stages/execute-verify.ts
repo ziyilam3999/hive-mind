@@ -1,7 +1,7 @@
 import type { Story } from "../types/execution-plan.js";
 import type { ExecutionPlan } from "../types/execution-plan.js";
 import { spawnAgentWithRetry } from "../agents/spawner.js";
-import { getAgentRules } from "../agents/prompts.js";
+import { getAgentRules, buildRoleReportContents } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, ensureDir, fileExists } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
@@ -27,6 +27,7 @@ export async function runVerify(
   planPath: string,
   config: HiveMindConfig,
   costTracker?: CostTracker,
+  roleReportsDir?: string,
 ): Promise<VerifyResult> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -61,6 +62,10 @@ export async function runVerify(
     const priorFixReports = collectPriorReports(hiveMindDir, story.id, "fix-report", attempt);
     const priorDiagReports = collectPriorReports(hiveMindDir, story.id, "diagnosis-report", attempt);
 
+    const testerRoleContents = roleReportsDir
+      ? buildRoleReportContents("tester-exec", story.rolesUsed, roleReportsDir)
+      : undefined;
+
     const testerResult = await spawnAgentWithRetry({
       type: "tester-exec",
       model: "haiku",
@@ -68,6 +73,7 @@ export async function runVerify(
       outputFile: testReportPath,
       rules: getAgentRules("tester-exec"),
       memoryContent,
+      roleReportContents: testerRoleContents,
     }, config);
     costTracker?.recordAgentCost(story.id, "tester-exec", testerResult.costUsd, testerResult.durationMs);
 
@@ -96,12 +102,16 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.4 / E.4a+E.4b: Fix AC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent, config);
+      await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent, config, roleReportsDir);
       continue; // re-VERIFY from E.3
     }
 
     // E.5: Evaluator — runs ECs via shell
     console.log(`E.5: Running evaluator for ${story.id} (attempt ${attempt})...`);
+    const evalRoleContents = roleReportsDir
+      ? buildRoleReportContents("evaluator", story.rolesUsed, roleReportsDir)
+      : undefined;
+
     const evalSpawnResult = await spawnAgentWithRetry({
       type: "evaluator",
       model: "haiku",
@@ -109,6 +119,7 @@ export async function runVerify(
       outputFile: evalReportPath,
       rules: getAgentRules("evaluator"),
       memoryContent,
+      roleReportContents: evalRoleContents,
     }, config);
     costTracker?.recordAgentCost(story.id, "evaluator", evalSpawnResult.costUsd, evalSpawnResult.durationMs);
 
@@ -141,7 +152,7 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.6 / E.6a+E.6b: Fix EC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent, config);
+      await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent, config, roleReportsDir);
       continue; // re-VERIFY from E.3
     }
 
@@ -160,6 +171,7 @@ async function runFixPipeline(
   failureType: "ac" | "ec",
   memoryContent: string,
   config: HiveMindConfig,
+  roleReportsDir?: string,
 ): Promise<void> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
 
@@ -169,6 +181,10 @@ async function runFixPipeline(
 
   const priorFixReports = collectPriorReports(hiveMindDir, story.id, "fix-report", attempt + 1);
   const priorDiagReports = collectPriorReports(hiveMindDir, story.id, "diagnosis-report", attempt + 1);
+
+  const fixerRoleContents = roleReportsDir
+    ? buildRoleReportContents("fixer", story.rolesUsed, roleReportsDir)
+    : undefined;
 
   if (attempt === 1) {
     // Fast path: fixer only
@@ -181,11 +197,17 @@ async function runFixPipeline(
       outputFile: fixReportPath,
       rules: getAgentRules("fixer"),
       memoryContent,
+      roleReportContents: fixerRoleContents,
     }, config);
   } else {
     // Escalated: diagnostician → fixer
     console.log(`E.${failureType === "ac" ? "4a" : "6a"}: Running diagnostician for ${story.id} (attempt ${attempt})...`);
     const diagReportPath = join(reportsDir, `diagnosis-report-${attempt}.md`);
+
+    const diagRoleContents = roleReportsDir
+      ? buildRoleReportContents("diagnostician", story.rolesUsed, roleReportsDir)
+      : undefined;
+
     await spawnAgentWithRetry({
       type: "diagnostician",
       model: "sonnet",
@@ -193,6 +215,7 @@ async function runFixPipeline(
       outputFile: diagReportPath,
       rules: getAgentRules("diagnostician"),
       memoryContent,
+      roleReportContents: diagRoleContents,
     }, config);
 
     // Verify diagnosis file exists before spawning fixer (P11/F11)
@@ -209,6 +232,7 @@ async function runFixPipeline(
       outputFile: fixReportPath,
       rules: getAgentRules("fixer"),
       memoryContent,
+      roleReportContents: fixerRoleContents,
     }, config);
   }
 }

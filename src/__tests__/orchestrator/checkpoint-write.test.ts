@@ -4,11 +4,29 @@ import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
 
 // Mock the agent spawner to avoid calling real claude CLI
+const mockPlanJson = JSON.stringify({
+  schemaVersion: "2.0.0",
+  prdPath: "PRD.md",
+  specPath: "spec/SPEC-v1.0.md",
+  stories: [
+    {
+      id: "US-01", title: "Test", specSections: ["§1.1"], dependencies: [],
+      sourceFiles: ["src/test.ts"], complexity: "low", rolesUsed: ["analyst"],
+      stepFile: "plans/steps/US-01.md", status: "not-started",
+      attempts: 0, maxAttempts: 3, committed: false, commitHash: null,
+    },
+  ],
+});
+
 const mockSpawnImpl = async (config: { outputFile: string; type: string }) => {
   const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
   const { dirname } = await import("node:path");
   md(dirname(config.outputFile), { recursive: true });
-  wf(config.outputFile, `# Mock output for ${config.type}`);
+  if (config.type === "planner") {
+    wf(config.outputFile, mockPlanJson);
+  } else {
+    wf(config.outputFile, `# Mock output for ${config.type}`);
+  }
   return { success: true, outputFile: config.outputFile };
 };
 

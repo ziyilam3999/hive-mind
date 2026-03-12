@@ -1,6 +1,6 @@
 import type { Story } from "../types/execution-plan.js";
 import { spawnAgentWithRetry } from "../agents/spawner.js";
-import { getAgentRules } from "../agents/prompts.js";
+import { getAgentRules, buildRoleReportContents } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { fileExists, ensureDir } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
@@ -20,6 +20,7 @@ export async function runLearn(
   hiveMindDir: string,
   config: HiveMindConfig,
   costTracker?: CostTracker,
+  roleReportsDir?: string,
 ): Promise<string> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -51,6 +52,10 @@ export async function runLearn(
 
   const learningPath = join(reportsDir, "learning.md");
 
+  const learnerRoleContents = roleReportsDir
+    ? buildRoleReportContents("learner", story.rolesUsed, roleReportsDir)
+    : undefined;
+
   console.log(`E.8: Running learner for ${story.id}...`);
   const learnResult = await spawnAgentWithRetry({
     type: "learner",
@@ -59,6 +64,7 @@ export async function runLearn(
     outputFile: learningPath,
     rules: getAgentRules("learner"),
     memoryContent,
+    roleReportContents: learnerRoleContents,
   }, config);
   costTracker?.recordAgentCost(story.id, "learner", learnResult.costUsd, learnResult.durationMs);
 

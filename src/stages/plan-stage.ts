@@ -1,4 +1,5 @@
 import type { AgentConfig } from "../types/agents.js";
+import type { Story } from "../types/execution-plan.js";
 import { spawnAgentWithRetry, spawnAgentsParallel } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
@@ -125,11 +126,11 @@ export async function runPlanStage(
     }
   }
 
-  // Step 3: Synthesizer — produces execution-plan.json with embedded step content
-  console.log("Running synthesizer...");
+  // Step 3: Planner → AC-gen → EC-gen pipeline (replaces single synthesizer)
+  console.log("Running planner...");
   const planJsonPath = join(plansDir, "execution-plan.json");
 
-  const EXECUTION_PLAN_SCHEMA = `Output ONLY valid JSON (no markdown fences). Required schema:
+  const PLANNER_SCHEMA = `Output ONLY valid JSON (no markdown fences). Required schema:
 {
   "schemaVersion": "2.0.0",
   "prdPath": "<relative path to PRD>",
@@ -142,9 +143,11 @@ export async function runPlanStage(
       "dependencies": [],
       "sourceFiles": ["src/file.ts"],
       "complexity": "low",
+      "securityRisk": "optional — describe security concerns if any",
+      "complexityJustification": "optional — explain complexity rating",
+      "dependencyImpact": "optional — describe cross-story impacts",
       "rolesUsed": ["analyst"],
       "stepFile": "plans/steps/US-01.md",
-      "stepContent": "Full step file content as markdown with ## SPEC REFERENCES, ## ACCEPTANCE CRITERIA (AC-0 is always lint+typecheck), ## EXIT CRITERIA (binary shell commands that echo PASS/FAIL), ## INPUT, ## OUTPUT (exact exports)",
       "status": "not-started",
       "attempts": 0,
       "maxAttempts": ${config.maxAttempts},
@@ -153,23 +156,121 @@ export async function runPlanStage(
     }
   ]
 }
-CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all fields listed above. stepContent must be self-contained (P16).`;
+CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all fields listed above. Do NOT include stepContent or ACs/ECs — produce skeletons only (GOAL, SPEC REFS, INPUT, OUTPUT).`;
 
   await spawnAgentWithRetry({
-    type: "synthesizer",
+    type: "planner",
     model: "opus",
     inputFiles: [specPath, ...roleReportPaths],
     outputFile: planJsonPath,
-    rules: [EXECUTION_PLAN_SCHEMA],
+    rules: [...getAgentRules("planner"), PLANNER_SCHEMA],
     memoryContent: feedbackMemory,
   }, config);
 
   if (!fileExists(planJsonPath)) {
-    throw new Error("Synthesizer failed to produce execution-plan.json");
+    throw new Error("Planner failed to produce execution-plan.json");
   }
 
-  // Extract step files from embedded stepContent
-  extractStepFiles(planJsonPath, stepsDir);
+  // Parse planner output
+  const planContent = readFileSafe(planJsonPath);
+  if (!planContent) {
+    throw new Error("execution-plan.json is empty");
+  }
+
+  let planData: { stories: Story[] };
+  try {
+    planData = JSON.parse(planContent);
+  } catch {
+    throw new Error("execution-plan.json is not valid JSON");
+  }
+
+  const stories = planData.stories;
+  if (!Array.isArray(stories) || stories.length === 0) {
+    throw new Error("execution-plan.json contains no stories");
+  }
+
+  // Write story skeletons for ac/ec generators
+  for (const story of stories) {
+    writeStorySkeleton(stepsDir, story);
+  }
+
+  // AC-generator per story (parallel)
+  console.log(`Running ${stories.length} AC-generators in parallel...`);
+  const acConfigs: AgentConfig[] = stories.map((story) => ({
+    type: "ac-generator" as const,
+    model: "sonnet" as const,
+    inputFiles: [join(stepsDir, `${story.id}-skeleton.md`), specPath],
+    outputFile: join(stepsDir, `${story.id}-acs.md`),
+    rules: getAgentRules("ac-generator"),
+    memoryContent: feedbackMemory,
+  }));
+
+  await spawnAgentsParallel(acConfigs, config);
+
+  // EC-generator per story (parallel)
+  console.log(`Running ${stories.length} EC-generators in parallel...`);
+  const ecConfigs: AgentConfig[] = stories.map((story) => ({
+    type: "ec-generator" as const,
+    model: "sonnet" as const,
+    inputFiles: [join(stepsDir, `${story.id}-skeleton.md`), join(stepsDir, `${story.id}-acs.md`)],
+    outputFile: join(stepsDir, `${story.id}-ecs.md`),
+    rules: getAgentRules("ec-generator"),
+    memoryContent: feedbackMemory,
+  }));
+
+  await spawnAgentsParallel(ecConfigs, config);
+
+  // Assembly: merge skeleton + ACs + ECs into final step files
+  console.log("Assembling step files...");
+  for (const story of stories) {
+    assembleStepFile(
+      stepsDir,
+      story,
+      join(stepsDir, `${story.id}-acs.md`),
+      join(stepsDir, `${story.id}-ecs.md`),
+    );
+  }
+
+  // Step 3b: Enricher — add Implementation Guidance / Security / Edge Cases per story
+  console.log("Running enricher per story...");
+  for (const story of stories) {
+    const stepFilePath = join(stepsDir, `${story.id}.md`);
+    // Filter role-reports by rolesUsed
+    const filteredRoleReports = roleReportPaths.filter((rp) =>
+      story.rolesUsed.some((role) => rp.includes(`${role}-report.md`)),
+    );
+
+    if (filteredRoleReports.length === 0) continue;
+
+    try {
+      await spawnAgentWithRetry({
+        type: "enricher",
+        model: "sonnet",
+        inputFiles: [stepFilePath, ...filteredRoleReports],
+        outputFile: stepFilePath,
+        rules: getAgentRules("enricher"),
+        memoryContent: feedbackMemory,
+      }, config);
+
+      // Validate step file still has required sections
+      const enrichedContent = readFileSafe(stepFilePath);
+      if (enrichedContent) {
+        const hasAC = enrichedContent.includes("## ACCEPTANCE CRITERIA");
+        const hasEC = enrichedContent.includes("## EXIT CRITERIA");
+        if (!hasAC || !hasEC) {
+          console.warn(`Warning: Enricher corrupted ${story.id} step file — missing sections. Reassembling.`);
+          assembleStepFile(
+            stepsDir,
+            story,
+            join(stepsDir, `${story.id}-acs.md`),
+            join(stepsDir, `${story.id}-ecs.md`),
+          );
+        }
+      }
+    } catch (err) {
+      console.warn(`Warning: Enricher failed for ${story.id}: ${err instanceof Error ? err.message : String(err)}. Keeping original step file.`);
+    }
+  }
 
   // Step 4: AC consolidator
   console.log("Running AC consolidator...");
@@ -186,4 +287,64 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
   }, config);
 
   console.log("PLAN stage complete.");
+}
+
+export function writeStorySkeleton(stepsDir: string, story: Story): void {
+  const skeleton = `# ${story.id}: ${story.title}
+
+## GOAL
+Implement ${story.title} as specified.
+
+## SPEC REFERENCES
+${story.specSections.map((s) => `- ${s}`).join("\n")}
+
+## INPUT
+${story.sourceFiles.map((f) => `- ${f}`).join("\n") || "- (none)"}
+
+## OUTPUT
+${story.sourceFiles.map((f) => `- ${f}`).join("\n") || "- (TBD)"}
+
+## METADATA
+- Complexity: ${story.complexity}
+- Dependencies: ${story.dependencies.length > 0 ? story.dependencies.join(", ") : "none"}
+- Roles Used: ${story.rolesUsed.join(", ")}
+${story.securityRisk ? `- Security Risk: ${story.securityRisk}` : ""}
+${story.complexityJustification ? `- Complexity Justification: ${story.complexityJustification}` : ""}
+${story.dependencyImpact ? `- Dependency Impact: ${story.dependencyImpact}` : ""}
+`;
+  writeFileAtomic(join(stepsDir, `${story.id}-skeleton.md`), skeleton);
+}
+
+export function assembleStepFile(
+  stepsDir: string,
+  story: Story,
+  acsPath: string,
+  ecsPath: string,
+): void {
+  const acsContent = readFileSafe(acsPath) ?? "*(AC generation failed)*";
+  const ecsContent = readFileSafe(ecsPath) ?? "*(EC generation failed)*";
+
+  const stepFile = `# ${story.id}: ${story.title}
+
+## GOAL
+Implement ${story.title} as specified.
+
+## SPEC REFERENCES
+${story.specSections.map((s) => `- ${s}`).join("\n")}
+
+## INPUT
+${story.sourceFiles.map((f) => `- ${f}`).join("\n") || "- (none)"}
+
+## OUTPUT
+${story.sourceFiles.map((f) => `- ${f}`).join("\n") || "- (TBD)"}
+
+## ACCEPTANCE CRITERIA
+${acsContent}
+
+## EXIT CRITERIA
+${ecsContent}
+`;
+
+  const stepFilePath = join(stepsDir, `${story.id}.md`);
+  writeFileAtomic(stepFilePath, stepFile);
 }

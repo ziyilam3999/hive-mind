@@ -12,6 +12,7 @@ import { checkEli5Presence } from "../reports/parser.js";
 import { readFileSafe, fileExists } from "../utils/file-io.js";
 import { estimateWordCount } from "../utils/token-count.js";
 import type { HiveMindConfig } from "../config/schema.js";
+import type { ExecutionPlan } from "../types/execution-plan.js";
 import { join } from "node:path";
 import { readdirSync } from "node:fs";
 
@@ -21,13 +22,52 @@ export async function runReportStage(hiveMindDir: string, config: HiveMindConfig
   const memoryContent = readMemory(memoryPath);
   const kbDir = join(hiveMindDir, "knowledge-base");
 
-  // 1 + 2. Reporter + Retrospective in parallel
-  console.log("Running reporter + retrospective agents in parallel...");
+  // Batch 1: code-reviewer + log-summarizer (produce inputs for reporter)
+  console.log("Running code-reviewer + log-summarizer in parallel...");
   const reportFiles = collectAllReportFiles(reportsDir);
   const planPath = join(hiveMindDir, "plans", "execution-plan.json");
+
+  const codeReviewReportPath = join(hiveMindDir, "code-review-report.md");
+  const logAnalysisPath = join(hiveMindDir, "log-analysis.md");
+  const managerLogPath = join(hiveMindDir, "manager-log.jsonl");
+
+  const implAndRefactorReports = collectImplAndRefactorReports(reportsDir);
+  const changedSourceFiles = collectChangedSourceFiles(planPath);
+
+  const batch1Configs = [];
+  batch1Configs.push({
+    type: "code-reviewer" as const,
+    model: "sonnet" as const,
+    inputFiles: [...implAndRefactorReports, ...changedSourceFiles],
+    outputFile: codeReviewReportPath,
+    rules: getAgentRules("code-reviewer"),
+    memoryContent,
+  });
+
+  if (fileExists(managerLogPath)) {
+    batch1Configs.push({
+      type: "log-summarizer" as const,
+      model: "haiku" as const,
+      inputFiles: [managerLogPath],
+      outputFile: logAnalysisPath,
+      rules: getAgentRules("log-summarizer"),
+      memoryContent,
+    });
+  }
+
+  await spawnAgentsParallel(batch1Configs, config);
+
+  // Batch 2: reporter + retrospective (after batch 1 completes)
+  console.log("Running reporter + retrospective agents in parallel...");
   const reporterInputs = [...reportFiles];
   if (fileExists(planPath)) {
     reporterInputs.push(planPath);
+  }
+  if (fileExists(codeReviewReportPath)) {
+    reporterInputs.push(codeReviewReportPath);
+  }
+  if (fileExists(logAnalysisPath)) {
+    reporterInputs.push(logAnalysisPath);
   }
 
   const learningFiles = collectLearningFiles(reportsDir);
@@ -36,7 +76,7 @@ export async function runReportStage(hiveMindDir: string, config: HiveMindConfig
   const consolidatedPath = join(hiveMindDir, "consolidated-report.md");
   const retrospectivePath = join(hiveMindDir, "retrospective.md");
 
-  const [reporterResult, retroResult] = await spawnAgentsParallel([
+  await spawnAgentsParallel([
     {
       type: "reporter",
       model: "haiku",
@@ -187,6 +227,43 @@ function getKnowledgeBaseWordCount(kbDir: string): number {
     }
   }
   return totalWords;
+}
+
+export function collectImplAndRefactorReports(reportsDir: string): string[] {
+  if (!fileExists(reportsDir)) return [];
+  const files: string[] = [];
+  try {
+    const storyDirs = readdirSync(reportsDir, { withFileTypes: true });
+    for (const dir of storyDirs) {
+      if (dir.isDirectory()) {
+        const implPath = join(reportsDir, dir.name, "impl-report.md");
+        const refactorPath = join(reportsDir, dir.name, "refactor-report.md");
+        if (fileExists(implPath)) files.push(implPath);
+        if (fileExists(refactorPath)) files.push(refactorPath);
+      }
+    }
+  } catch {
+    // Empty or missing directory
+  }
+  return files;
+}
+
+export function collectChangedSourceFiles(planPath: string): string[] {
+  if (!fileExists(planPath)) return [];
+  const content = readFileSafe(planPath);
+  if (!content) return [];
+  try {
+    const plan: ExecutionPlan = JSON.parse(content);
+    const uniqueFiles = new Set<string>();
+    for (const story of plan.stories) {
+      for (const f of story.sourceFiles) {
+        uniqueFiles.add(f);
+      }
+    }
+    return [...uniqueFiles];
+  } catch {
+    return [];
+  }
 }
 
 const MEMORY_SECTIONS = ["PATTERNS", "MISTAKES", "DISCOVERIES"] as const;
