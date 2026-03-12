@@ -85,17 +85,62 @@ Total: 239 tests across 40 files (up from 207 tests / 36 files in Phase 3).
 
 ---
 
-## Tier 3 Status
+## Tier 3 Dogfood Results (run-06, 2026-03-13)
 
-Phase 4 Tier 3 dogfood has NOT been run yet. The plan requires at least 1 dogfood run before starting Phase 5. Recommended candidates:
-- PRD-05 (code-reviewer) — natural self-test: the generated reviewer reviews its own generated code
-- ENH-07 (synthesizer split) — validates the new 3-agent planning pipeline
-- Estimated cost: ~$30-50 total
+**PRD:** String Utility Library (4 stories) — same as run-05
+**Duration:** ~39 minutes | **Result:** 3/4 passed, 1 failed (EC bug, not code bug)
 
-**Important:** This will be the first live pipeline run since Phase 2's hello-world test. Phases 3-4 changed agent spawning (output mode fix), report parsing (structured output), plan-stage pipeline (synthesizer split), and report-stage structure (two-batch). All need live validation.
+### Results
+
+| Story | Status | Attempts | Committed |
+|-------|--------|----------|-----------|
+| US-01 — Type definitions | PASS | 1 | f7d694e |
+| US-02 — String truncation | PASS | 1 | ba000c0 |
+| US-03 — Word count + char frequency | FAIL | 3 | — |
+| US-04 — Case conversion | PASS | 1 | d9360b6 |
+
+### Bugs Found Pre-Run
+
+**Bug 16 — Windows cmd.exe garbles multi-line prompt args:**
+`spawn("claude", args, { shell: true })` on Windows uses cmd.exe, which garbles multi-line strings passed as positional arguments. The agent received only `##` instead of the full prompt. **Fix:** Pipe prompt via stdin (`stdio: ["pipe", ...]` + `child.stdin.write(prompt)`).
+
+**Bug 17 — All agents lacked Write tool permission:**
+The strict output contract (RD-12) requires agents to write files via the Write tool, but `tool-permissions.ts` only gave `READ_ONLY_TOOLS = ["Read", "Glob", "Grep"]` to most agents. No Write tool = can't create output. **Fix:** Added `OUTPUT_TOOLS = [...READ_ONLY_TOOLS, "Write"]` and assigned to all output-producing agents.
+
+### US-03 Failure Analysis
+
+Code was correct (11/12 ECs passed, all 12 ACs passed in test reports). EC-10 failed because `grep -c "^import" file.ts || echo 0` produces `"0\n0"` instead of `"0"` — POSIX `grep -c` exits code 1 on zero matches, triggering the `|| echo 0` fallback. The fixer patched `acceptance-criteria.md` but not `US-03-ecs.md` (the file the evaluator reads). Same bug persisted through all 3 attempts.
+
+**Root causes:** (1) `grep -c` POSIX exit code trap, (2) duplicate EC commands in two files with no sync mechanism, (3) fixer patched wrong file.
+
+### Phase 4 Features Validated
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| ENH-07 — Synthesizer split | ✅ Working | planner → 4 AC-gen → 4 EC-gen → assembler → enricher all produced artifacts |
+| PRD-05 — Code-reviewer agent | ✅ Working | code-review-report.md produced with 3 findings across 4 stories |
+| PRD-06 — Log-summarizer agent | ✅ Working | log-analysis.md produced with retry/cost/performance metrics |
+| ENH-16 — Role-report feedback | ✅ Working | 5 role-reports created, injected into execution agents |
+| Two-batch report stage | ✅ Working | Batch 1 (reviewer + summarizer) → Batch 2 (reporter + retrospective) |
+| Non-fatal enrichment | ✅ Working | Enricher ran per story without corruption |
+
+### New Patterns from Dogfood
+
+- On Windows, always pipe prompts via stdin — never pass as command-line args (Bug 16)
+- Every agent that must create an output file needs the Write tool — enforce via `OUTPUT_TOOLS` (Bug 17)
+- `grep -c` POSIX trap: exits 1 on zero matches — never use `grep -c ... || echo 0` in ECs
+- Fixer agents patch whichever file they find first, not necessarily the file the evaluator reads — duplicate EC sources cause cascading fix failures
+
+### Pipeline Recommendations from Report Stage
+
+1. **Circuit breaker:** After 2 identical failures, stop and escalate instead of retrying
+2. **Single source of truth for ECs:** Evaluator should read from one canonical file, not duplicates
+3. **Pre-retry validation:** Confirm fix was applied to the correct file before re-running verification
 
 ---
 
 ## Key Takeaway
 
-Phase 4 is the most architecturally significant phase since the initial build. The synthesizer split changes how plans are generated (1 agent → 3 agents), the two-batch report stage changes how reports are produced (1 batch → 2 batches with dependencies), and the role-report feedback loop threads cross-phase context through every execution agent. Despite the scope, all changes are additive or replacements of isolated pipeline steps — the orchestrator's core loop is unchanged (only 3 lines added for `roleReportsDir` threading). The 239 tests provide regression coverage, but the Tier 3 dogfood run is critical to validate these changes work end-to-end with real Claude API calls.
+Phase 4 is the most architecturally significant phase since the initial build. The synthesizer split changes how plans are generated (1 agent → 3 agents), the two-batch report stage changes how reports are produced (1 batch → 2 batches with dependencies), and the role-report feedback loop threads cross-phase context through every execution agent. Despite the scope, all changes are additive or replacements of isolated pipeline steps — the orchestrator's core loop is unchanged (only 3 lines added for `roleReportsDir` threading).
+
+The Tier 3 dogfood (run-06) validated all Phase 4 features end-to-end with real Claude API calls. Two critical bugs were found pre-run (Write tool permissions, Windows stdin) — both fixed and committed. The one story failure (US-03) was an EC authoring bug, not a pipeline or code defect. Code correctness remains 100% across all runs (now 16/16 stories across 6 runs).
