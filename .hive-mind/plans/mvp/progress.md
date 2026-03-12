@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 2 — Reliability (complete, ready to commit) | **Next Action:** Commit Phase 2 | **Updated:** 2026-03-12
+**Phase:** 2 — Reliability (complete) | **Next Action:** Create Phase 3 implementation plan | **Updated:** 2026-03-12
 
 ---
 
@@ -47,7 +47,7 @@
 - [x] Tier 3 (Live — MANDATORY) — pass date: 2026-03-12 (2 stories, no crash, errors persisted, pipeline continued past failures)
 
 **Learnings captured:** [x] → `learnings/phase-2-learnings.md`
-**Committed:** [ ] → —
+**Committed:** [x] → `98d7cb2` (2026-03-12)
 
 ---
 
