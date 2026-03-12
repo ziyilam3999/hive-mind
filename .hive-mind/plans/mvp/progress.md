@@ -90,7 +90,7 @@
 - [ ] Tier 3 (Dogfood — at least 1 run) — pass date: — (pending)
 
 **Learnings captured:** [x] → `learnings/phase-4-learnings.md`
-**Knowledge-base synced:** [ ] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md`
+**Knowledge-base synced:** [x] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md` (2026-03-12)
 **Committed:** [x] → `6d8ea67` (2026-03-12)
 
 ---
