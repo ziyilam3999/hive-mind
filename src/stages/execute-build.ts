@@ -5,12 +5,14 @@ import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, ensureDir } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
 import type { HiveMindConfig } from "../config/schema.js";
+import type { CostTracker } from "../utils/cost-tracker.js";
 import { join } from "node:path";
 
 export async function runBuild(
   story: Story,
   hiveMindDir: string,
   config: HiveMindConfig,
+  costTracker?: CostTracker,
 ): Promise<{ implReportPath: string; refactorReportPath: string }> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -28,7 +30,7 @@ export async function runBuild(
   const implReportPath = join(hiveMindDir, getReportPath(story.id, "impl-report.md"));
   console.log(`E.1: Running implementer for ${story.id}...`);
 
-  await spawnAgentWithRetry({
+  const implResult = await spawnAgentWithRetry({
     type: "implementer",
     model: "opus",
     inputFiles: [stepFilePath],
@@ -36,13 +38,14 @@ export async function runBuild(
     rules: getAgentRules("implementer"),
     memoryContent,
   }, config);
+  costTracker?.recordAgentCost(story.id, "implementer", implResult.costUsd, implResult.durationMs);
 
   // E.2: Refactorer — receives source code + impl-report + memory
   const refactorReportPath = join(hiveMindDir, getReportPath(story.id, "refactor-report.md"));
   console.log(`E.2: Running refactorer for ${story.id}...`);
 
   const sourceFiles = story.sourceFiles.map((f) => join(hiveMindDir, f));
-  await spawnAgentWithRetry({
+  const refactorResult = await spawnAgentWithRetry({
     type: "refactorer",
     model: "sonnet",
     inputFiles: [...sourceFiles, implReportPath],
@@ -50,6 +53,7 @@ export async function runBuild(
     rules: getAgentRules("refactorer"),
     memoryContent,
   }, config);
+  costTracker?.recordAgentCost(story.id, "refactorer", refactorResult.costUsd, refactorResult.durationMs);
 
   return { implReportPath, refactorReportPath };
 }

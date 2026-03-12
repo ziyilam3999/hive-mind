@@ -9,6 +9,7 @@ import { parseTestReport, parseEvalReport } from "../reports/parser.js";
 import { incrementAttempts, saveExecutionPlan } from "../state/execution-plan.js";
 import { appendLogEntry, createLogEntry } from "../state/manager-log.js";
 import type { HiveMindConfig } from "../config/schema.js";
+import type { CostTracker } from "../utils/cost-tracker.js";
 import { join } from "node:path";
 import { copyFileSync } from "node:fs";
 
@@ -25,6 +26,7 @@ export async function runVerify(
   hiveMindDir: string,
   planPath: string,
   config: HiveMindConfig,
+  costTracker?: CostTracker,
 ): Promise<VerifyResult> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -59,7 +61,7 @@ export async function runVerify(
     const priorFixReports = collectPriorReports(hiveMindDir, story.id, "fix-report", attempt);
     const priorDiagReports = collectPriorReports(hiveMindDir, story.id, "diagnosis-report", attempt);
 
-    await spawnAgentWithRetry({
+    const testerResult = await spawnAgentWithRetry({
       type: "tester-exec",
       model: "haiku",
       inputFiles: [stepFilePath, ...priorFixReports, ...priorDiagReports],
@@ -67,6 +69,7 @@ export async function runVerify(
       rules: getAgentRules("tester-exec"),
       memoryContent,
     }, config);
+    costTracker?.recordAgentCost(story.id, "tester-exec", testerResult.costUsd, testerResult.durationMs);
 
     const testContent = readFileSafe(testReportPath) ?? "";
     const testResult = parseTestReport(testContent);
@@ -99,7 +102,7 @@ export async function runVerify(
 
     // E.5: Evaluator — runs ECs via shell
     console.log(`E.5: Running evaluator for ${story.id} (attempt ${attempt})...`);
-    await spawnAgentWithRetry({
+    const evalSpawnResult = await spawnAgentWithRetry({
       type: "evaluator",
       model: "haiku",
       inputFiles: [stepFilePath],
@@ -107,6 +110,7 @@ export async function runVerify(
       rules: getAgentRules("evaluator"),
       memoryContent,
     }, config);
+    costTracker?.recordAgentCost(story.id, "evaluator", evalSpawnResult.costUsd, evalSpawnResult.durationMs);
 
     const evalContent = readFileSafe(evalReportPath) ?? "";
     const evalResult = parseEvalReport(evalContent);

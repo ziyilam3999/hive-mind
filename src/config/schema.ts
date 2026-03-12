@@ -14,6 +14,8 @@ export interface HiveMindConfig {
   graduationMinStoryRefs: number;
   kbSizeWarningWords: number;
   reportExcerptLength: number;
+  baselineBuildCommand: string;
+  baselineTestCommand: string;
   modelAssignments: Record<string, ModelTier>;
 }
 
@@ -55,5 +57,7 @@ export const DEFAULT_CONFIG: HiveMindConfig = {
   graduationMinStoryRefs: 2,
   kbSizeWarningWords: 5000,
   reportExcerptLength: 200,
+  baselineBuildCommand: "npm run build",
+  baselineTestCommand: "npm test",
   modelAssignments: { ...DEFAULT_MODEL_ASSIGNMENTS },
 };

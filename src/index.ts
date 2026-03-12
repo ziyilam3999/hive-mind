@@ -9,12 +9,13 @@ import type { HiveMindConfig } from "./config/schema.js";
 import { HiveMindError } from "./utils/errors.js";
 
 export type ParsedCommand =
-  | { command: "start"; prdPath: string }
-  | { command: "approve" }
-  | { command: "reject"; feedback: string }
+  | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean }
+  | { command: "approve"; silent?: boolean; skipBaseline?: boolean }
+  | { command: "reject"; feedback: string; silent?: boolean }
   | { command: "status" }
   | { command: "abort" }
-  | { command: "resume"; from?: string; skipFailed?: boolean };
+  | { command: "manifest" }
+  | { command: "resume"; from?: string; skipFailed?: boolean; silent?: boolean };
 
 const REJECTED_FLAGS = ["--spec", "--goal", "--qcs"];
 
@@ -28,32 +29,44 @@ export function parseArgs(argv: string[]): ParsedCommand {
     }
   }
 
+  const silent = args.includes("--silent");
+
   switch (cmd) {
     case "start": {
       const prdIdx = args.indexOf("--prd");
       if (prdIdx === -1 || !args[prdIdx + 1]) {
         throw new HiveMindError("start requires --prd <path>");
       }
-      return { command: "start", prdPath: args[prdIdx + 1] };
+      const budgetIdx = args.indexOf("--budget");
+      const budget = budgetIdx !== -1 ? Number(args[budgetIdx + 1]) : undefined;
+      if (budget !== undefined && (isNaN(budget) || budget <= 0)) {
+        throw new HiveMindError("--budget requires a positive number (dollars)");
+      }
+      const skipBaseline = args.includes("--skip-baseline");
+      return { command: "start", prdPath: args[prdIdx + 1], silent, budget, skipBaseline };
     }
-    case "approve":
-      return { command: "approve" };
+    case "approve": {
+      const skipBaselineApprove = args.includes("--skip-baseline");
+      return { command: "approve", silent, skipBaseline: skipBaselineApprove };
+    }
     case "reject": {
       const fbIdx = args.indexOf("--feedback");
       if (fbIdx === -1 || !args[fbIdx + 1]) {
         throw new HiveMindError("reject requires --feedback <text>");
       }
-      return { command: "reject", feedback: args[fbIdx + 1] };
+      return { command: "reject", feedback: args[fbIdx + 1], silent };
     }
     case "status":
       return { command: "status" };
     case "abort":
       return { command: "abort" };
+    case "manifest":
+      return { command: "manifest" };
     case "resume": {
       const fromIdx = args.indexOf("--from");
       const from = fromIdx !== -1 ? args[fromIdx + 1] : undefined;
       const skipFailed = args.includes("--skip-failed");
-      return { command: "resume", from, skipFailed };
+      return { command: "resume", from, skipFailed, silent };
     }
     default:
       throw new HiveMindError(`Unknown command '${cmd}'. Available: start, approve, reject, status, abort, resume`);
@@ -74,7 +87,7 @@ export async function main(): Promise<void> {
       if (claudeCheck.exitCode !== 0) {
         throw new HiveMindError("claude CLI not found on PATH");
       }
-      await runPipeline(parsed.prdPath, ".hive-mind", config);
+      await runPipeline(parsed.prdPath, ".hive-mind", config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline });
       break;
     }
     case "approve": {
@@ -82,7 +95,7 @@ export async function main(): Promise<void> {
       if (!checkpoint) {
         throw new HiveMindError("No active checkpoint");
       }
-      await resumeFromCheckpoint(checkpoint, ".hive-mind", config);
+      await resumeFromCheckpoint(checkpoint, ".hive-mind", config, { silent: parsed.silent, skipBaseline: parsed.skipBaseline });
       break;
     }
     case "reject": {
@@ -91,7 +104,7 @@ export async function main(): Promise<void> {
         throw new HiveMindError("No active checkpoint");
       }
       checkpoint.feedback = parsed.feedback;
-      await resumeFromCheckpoint(checkpoint, ".hive-mind", config);
+      await resumeFromCheckpoint(checkpoint, ".hive-mind", config, { silent: parsed.silent });
       break;
     }
     case "status": {
@@ -112,6 +125,12 @@ export async function main(): Promise<void> {
         unlinkSync(cpPath);
       }
       console.log("Pipeline aborted.");
+      break;
+    }
+    case "manifest": {
+      const { updateManifest } = await import("./manifest/generator.js");
+      await updateManifest(".hive-mind");
+      console.log("Manifest updated: .hive-mind/MANIFEST.md");
       break;
     }
     case "resume": {

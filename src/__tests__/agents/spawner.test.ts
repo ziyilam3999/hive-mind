@@ -113,7 +113,7 @@ describe("spawnAgent", () => {
     expect(result.durationMs).toBe(3200);
   });
 
-  it("falls back to stdout when JSON parse fails", async () => {
+  it("returns failure when agent does not create output file (no fallback)", async () => {
     const mockSpawn = vi.mocked(spawnClaude);
     mockSpawn.mockResolvedValue({
       exitCode: 0,
@@ -122,12 +122,12 @@ describe("spawnAgent", () => {
       // No json field — simulates parse failure
     });
 
-    // File doesn't exist so fallback write happens
+    // File doesn't exist — agent didn't use Write tool
     vi.mocked(fileExists).mockReturnValue(false);
 
     const result = await spawnAgent(makeAgentConfig(), config);
-    // Should still succeed if fallback write works
-    // fileExists returns false so success will be false, but no crash
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("did not create output file");
     expect(result.costUsd).toBeUndefined();
     expect(result.modelUsed).toBeUndefined();
   });

@@ -1,10 +1,9 @@
 import type { AgentConfig, AgentResult } from "../types/agents.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import { spawnClaude } from "../utils/shell.js";
-import { fileExists, writeFileAtomic, ensureDir } from "../utils/file-io.js";
+import { fileExists } from "../utils/file-io.js";
 import { buildPrompt } from "./prompts.js";
 import { getToolsForAgent } from "./tool-permissions.js";
-import { dirname } from "node:path";
 import { calculateBackoffDelay, sleep } from "../utils/backoff.js";
 
 export async function spawnAgent(
@@ -35,29 +34,17 @@ export async function spawnAgent(
     };
   }
 
-  // Extract content: prefer JSON result field, fall back to raw stdout
-  const content = result.json?.result ?? result.stdout.trim();
-
-  // If agent didn't write the file, capture output as fallback
-  if (!fileExists(config.outputFile) && content.length > 0) {
-    ensureDir(dirname(config.outputFile));
-    writeFileAtomic(config.outputFile, stripMarkdownFences(content));
-  }
-
+  // Agent must create output file via Write tool (no fallback — raw stdout is session JSON)
   const outputExists = fileExists(config.outputFile);
   return {
     success: outputExists,
     outputFile: config.outputFile,
-    error: outputExists ? undefined : `Agent ${config.type} completed but output file not found: ${config.outputFile}`,
+    error: outputExists ? undefined : `Agent ${config.type} completed but did not create output file: ${config.outputFile}`,
     costUsd: result.json?.cost_usd,
     modelUsed: result.json?.model,
     sessionId: result.json?.session_id,
     durationMs: result.json?.duration_ms,
   };
-}
-
-function stripMarkdownFences(text: string): string {
-  return text.replace(/^```\w*\n?/, "").replace(/\n?```\s*$/, "");
 }
 
 export async function spawnAgentWithRetry(

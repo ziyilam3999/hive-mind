@@ -148,6 +148,8 @@ export function loadConfig(projectRoot: string): HiveMindConfig {
     graduationMinStoryRefs: (obj.graduationMinStoryRefs as number | undefined) ?? defaults.graduationMinStoryRefs,
     kbSizeWarningWords: (obj.kbSizeWarningWords as number | undefined) ?? defaults.kbSizeWarningWords,
     reportExcerptLength: (obj.reportExcerptLength as number | undefined) ?? defaults.reportExcerptLength,
+    baselineBuildCommand: (obj.baselineBuildCommand as string | undefined) ?? defaults.baselineBuildCommand,
+    baselineTestCommand: (obj.baselineTestCommand as string | undefined) ?? defaults.baselineTestCommand,
     modelAssignments,
   };
 }

@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 2 — Reliability (complete) | **Next Action:** Create Phase 3 implementation plan | **Updated:** 2026-03-12
+**Phase:** 3 — Visibility & DX (complete) | **Next Action:** Commit Phase 3, begin Phase 4 | **Updated:** 2026-03-12
 
 ---
 
@@ -10,9 +10,9 @@
 
 | Metric | Baseline | Current |
 |--------|----------|---------|
-| Test files | 25 | 31 |
-| Total tests | 95 | 169 |
-| Source files | 38 | 46 |
+| Test files | 25 | 36 |
+| Total tests | 95 | 207 |
+| Source files | 38 | 50 |
 | TypeScript errors | 0 | 0 |
 
 ---
@@ -55,20 +55,20 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 6 | RD-12 | Agent output mode fix | [ ] | — |
-| 7 | RD-05 | Cost/token tracking | [ ] | — |
-| 8 | FW-02 | Clean baseline verification | [ ] | — |
-| 9 | ENH-15 | AI-first manifest | [ ] | — |
-| 10 | ENH-13 | Checkpoint sound notification | [ ] | — |
-| 11 | ENH-02 | Dependency-aware scheduling | [ ] | — |
+| 6 | RD-12 | Agent output mode fix | [x] | 2026-03-12 |
+| 7 | RD-05 | Cost/token tracking | [x] | 2026-03-12 |
+| 8 | FW-02 | Clean baseline verification | [x] | 2026-03-12 |
+| 9 | ENH-15 | AI-first manifest | [x] | 2026-03-12 |
+| 10 | ENH-13 | Checkpoint sound notification | [x] | 2026-03-12 |
+| 11 | ENH-02 | Dependency-aware scheduling | [x] | 2026-03-12 |
 
 **Smoke Test Gate:**
-- [ ] Tier 1 (Unit) — pass date: —
-- [ ] Tier 2 (Integration) — pass date: —
-- [ ] Tier 3 (Dogfood trial — recommended) — pass date: —
+- [x] Tier 1 (Unit) — pass date: 2026-03-12 (207 tests, 36 files)
+- [x] Tier 2 (Integration) — pass date: 2026-03-12
+- [~] Tier 3 (Dogfood trial — recommended) — skipped (Phase 4 Tier 3 will cover)
 
-**Learnings captured:** [ ] → `learnings/phase-3-learnings.md`
-**Committed:** [ ] → —
+**Learnings captured:** [x] → `learnings/phase-3-learnings.md`
+**Committed:** [x] → PENDING
 
 ---
 

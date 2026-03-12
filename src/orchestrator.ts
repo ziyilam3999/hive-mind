@@ -14,11 +14,14 @@ import {
   updateStoryStatus,
   getNextStory,
   markCommitted,
+  validateDependencies,
 } from "./state/execution-plan.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
 import { isoTimestamp } from "./utils/timestamp.js";
 import { join } from "node:path";
 import { HiveMindError } from "./utils/errors.js";
+import { notifyCheckpoint } from "./utils/notify.js";
+import { CostTracker } from "./utils/cost-tracker.js";
 import { runSpecStage as specStage } from "./stages/spec-stage.js";
 import { runPlanStage as planStage } from "./stages/plan-stage.js";
 import { runBuild } from "./stages/execute-build.js";
@@ -28,11 +31,22 @@ import { runLearn } from "./stages/execute-learn.js";
 import { parseRequiredTooling, detectAllTools } from "./tooling/detect.js";
 import { runToolingSetup } from "./tooling/setup.js";
 import { runReportStage as reportStage } from "./stages/report-stage.js";
+import { runBaselineCheck } from "./stages/baseline-check.js";
+import { updateManifest } from "./manifest/generator.js";
+
+async function safeUpdateManifest(hiveMindDir: string): Promise<void> {
+  try {
+    await updateManifest(hiveMindDir);
+  } catch (err) {
+    console.warn(`Warning: Manifest update failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
 export async function runPipeline(
   prdPath: string,
   hiveMindDir: string,
   config: HiveMindConfig,
+  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean },
 ): Promise<void> {
   if (!fileExists(prdPath)) {
     throw new HiveMindError(`PRD file not found: ${prdPath}`);
@@ -49,6 +63,7 @@ export async function runPipeline(
   }
 
   await runSpecStage(prdPath, hiveMindDir, config);
+  await safeUpdateManifest(hiveMindDir);
 
   const logPath0 = join(hiveMindDir, "manager-log.jsonl");
   const specDir = join(hiveMindDir, "spec");
@@ -66,13 +81,16 @@ export async function runPipeline(
 
   console.log("SPEC stage complete. Awaiting approval.");
   console.log(getCheckpointMessage("approve-spec"));
+  notifyCheckpoint(options?.silent ?? false);
 }
 
 export async function resumeFromCheckpoint(
   checkpoint: Checkpoint,
   hiveMindDir: string,
   config: HiveMindConfig,
+  options?: { silent?: boolean; skipBaseline?: boolean },
 ): Promise<void> {
+  const silent = options?.silent ?? false;
   const feedback = checkpoint.feedback ?? undefined;
 
   switch (checkpoint.awaiting) {
@@ -96,6 +114,7 @@ export async function resumeFromCheckpoint(
       }
 
       await runPlanStage(hiveMindDir, config, feedback);
+      await safeUpdateManifest(hiveMindDir);
 
       const planLogPath = join(hiveMindDir, "manager-log.jsonl");
       const planFilePath = join(hiveMindDir, "plans", "execution-plan.json");
@@ -120,13 +139,30 @@ export async function resumeFromCheckpoint(
 
       console.log("PLAN stage complete. Awaiting approval.");
       console.log(getCheckpointMessage("approve-plan"));
+      notifyCheckpoint(silent);
       break;
     }
     case "approve-plan": {
       deleteCheckpoint(hiveMindDir);
 
-      await runExecuteStage(hiveMindDir, config);
+      // Baseline check — verify codebase compiles and tests pass before burning agent tokens
+      if (!options?.skipBaseline) {
+        await runBaselineCheck(config);
+      }
+
+      const tracker = new CostTracker();
+      await runExecuteStage(hiveMindDir, config, tracker);
+
+      const summary = tracker.getSummary();
+      if (summary.totalCostUsd > 0) {
+        console.log(`\nCost summary: $${summary.totalCostUsd.toFixed(4)} total`);
+        for (const [storyId, cost] of summary.perStory) {
+          console.log(`  ${storyId}: $${cost.toFixed(4)}`);
+        }
+      }
+
       await runReportStage(hiveMindDir, config);
+      await safeUpdateManifest(hiveMindDir);
 
       writeCheckpoint(hiveMindDir, {
         awaiting: "verify",
@@ -137,6 +173,7 @@ export async function resumeFromCheckpoint(
 
       console.log("EXECUTE + REPORT stages complete. Awaiting verification.");
       console.log(getCheckpointMessage("verify"));
+      notifyCheckpoint(silent);
       break;
     }
     case "verify": {
@@ -151,6 +188,7 @@ export async function resumeFromCheckpoint(
 
       console.log("Verification approved. Ready to ship.");
       console.log(getCheckpointMessage("ship"));
+      notifyCheckpoint(silent);
       break;
     }
     case "ship": {
@@ -183,6 +221,7 @@ export async function runPlanStage(
 export async function runExecuteStage(
   hiveMindDir: string,
   config: HiveMindConfig,
+  costTracker?: CostTracker,
 ): Promise<void> {
   console.log("Running EXECUTE stage...");
 
@@ -195,6 +234,8 @@ export async function runExecuteStage(
   const logPath = join(hiveMindDir, "manager-log.jsonl");
   let plan: ExecutionPlan = loadExecutionPlan(planPath);
 
+  validateDependencies(plan);
+
   let story = getNextStory(plan);
   while (story) {
     console.log(`Executing story: ${story.id} - ${story.title}`);
@@ -204,14 +245,14 @@ export async function runExecuteStage(
 
     try {
       // BUILD sub-pipeline (US-13)
-      await runBuild(story, hiveMindDir, config);
+      await runBuild(story, hiveMindDir, config, costTracker);
 
       appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
         storyId: story.id,
       }));
 
       // VERIFY sub-pipeline (US-14)
-      const verifyResult = await runVerify(story, hiveMindDir, planPath, config);
+      const verifyResult = await runVerify(story, hiveMindDir, planPath, config, costTracker);
 
       // Reload plan from disk -- runVerify writes attempt increments via saveExecutionPlan.
       // Without this reload, the stale in-memory plan overwrites the incremented attempts to 0.
@@ -263,9 +304,13 @@ export async function runExecuteStage(
       }
 
       saveExecutionPlan(planPath, plan);
+      await safeUpdateManifest(hiveMindDir);
 
       // LEARN sub-pipeline (US-16) -- always, even if failed
-      await runLearn(story, hiveMindDir, config);
+      await runLearn(story, hiveMindDir, config, costTracker);
+
+      // Check budget after each story
+      costTracker?.enforceBudget();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       const failedId = story!.id;
