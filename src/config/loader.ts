@@ -1,0 +1,149 @@
+import { DEFAULT_CONFIG } from "./schema.js";
+import type { HiveMindConfig } from "./schema.js";
+import type { ModelTier } from "../types/agents.js";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+const CONFIG_FILENAME = ".hivemindrc.json";
+
+export function getDefaultConfig(): HiveMindConfig {
+  return { ...DEFAULT_CONFIG, modelAssignments: { ...DEFAULT_CONFIG.modelAssignments } };
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export function validateConfig(raw: unknown): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { valid: false, errors: ["Config must be a JSON object"], warnings };
+  }
+
+  const obj = raw as Record<string, unknown>;
+  const knownKeys = new Set(Object.keys(DEFAULT_CONFIG));
+
+  for (const key of Object.keys(obj)) {
+    if (!knownKeys.has(key)) {
+      warnings.push(`Unknown config key: "${key}"`);
+    }
+  }
+
+  const positiveNumbers: Array<keyof HiveMindConfig> = [
+    "agentTimeout",
+    "shellTimeout",
+    "toolingDetectTimeout",
+    "memoryWordCap",
+    "memoryGraduationThreshold",
+    "kbSizeWarningWords",
+    "reportExcerptLength",
+  ];
+
+  for (const key of positiveNumbers) {
+    if (key in obj) {
+      const val = obj[key];
+      if (typeof val !== "number" || val <= 0) {
+        errors.push(`${key} must be a positive number, got: ${JSON.stringify(val)}`);
+      }
+    }
+  }
+
+  const nonNegativeIntegers: Array<keyof HiveMindConfig> = [
+    "maxRetries",
+    "maxAttempts",
+    "graduationMinDates",
+    "graduationMinStoryRefs",
+  ];
+
+  for (const key of nonNegativeIntegers) {
+    if (key in obj) {
+      const val = obj[key];
+      if (typeof val !== "number" || val < 0 || !Number.isInteger(val)) {
+        errors.push(`${key} must be a non-negative integer, got: ${JSON.stringify(val)}`);
+      }
+    }
+  }
+
+  if ("modelAssignments" in obj) {
+    const ma = obj.modelAssignments;
+    if (typeof ma !== "object" || ma === null || Array.isArray(ma)) {
+      errors.push("modelAssignments must be an object");
+    } else {
+      const validModels = new Set(["opus", "sonnet", "haiku"]);
+      for (const [agent, model] of Object.entries(ma as Record<string, unknown>)) {
+        if (typeof model !== "string" || !validModels.has(model)) {
+          errors.push(`modelAssignments.${agent} must be "opus", "sonnet", or "haiku", got: ${JSON.stringify(model)}`);
+        }
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+function findConfigFile(startDir: string): string | undefined {
+  let dir = resolve(startDir);
+  const root = resolve("/");
+
+  while (true) {
+    const candidate = join(dir, CONFIG_FILENAME);
+    if (existsSync(candidate)) return candidate;
+    const parent = resolve(dir, "..");
+    if (parent === dir || dir === root) return undefined;
+    dir = parent;
+  }
+}
+
+export function loadConfig(projectRoot: string): HiveMindConfig {
+  const defaults = getDefaultConfig();
+  const configPath = findConfigFile(projectRoot);
+
+  if (!configPath) return defaults;
+
+  let raw: unknown;
+  try {
+    const content = readFileSync(configPath, "utf-8");
+    raw = JSON.parse(content);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to parse ${configPath}: ${msg}`);
+  }
+
+  const validation = validateConfig(raw);
+
+  for (const warning of validation.warnings) {
+    console.warn(`Config warning (${configPath}): ${warning}`);
+  }
+
+  if (!validation.valid) {
+    throw new Error(
+      `Invalid config in ${configPath}:\n${validation.errors.map((e) => `  - ${e}`).join("\n")}`,
+    );
+  }
+
+  const obj = raw as Record<string, unknown>;
+
+  // Deep merge: modelAssignments merges with defaults, other keys override
+  const modelAssignments: Record<string, ModelTier> = typeof obj.modelAssignments === "object" && obj.modelAssignments !== null
+    ? { ...defaults.modelAssignments, ...(obj.modelAssignments as Record<string, ModelTier>) }
+    : { ...defaults.modelAssignments };
+
+  return {
+    agentTimeout: (obj.agentTimeout as number | undefined) ?? defaults.agentTimeout,
+    shellTimeout: (obj.shellTimeout as number | undefined) ?? defaults.shellTimeout,
+    toolingDetectTimeout: (obj.toolingDetectTimeout as number | undefined) ?? defaults.toolingDetectTimeout,
+    maxRetries: (obj.maxRetries as number | undefined) ?? defaults.maxRetries,
+    maxAttempts: (obj.maxAttempts as number | undefined) ?? defaults.maxAttempts,
+    memoryWordCap: (obj.memoryWordCap as number | undefined) ?? defaults.memoryWordCap,
+    memoryGraduationThreshold: (obj.memoryGraduationThreshold as number | undefined) ?? defaults.memoryGraduationThreshold,
+    graduationMinDates: (obj.graduationMinDates as number | undefined) ?? defaults.graduationMinDates,
+    graduationMinStoryRefs: (obj.graduationMinStoryRefs as number | undefined) ?? defaults.graduationMinStoryRefs,
+    kbSizeWarningWords: (obj.kbSizeWarningWords as number | undefined) ?? defaults.kbSizeWarningWords,
+    reportExcerptLength: (obj.reportExcerptLength as number | undefined) ?? defaults.reportExcerptLength,
+    modelAssignments,
+  };
+}

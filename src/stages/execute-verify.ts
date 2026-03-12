@@ -8,6 +8,7 @@ import { getReportPath } from "../reports/templates.js";
 import { parseTestReport, parseEvalReport } from "../reports/parser.js";
 import { incrementAttempts, saveExecutionPlan } from "../state/execution-plan.js";
 import { appendLogEntry, createLogEntry } from "../state/manager-log.js";
+import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 import { copyFileSync } from "node:fs";
 
@@ -23,6 +24,7 @@ export async function runVerify(
   story: Story,
   hiveMindDir: string,
   planPath: string,
+  config: HiveMindConfig,
 ): Promise<VerifyResult> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -64,7 +66,7 @@ export async function runVerify(
       outputFile: testReportPath,
       rules: getAgentRules("tester-exec"),
       memoryContent,
-    });
+    }, config);
 
     const testContent = readFileSafe(testReportPath) ?? "";
     const testResult = parseTestReport(testContent);
@@ -80,7 +82,7 @@ export async function runVerify(
       attempt,
       parsedStatus: testResult.status,
       parserConfidence: testResult.confidence,
-      rawExcerpt: testContent.slice(0, 200),
+      rawExcerpt: testContent.slice(0, config.reportExcerptLength),
     }));
 
     if (testResult.confidence === "default") {
@@ -91,7 +93,7 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.4 / E.4a+E.4b: Fix AC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent);
+      await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent, config);
       continue; // re-VERIFY from E.3
     }
 
@@ -104,7 +106,7 @@ export async function runVerify(
       outputFile: evalReportPath,
       rules: getAgentRules("evaluator"),
       memoryContent,
-    });
+    }, config);
 
     const evalContent = readFileSafe(evalReportPath) ?? "";
     const evalResult = parseEvalReport(evalContent);
@@ -119,7 +121,7 @@ export async function runVerify(
       attempt,
       evalParsedStatus: evalResult.verdict,
       evalParserConfidence: evalResult.confidence,
-      rawExcerpt: evalContent.slice(0, 200),
+      rawExcerpt: evalContent.slice(0, config.reportExcerptLength),
     }));
 
     // Bug 11: Short-circuit — if test passed with matched confidence and eval
@@ -135,7 +137,7 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.6 / E.6a+E.6b: Fix EC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent);
+      await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent, config);
       continue; // re-VERIFY from E.3
     }
 
@@ -153,6 +155,7 @@ async function runFixPipeline(
   attempt: number,
   failureType: "ac" | "ec",
   memoryContent: string,
+  config: HiveMindConfig,
 ): Promise<void> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
 
@@ -174,7 +177,7 @@ async function runFixPipeline(
       outputFile: fixReportPath,
       rules: getAgentRules("fixer"),
       memoryContent,
-    });
+    }, config);
   } else {
     // Escalated: diagnostician → fixer
     console.log(`E.${failureType === "ac" ? "4a" : "6a"}: Running diagnostician for ${story.id} (attempt ${attempt})...`);
@@ -186,7 +189,7 @@ async function runFixPipeline(
       outputFile: diagReportPath,
       rules: getAgentRules("diagnostician"),
       memoryContent,
-    });
+    }, config);
 
     // Verify diagnosis file exists before spawning fixer (P11/F11)
     if (!fileExists(diagReportPath)) {
@@ -202,7 +205,7 @@ async function runFixPipeline(
       outputFile: fixReportPath,
       rules: getAgentRules("fixer"),
       memoryContent,
-    });
+    }, config);
   }
 }
 

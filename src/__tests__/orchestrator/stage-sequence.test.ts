@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { getDefaultConfig } from "../../config/loader.js";
 
 // Mock the agent spawner to avoid calling real claude CLI
 vi.mock("../../agents/spawner.js", () => ({
@@ -11,6 +12,8 @@ vi.mock("../../agents/spawner.js", () => ({
   }),
   spawnAgent: vi.fn(async () => ({ success: true, outputFile: "" })),
 }));
+
+const config = getDefaultConfig();
 
 describe("orchestrator stage sequence", () => {
   it("runPipeline calls SPEC stage", async () => {
@@ -27,7 +30,7 @@ describe("orchestrator stage sequence", () => {
     writeFileSync(prdPath, "# Test PRD");
 
     try {
-      await runPipeline(prdPath, join(testDir, ".hive-mind"));
+      await runPipeline(prdPath, join(testDir, ".hive-mind"), config);
     } catch {
       // process.exit throws
     }
@@ -53,6 +56,7 @@ describe("orchestrator stage sequence", () => {
     await resumeFromCheckpoint(
       { awaiting: "ship", message: "test", timestamp: "2026-03-06T00:00:00Z", feedback: null },
       testDir,
+      config,
     );
     const calls = consoleSpy.mock.calls.map((c) => c[0]);
     expect(calls.some((c) => typeof c === "string" && c.includes("Pipeline complete"))).toBe(true);

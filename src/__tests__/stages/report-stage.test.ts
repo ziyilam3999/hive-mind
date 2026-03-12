@@ -1,19 +1,28 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("../../agents/spawner.js", () => ({
-  spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string }) => {
+vi.mock("../../agents/spawner.js", () => {
+  const impl = async (config: { outputFile: string; type: string }) => {
     const { writeFileSync, mkdirSync } = await import("node:fs");
     const { dirname } = await import("node:path");
     mkdirSync(dirname(config.outputFile), { recursive: true });
     writeFileSync(config.outputFile, `# Mock ${config.type} report`);
     return { success: true, outputFile: config.outputFile };
-  }),
-}));
+  };
+  return {
+    spawnAgentWithRetry: vi.fn(impl),
+    spawnAgentsParallel: vi.fn(async (configs: Array<{ outputFile: string; type: string }>) => {
+      return Promise.all(configs.map(impl));
+    }),
+  };
+});
 
 import { runReportStage } from "../../stages/report-stage.js";
-import { spawnAgentWithRetry } from "../../agents/spawner.js";
+import { spawnAgentWithRetry, spawnAgentsParallel } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { getDefaultConfig } from "../../config/loader.js";
+
+const config = getDefaultConfig();
 
 describe("report-stage", () => {
   const testDir = join(process.cwd(), ".test-report-stage");
@@ -28,6 +37,7 @@ describe("report-stage", () => {
       JSON.stringify({ schemaVersion: "2.0.0", prdPath: "PRD.md", specPath: "SPEC.md", stories: [] }),
     );
     vi.mocked(spawnAgentWithRetry).mockClear();
+    vi.mocked(spawnAgentsParallel).mockClear();
   }
 
   function cleanup() {
@@ -38,7 +48,7 @@ describe("report-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir);
+      await runReportStage(testDir, config);
       consoleSpy.mockRestore();
 
       expect(existsSync(join(testDir, "consolidated-report.md"))).toBe(true);
@@ -51,7 +61,7 @@ describe("report-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir);
+      await runReportStage(testDir, config);
       consoleSpy.mockRestore();
 
       expect(existsSync(join(testDir, "retrospective.md"))).toBe(true);
@@ -60,18 +70,20 @@ describe("report-stage", () => {
     }
   });
 
-  it("reporter and retrospective are separate agent spawns", async () => {
+  it("reporter and retrospective are spawned in parallel", async () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir);
+      await runReportStage(testDir, config);
       consoleSpy.mockRestore();
 
-      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
-      const reporterCall = calls.find((c) => c[0].type === "reporter");
-      const retroCall = calls.find((c) => c[0].type === "retrospective");
-      expect(reporterCall).toBeDefined();
-      expect(retroCall).toBeDefined();
+      const calls = vi.mocked(spawnAgentsParallel).mock.calls;
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+      const configs = calls[0][0];
+      const reporterConfig = configs.find((c: { type: string }) => c.type === "reporter");
+      const retroConfig = configs.find((c: { type: string }) => c.type === "retrospective");
+      expect(reporterConfig).toBeDefined();
+      expect(retroConfig).toBeDefined();
     } finally {
       cleanup();
     }
@@ -81,12 +93,13 @@ describe("report-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir);
+      await runReportStage(testDir, config);
       consoleSpy.mockRestore();
 
-      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
-      const retroCall = calls.find((c) => c[0].type === "retrospective");
-      expect(retroCall![0].inputFiles.some((f: string) => f.includes("learning.md"))).toBe(true);
+      const calls = vi.mocked(spawnAgentsParallel).mock.calls;
+      const configs = calls[0][0];
+      const retroConfig = configs.find((c: { type: string }) => c.type === "retrospective");
+      expect(retroConfig!.inputFiles.some((f: string) => f.includes("learning.md"))).toBe(true);
     } finally {
       cleanup();
     }
@@ -104,7 +117,7 @@ describe("report-stage", () => {
 
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir);
+      await runReportStage(testDir, config);
       consoleSpy.mockRestore();
 
       // Memory file should still exist
@@ -124,7 +137,7 @@ describe("report-stage", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runReportStage(testDir);
+      await runReportStage(testDir, config);
       consoleSpy.mockRestore();
 
       expect(warnSpy).toHaveBeenCalled();

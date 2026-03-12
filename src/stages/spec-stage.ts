@@ -3,6 +3,7 @@ import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, ensureDir, fileExists } from "../utils/file-io.js";
+import type { HiveMindConfig } from "../config/schema.js";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -19,6 +20,7 @@ const SPEC_STEPS = [
 export async function runSpecStage(
   prdPath: string,
   hiveMindDir: string,
+  config: HiveMindConfig,
   feedback?: string,
 ): Promise<void> {
   const specDir = join(hiveMindDir, "spec");
@@ -47,7 +49,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "research-report.md"),
     rules: getAgentRules("researcher"),
     memoryContent,
-  });
+  }, config);
 
   const researchReport = join(specDir, "research-report.md");
 
@@ -60,7 +62,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "justification.md"),
     rules: getAgentRules("justifier"),
     memoryContent,
-  });
+  }, config);
 
   const justification = join(specDir, "justification.md");
 
@@ -79,7 +81,7 @@ export async function runSpecStage(
     memoryContent: feedback
       ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
       : memoryContent,
-  });
+  }, config);
 
   const specDraft = join(specDir, "SPEC-draft.md");
 
@@ -92,7 +94,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "critique-1.md"),
     rules: getAgentRules("critic"),
     memoryContent,
-  });
+  }, config);
 
   const critique1 = join(specDir, "critique-1.md");
 
@@ -105,7 +107,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "SPEC-v0.2.md"),
     rules: getAgentRules("spec-corrector"),
     memoryContent,
-  });
+  }, config);
 
   const specV02 = join(specDir, "SPEC-v0.2.md");
 
@@ -118,7 +120,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "critique-2.md"),
     rules: getAgentRules("critic"),
     memoryContent,
-  });
+  }, config);
 
   const critique2 = join(specDir, "critique-2.md");
 
@@ -131,20 +133,20 @@ export async function runSpecStage(
     outputFile: join(specDir, "SPEC-v1.0.md"),
     rules: getAgentRules("spec-corrector"),
     memoryContent,
-  });
+  }, config);
 
   console.log("SPEC stage complete. 7 artifacts produced.");
 }
 
-async function spawnStep(config: AgentConfig): Promise<void> {
-  const result = await spawnAgentWithRetry(config);
+async function spawnStep(agentConfig: AgentConfig, hiveMindConfig: HiveMindConfig): Promise<void> {
+  const result = await spawnAgentWithRetry(agentConfig, hiveMindConfig);
   if (!result.success) {
     // Empty critique is acceptable — log warning but proceed
-    if (config.type === "critic") {
+    if (agentConfig.type === "critic") {
       console.warn(`Warning: Critic produced empty or missing output: ${result.error}`);
       return;
     }
-    throw new Error(`Agent ${config.type} failed: ${result.error}`);
+    throw new Error(`Agent ${agentConfig.type} failed: ${result.error}`);
   }
 }
 

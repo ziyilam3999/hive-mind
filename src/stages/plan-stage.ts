@@ -1,8 +1,9 @@
 import type { AgentConfig } from "../types/agents.js";
-import { spawnAgentWithRetry } from "../agents/spawner.js";
+import { spawnAgentWithRetry, spawnAgentsParallel } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, writeFileAtomic, ensureDir, fileExists } from "../utils/file-io.js";
+import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 
 function extractStepFiles(planJsonPath: string, stepsDir: string): void {
@@ -72,6 +73,7 @@ export function scanForRoleKeywords(specContent: string): string[] {
 
 export async function runPlanStage(
   hiveMindDir: string,
+  config: HiveMindConfig,
   feedback?: string,
 ): Promise<void> {
   const plansDir = join(hiveMindDir, "plans");
@@ -98,26 +100,28 @@ export async function runPlanStage(
   const activeRoles = scanForRoleKeywords(specContent);
   console.log(`Active roles: ${activeRoles.join(", ")}`);
 
-  // Step 2: Spawn role agents (independent subagents)
-  const roleReportPaths: string[] = [];
-  for (const role of activeRoles) {
+  // Step 2: Spawn role agents in parallel (independent subagents)
+  const roleConfigs: AgentConfig[] = activeRoles.map((role) => {
     const agentType = role as AgentConfig["type"];
-    const reportPath = join(roleReportsDir, `${role}-report.md`);
-    console.log(`Spawning role agent: ${role}...`);
-
-    const result = await spawnAgentWithRetry({
+    return {
       type: agentType,
-      model: role === "analyst" || role === "architect" ? "opus" : "sonnet",
+      model: (role === "analyst" || role === "architect" ? "opus" : "sonnet") as AgentConfig["model"],
       inputFiles: [specPath],
-      outputFile: reportPath,
+      outputFile: join(roleReportsDir, `${role}-report.md`),
       rules: getAgentRules(agentType),
       memoryContent: feedbackMemory,
-    });
+    };
+  });
 
-    if (result.success) {
-      roleReportPaths.push(reportPath);
+  console.log(`Spawning ${roleConfigs.length} role agents in parallel...`);
+  const roleResults = await spawnAgentsParallel(roleConfigs, config);
+
+  const roleReportPaths: string[] = [];
+  for (let i = 0; i < roleResults.length; i++) {
+    if (roleResults[i].success) {
+      roleReportPaths.push(roleConfigs[i].outputFile);
     } else {
-      console.warn(`Warning: Role agent ${role} failed. Omitting report.`);
+      console.warn(`Warning: Role agent ${activeRoles[i]} failed. Omitting report.`);
     }
   }
 
@@ -143,7 +147,7 @@ export async function runPlanStage(
       "stepContent": "Full step file content as markdown with ## SPEC REFERENCES, ## ACCEPTANCE CRITERIA (AC-0 is always lint+typecheck), ## EXIT CRITERIA (binary shell commands that echo PASS/FAIL), ## INPUT, ## OUTPUT (exact exports)",
       "status": "not-started",
       "attempts": 0,
-      "maxAttempts": 3,
+      "maxAttempts": ${config.maxAttempts},
       "committed": false,
       "commitHash": null
     }
@@ -158,7 +162,7 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
     outputFile: planJsonPath,
     rules: [EXECUTION_PLAN_SCHEMA],
     memoryContent: feedbackMemory,
-  });
+  }, config);
 
   if (!fileExists(planJsonPath)) {
     throw new Error("Synthesizer failed to produce execution-plan.json");
@@ -179,7 +183,7 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
       "CONSOLIDATE: Collect all ACs and ECs from step files into one acceptance-criteria.md document.",
     ],
     memoryContent: feedbackMemory,
-  });
+  }, config);
 
   console.log("PLAN stage complete.");
 }

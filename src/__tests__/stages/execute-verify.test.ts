@@ -26,6 +26,7 @@ vi.mock("../../agents/spawner.js", () => ({
 import { runVerify } from "../../stages/execute-verify.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { getDefaultConfig } from "../../config/loader.js";
 
 const makeStory = (overrides?: Partial<Story>): Story => ({
   id: "US-99",
@@ -50,6 +51,8 @@ const makePlan = (story: Story): ExecutionPlan => ({
   specPath: "SPEC.md",
   stories: [story],
 });
+
+const config = getDefaultConfig();
 
 describe("execute-verify", () => {
   const testDir = join(process.cwd(), ".test-exec-verify");
@@ -76,7 +79,7 @@ describe("execute-verify", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"));
+      const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -108,7 +111,7 @@ describe("execute-verify", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"));
+      const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
       errSpy.mockRestore();
 
@@ -145,7 +148,7 @@ describe("execute-verify", () => {
       });
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"));
+      const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);

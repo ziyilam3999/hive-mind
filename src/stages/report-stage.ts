@@ -1,4 +1,4 @@
-import { spawnAgentWithRetry } from "../agents/spawner.js";
+import { spawnAgentWithRetry, spawnAgentsParallel } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory, writeMemory, checkMemorySize, appendToMemory } from "../memory/memory-manager.js";
 import {
@@ -11,19 +11,18 @@ import {
 import { checkEli5Presence } from "../reports/parser.js";
 import { readFileSafe, fileExists } from "../utils/file-io.js";
 import { estimateWordCount } from "../utils/token-count.js";
+import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 import { readdirSync } from "node:fs";
 
-const KB_SIZE_WARNING_WORDS = 5000;
-
-export async function runReportStage(hiveMindDir: string): Promise<void> {
+export async function runReportStage(hiveMindDir: string, config: HiveMindConfig): Promise<void> {
   const reportsDir = join(hiveMindDir, "reports");
   const memoryPath = join(hiveMindDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
   const kbDir = join(hiveMindDir, "knowledge-base");
 
-  // 1. Reporter agent — consolidated-report.md
-  console.log("Running reporter agent...");
+  // 1 + 2. Reporter + Retrospective in parallel
+  console.log("Running reporter + retrospective agents in parallel...");
   const reportFiles = collectAllReportFiles(reportsDir);
   const planPath = join(hiveMindDir, "plans", "execution-plan.json");
   const reporterInputs = [...reportFiles];
@@ -31,15 +30,30 @@ export async function runReportStage(hiveMindDir: string): Promise<void> {
     reporterInputs.push(planPath);
   }
 
+  const learningFiles = collectLearningFiles(reportsDir);
+  const kbFiles = collectKnowledgeBaseFiles(kbDir);
+
   const consolidatedPath = join(hiveMindDir, "consolidated-report.md");
-  await spawnAgentWithRetry({
-    type: "reporter",
-    model: "haiku",
-    inputFiles: reporterInputs,
-    outputFile: consolidatedPath,
-    rules: getAgentRules("reporter"),
-    memoryContent,
-  });
+  const retrospectivePath = join(hiveMindDir, "retrospective.md");
+
+  const [reporterResult, retroResult] = await spawnAgentsParallel([
+    {
+      type: "reporter",
+      model: "haiku",
+      inputFiles: reporterInputs,
+      outputFile: consolidatedPath,
+      rules: getAgentRules("reporter"),
+      memoryContent,
+    },
+    {
+      type: "retrospective",
+      model: "sonnet",
+      inputFiles: [...learningFiles, ...kbFiles],
+      outputFile: retrospectivePath,
+      rules: getAgentRules("retrospective"),
+      memoryContent,
+    },
+  ], config);
 
   // ELI5 check on consolidated report
   const consolidatedContent = readFileSafe(consolidatedPath);
@@ -51,21 +65,6 @@ export async function runReportStage(hiveMindDir: string): Promise<void> {
       );
     }
   }
-
-  // 2. Retrospective agent — retrospective.md + memory updates
-  console.log("Running retrospective agent...");
-  const learningFiles = collectLearningFiles(reportsDir);
-  const kbFiles = collectKnowledgeBaseFiles(kbDir);
-
-  const retrospectivePath = join(hiveMindDir, "retrospective.md");
-  await spawnAgentWithRetry({
-    type: "retrospective",
-    model: "sonnet",
-    inputFiles: [...learningFiles, ...kbFiles],
-    outputFile: retrospectivePath,
-    rules: getAgentRules("retrospective"),
-    memoryContent,
-  });
 
   // ELI5 check on retrospective
   const retrospectiveContent = readFileSafe(retrospectivePath);
@@ -96,11 +95,11 @@ export async function runReportStage(hiveMindDir: string): Promise<void> {
   }
 
   // 3. Graduation check
-  const { nearCap } = checkMemorySize(memoryPath);
+  const { nearCap } = checkMemorySize(memoryPath, config);
   if (nearCap) {
     console.log("Memory approaching cap. Running graduation...");
     const currentMemory = readMemory(memoryPath);
-    const candidates = identifyGraduationCandidates(currentMemory);
+    const candidates = identifyGraduationCandidates(currentMemory, config);
 
     if (candidates.length > 0) {
       for (const candidate of candidates) {
@@ -117,9 +116,9 @@ export async function runReportStage(hiveMindDir: string): Promise<void> {
 
   // 4. KB size warning
   const kbTotalWords = getKnowledgeBaseWordCount(kbDir);
-  if (kbTotalWords > KB_SIZE_WARNING_WORDS) {
+  if (kbTotalWords > config.kbSizeWarningWords) {
     console.warn(
-      `Warning: Knowledge base exceeds ${KB_SIZE_WARNING_WORDS} words (${kbTotalWords}). Human review recommended.`,
+      `Warning: Knowledge base exceeds ${config.kbSizeWarningWords} words (${kbTotalWords}). Human review recommended.`,
     );
   }
 

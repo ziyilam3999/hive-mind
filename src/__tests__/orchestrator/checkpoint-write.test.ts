@@ -1,23 +1,31 @@
 import { describe, it, expect, vi } from "vitest";
 import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { getDefaultConfig } from "../../config/loader.js";
 
 // Mock the agent spawner to avoid calling real claude CLI
+const mockSpawnImpl = async (config: { outputFile: string; type: string }) => {
+  const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+  const { dirname } = await import("node:path");
+  md(dirname(config.outputFile), { recursive: true });
+  wf(config.outputFile, `# Mock output for ${config.type}`);
+  return { success: true, outputFile: config.outputFile };
+};
+
 vi.mock("../../agents/spawner.js", () => ({
-  spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string }) => {
-    const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
-    const { dirname } = await import("node:path");
-    md(dirname(config.outputFile), { recursive: true });
-    wf(config.outputFile, `# Mock output for ${config.type}`);
-    return { success: true, outputFile: config.outputFile };
-  }),
+  spawnAgentWithRetry: vi.fn(mockSpawnImpl),
   spawnAgent: vi.fn(async () => ({ success: true, outputFile: "" })),
+  spawnAgentsParallel: vi.fn(async (configs: Array<{ outputFile: string; type: string }>) => {
+    return Promise.all(configs.map(mockSpawnImpl));
+  }),
 }));
 
 // Mock shell for tooling detection
 vi.mock("../../utils/shell.js", () => ({
   runShell: vi.fn(async () => ({ exitCode: 0, stdout: "v1.0.0\n", stderr: "" })),
 }));
+
+const config = getDefaultConfig();
 
 describe("orchestrator checkpoint write", () => {
   it("runPipeline writes approve-spec checkpoint", async () => {
@@ -30,7 +38,7 @@ describe("orchestrator checkpoint write", () => {
     writeFileSync(prdPath, "# Test PRD");
     const hmDir = join(testDir, ".hive-mind");
 
-    await runPipeline(prdPath, hmDir);
+    await runPipeline(prdPath, hmDir, config);
 
     const cpPath = join(hmDir, ".checkpoint");
     expect(existsSync(cpPath)).toBe(true);
@@ -54,6 +62,7 @@ describe("orchestrator checkpoint write", () => {
     await resumeFromCheckpoint(
       { awaiting: "approve-spec", message: "test", timestamp: "2026-03-06T00:00:00Z", feedback: null },
       testDir,
+      config,
     );
 
     const cpPath = join(testDir, ".checkpoint");

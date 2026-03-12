@@ -1,11 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { parseRequiredTooling, detectTool, detectAllTools } from "../../tooling/detect.js";
+import { getDefaultConfig } from "../../config/loader.js";
 
 vi.mock("../../utils/shell.js", () => ({
   runShell: vi.fn(async () => ({ exitCode: 0, stdout: "v5.0.0\n", stderr: "" })),
 }));
 
 import { runShell } from "../../utils/shell.js";
+
+const config = getDefaultConfig();
 
 describe("tooling detection", () => {
   it("parseRequiredTooling extracts tools from SPEC table", () => {
@@ -39,7 +42,7 @@ describe("tooling detection", () => {
       purpose: "Type checker",
       installCommand: "npm i typescript",
       detectCommand: "npx tsc --version",
-    });
+    }, config);
 
     expect(result.detected).toBe(true);
     expect(result.version).toBe("5.9.3");
@@ -57,7 +60,7 @@ describe("tooling detection", () => {
       purpose: "N/A",
       installCommand: "npm i missing",
       detectCommand: "missing --version",
-    });
+    }, config);
 
     expect(result.detected).toBe(false);
   });
@@ -69,7 +72,7 @@ describe("tooling detection", () => {
     const { allDetected, results } = await detectAllTools([
       { tool: "A", purpose: "test", installCommand: "npm i a", detectCommand: "a --version" },
       { tool: "B", purpose: "test", installCommand: "npm i b", detectCommand: "b --version" },
-    ]);
+    ], config);
 
     expect(allDetected).toBe(true);
     expect(results.get("A")).toBe(true);
@@ -88,7 +91,7 @@ describe("tooling detection", () => {
 
     const { allDetected } = await detectAllTools([
       { tool: "A", purpose: "test", installCommand: "npm i a", detectCommand: "a --version" },
-    ]);
+    ], config);
 
     expect(allDetected).toBe(true);
     // runToolingSetup should NOT be called when allDetected is true

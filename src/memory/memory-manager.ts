@@ -1,8 +1,6 @@
 import { readFileSafe, writeFileAtomic, fileExists } from "../utils/file-io.js";
 import { estimateWordCount } from "../utils/token-count.js";
-
-export const MEMORY_WORD_CAP = 400;
-export const MEMORY_GRADUATION_THRESHOLD = 300;
+import type { HiveMindConfig } from "../config/schema.js";
 
 const MEMORY_TEMPLATE = `# Hive Mind Persist Memory
 
@@ -45,13 +43,14 @@ export function appendToMemory(
 
 export function checkMemorySize(
   memoryPath: string,
+  config: HiveMindConfig,
 ): { words: number; overCap: boolean; nearCap: boolean } {
   const content = readMemory(memoryPath);
   const words = estimateWordCount(content);
   return {
     words,
-    overCap: words > MEMORY_WORD_CAP,
-    nearCap: words > MEMORY_GRADUATION_THRESHOLD,
+    overCap: words > config.memoryWordCap,
+    nearCap: words > config.memoryGraduationThreshold,
   };
 }
 

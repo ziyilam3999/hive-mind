@@ -36,4 +36,8 @@ export interface AgentResult {
   success: boolean;
   outputFile: string;
   error?: string;
+  costUsd?: number;
+  modelUsed?: string;
+  sessionId?: string;
+  durationMs?: number;
 }

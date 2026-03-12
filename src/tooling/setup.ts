@@ -2,11 +2,13 @@ import type { ToolingRequirement } from "./detect.js";
 import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
+import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 
 export async function runToolingSetup(
   requirements: ToolingRequirement[],
   hiveMindDir: string,
+  config: HiveMindConfig,
 ): Promise<boolean> {
   const memoryPath = join(hiveMindDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
@@ -24,7 +26,7 @@ export async function runToolingSetup(
     outputFile,
     rules: getAgentRules("tooling-setup"),
     memoryContent: `${memoryContent}\n\n## REQUIRED TOOLING\n| Tool | Purpose | Install Command | Detect Command |\n|------|---------|-----------------|----------------|\n${toolingTable}`,
-  });
+  }, config);
 
   if (result.success) {
     console.log("TOOLING_INSTALLED: All tools set up successfully.");

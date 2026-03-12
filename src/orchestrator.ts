@@ -1,5 +1,6 @@
 import type { Checkpoint } from "./types/checkpoint.js";
 import type { ExecutionPlan } from "./types/execution-plan.js";
+import type { HiveMindConfig } from "./config/schema.js";
 import { fileExists, ensureDir, readFileSafe } from "./utils/file-io.js";
 import { createMemoryFromTemplate } from "./memory/memory-manager.js";
 import {
@@ -30,6 +31,7 @@ import { runReportStage as reportStage } from "./stages/report-stage.js";
 export async function runPipeline(
   prdPath: string,
   hiveMindDir: string,
+  config: HiveMindConfig,
 ): Promise<void> {
   if (!fileExists(prdPath)) {
     console.error(`Error: PRD file not found: ${prdPath}`);
@@ -46,7 +48,7 @@ export async function runPipeline(
     createMemoryFromTemplate(memoryPath);
   }
 
-  await runSpecStage(prdPath, hiveMindDir);
+  await runSpecStage(prdPath, hiveMindDir, config);
 
   const logPath0 = join(hiveMindDir, "manager-log.jsonl");
   const specDir = join(hiveMindDir, "spec");
@@ -69,6 +71,7 @@ export async function runPipeline(
 export async function resumeFromCheckpoint(
   checkpoint: Checkpoint,
   hiveMindDir: string,
+  config: HiveMindConfig,
 ): Promise<void> {
   const feedback = checkpoint.feedback ?? undefined;
 
@@ -82,9 +85,9 @@ export async function resumeFromCheckpoint(
       if (specContent) {
         const requirements = parseRequiredTooling(specContent);
         if (requirements.length > 0) {
-          const { allDetected } = await detectAllTools(requirements);
+          const { allDetected } = await detectAllTools(requirements, config);
           if (!allDetected) {
-            const setupOk = await runToolingSetup(requirements, hiveMindDir);
+            const setupOk = await runToolingSetup(requirements, hiveMindDir, config);
             if (!setupOk) {
               console.error("Tooling setup failed. Please install required tools manually.");
               process.exit(1);
@@ -93,7 +96,7 @@ export async function resumeFromCheckpoint(
         }
       }
 
-      await runPlanStage(hiveMindDir, feedback);
+      await runPlanStage(hiveMindDir, config, feedback);
 
       const planLogPath = join(hiveMindDir, "manager-log.jsonl");
       const planFilePath = join(hiveMindDir, "plans", "execution-plan.json");
@@ -123,8 +126,8 @@ export async function resumeFromCheckpoint(
     case "approve-plan": {
       deleteCheckpoint(hiveMindDir);
 
-      await runExecuteStage(hiveMindDir);
-      await runReportStage(hiveMindDir);
+      await runExecuteStage(hiveMindDir, config);
+      await runReportStage(hiveMindDir, config);
 
       writeCheckpoint(hiveMindDir, {
         awaiting: "verify",
@@ -162,22 +165,25 @@ export async function resumeFromCheckpoint(
 export async function runSpecStage(
   prdPath: string,
   hiveMindDir: string,
+  config: HiveMindConfig,
   feedback?: string,
 ): Promise<void> {
   console.log("Running SPEC stage...");
-  await specStage(prdPath, hiveMindDir, feedback);
+  await specStage(prdPath, hiveMindDir, config, feedback);
 }
 
 export async function runPlanStage(
   hiveMindDir: string,
+  config: HiveMindConfig,
   feedback?: string,
 ): Promise<void> {
   console.log("Running PLAN stage...");
-  await planStage(hiveMindDir, feedback);
+  await planStage(hiveMindDir, config, feedback);
 }
 
 export async function runExecuteStage(
   hiveMindDir: string,
+  config: HiveMindConfig,
 ): Promise<void> {
   console.log("Running EXECUTE stage...");
 
@@ -199,14 +205,14 @@ export async function runExecuteStage(
 
     try {
       // BUILD sub-pipeline (US-13)
-      await runBuild(story, hiveMindDir);
+      await runBuild(story, hiveMindDir, config);
 
       appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
         storyId: story.id,
       }));
 
       // VERIFY sub-pipeline (US-14)
-      const verifyResult = await runVerify(story, hiveMindDir, planPath);
+      const verifyResult = await runVerify(story, hiveMindDir, planPath, config);
 
       // Reload plan from disk -- runVerify writes attempt increments via saveExecutionPlan.
       // Without this reload, the stale in-memory plan overwrites the incremented attempts to 0.
@@ -214,7 +220,7 @@ export async function runExecuteStage(
 
       if (verifyResult.passed) {
         // COMMIT sub-pipeline (US-15)
-        const commitResult = await runCommit(story, hiveMindDir, verifyResult);
+        const commitResult = await runCommit(story, hiveMindDir, verifyResult, config);
         plan = updateStoryStatus(plan, story.id, "passed");
 
         if (commitResult.committed && commitResult.commitHash) {
@@ -252,7 +258,7 @@ export async function runExecuteStage(
       saveExecutionPlan(planPath, plan);
 
       // LEARN sub-pipeline (US-16) -- always, even if failed
-      await runLearn(story, hiveMindDir);
+      await runLearn(story, hiveMindDir, config);
     } catch (err) {
       console.error(`Error executing story ${story.id}:`, err);
       plan = updateStoryStatus(plan, story.id, "failed");
@@ -277,7 +283,8 @@ export async function runExecuteStage(
 
 export async function runReportStage(
   hiveMindDir: string,
+  config: HiveMindConfig,
 ): Promise<void> {
   console.log("Running REPORT stage...");
-  await reportStage(hiveMindDir);
+  await reportStage(hiveMindDir, config);
 }

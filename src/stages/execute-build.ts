@@ -4,11 +4,13 @@ import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, ensureDir } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
+import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 
 export async function runBuild(
   story: Story,
   hiveMindDir: string,
+  config: HiveMindConfig,
 ): Promise<{ implReportPath: string; refactorReportPath: string }> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -33,7 +35,7 @@ export async function runBuild(
     outputFile: implReportPath,
     rules: getAgentRules("implementer"),
     memoryContent,
-  });
+  }, config);
 
   // E.2: Refactorer — receives source code + impl-report + memory
   const refactorReportPath = join(hiveMindDir, getReportPath(story.id, "refactor-report.md"));
@@ -47,7 +49,7 @@ export async function runBuild(
     outputFile: refactorReportPath,
     rules: getAgentRules("refactorer"),
     memoryContent,
-  });
+  }, config);
 
   return { implReportPath, refactorReportPath };
 }

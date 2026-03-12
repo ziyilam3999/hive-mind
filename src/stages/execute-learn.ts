@@ -4,6 +4,7 @@ import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { fileExists, ensureDir } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
+import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 
 const REPORT_FILES = [
@@ -16,6 +17,7 @@ const REPORT_FILES = [
 export async function runLearn(
   story: Story,
   hiveMindDir: string,
+  config: HiveMindConfig,
 ): Promise<string> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -55,7 +57,7 @@ export async function runLearn(
     outputFile: learningPath,
     rules: getAgentRules("learner"),
     memoryContent,
-  });
+  }, config);
 
   return learningPath;
 }

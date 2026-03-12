@@ -3,7 +3,9 @@
 > **ELI5: What is this file?**
 > This is the single source of truth for everything Hive Mind plans to build. It merges two previous documents — the Enhancement Backlog (feature ideas) and the Production Reliability Roadmap (infrastructure fixes) — into one prioritized list. Items are ordered by urgency: P0 items must land before Hive Mind is production-usable, P1 items build production confidence, P2 items add polish, and everything beyond is future vision.
 
-**MVP Plan:** 15 items across 5 phases selected for production readiness. See `.hive-mind/plans/mvp-plan.md` for full design and dependency graph. Items marked "MVP Phase N" in the table below are included.
+**MVP Plan:** 19 items across 6 phases selected for production readiness. See `.hive-mind/plans/mvp-plan.md` for full design and dependency graph. Items marked "MVP Phase N" in the table below are included.
+
+**Dogfooding Strategy:** Phases 1-2 are developed manually (they fix the infrastructure that makes dogfooding risky). Phase 3 includes a calibration trial (ENH-13). Phases 4-5 use the pipeline to build itself, with one PRD per item. See `mvp-plan.md § Dogfooding Strategy` for details and the self-referential safety rule.
 
 **Principle:** Never ship a feature without evidence it works. Each version produces learnings. Those learnings justify the next version's features.
 
@@ -17,70 +19,71 @@
 
 ## Quick Reference
 
-| ID | Name | Priority | Target | Blocked By | Status |
-|----|------|----------|--------|------------|--------|
-| RD-01 | Exponential backoff + retry | P0 | v3.1 | — | MVP Phase 2 |
-| RD-02 | Graceful error recovery | P0 | v3.1 | — | MVP Phase 2 |
-| RD-03 | Config file support | P0 | v3.1 | — | MVP Phase 1 |
-| RD-04 | Structured output parsing | P0 | v3.1 | — | MVP Phase 2 |
-| RD-05 | Cost/token tracking | P1 | v3.1 | — | MVP Phase 3 |
-| ENH-02 | Dependency-aware story scheduling | P1 | v3.1 | E2E pass | MVP Phase 3 |
-| ENH-03 | Parallel story execution | P1 | v3.1 | ENH-02 | MVP Phase 5 |
-| RD-06 | Provider abstraction | P1 | v3.1 | — | Not started |
-| RD-07 | Mid-story checkpointing | P1 | v3.1 | — | Not started |
-| FW-01 | Sub-task decomposition for complex stories | P1 | v3.1 | ENH-02 | MVP Phase 5 |
-| FW-02 | Clean baseline verification before execution | P1 | v3.1 | — | MVP Phase 3 |
-| FW-03 | Project constitution / principles document | P1 | v3.1 | RD-03 | Not started |
-| ENH-01 | DC feedback loop port | P2 | v3.1 | E2E Bugs 5+6 | Not started |
-| ENH-04 | Tooling dependency detection | P2 | v3.1 | E2E pass | Not started |
-| ENH-05 | Output truncation monitoring | P2 | v3.1 | E2E pass | Not started |
-| RD-08 | KB deduplication | P2 | v3.1 | — | Not started |
-| RD-09 | CLI help & discoverability | P2 | v3.1 | — | Not started |
-| RD-10 | Plan stage parallelism | P2 | v3.1 | — | Not started |
-| RD-11 | Test coverage for critical paths | P2 | v3.1 | — | Not started |
-| FW-04 | EARS-style acceptance criteria formalization | P2 | v3.1 | — | Not started |
-| FW-05 | Delta markers for brownfield iteration | P2 | v3.1 | — | Not started |
-| FW-06 | Quick mode / fast-forward for small changes | P2 | v3.1 | RD-09 | Not started |
-| ENH-13 | Checkpoint sound notification | P2 | v3.1 | — | MVP Phase 3 |
-| ENH-14 | Bug-fix mode (`--bug`) | P2 | v3.2 | FW-06 | Not started |
-| ENH-15 | AI-first manifest file (live) | P1 | v3.1 | — | MVP Phase 3 |
-| FW-07 | Spec self-update during implementation | P2 | v3.2 | RD-04 | Not started |
-| FW-11 | Docker-sandboxed agent execution | P2 | v3.2 | PRD-07 | Not started |
-| FW-15 | Agent profiles / permission scoping | P2 | v3.2 | RD-03 | Not started |
-| FW-16 | AI-first reports / code anchors | P2 | v3.2 | RD-04 | Not started |
-| ENH-06 | Cross-story pattern mining | P3 | v3.2 | Retrospective data | Not started |
-| ENH-07 | Synthesizer split | P1 | v3.1 | — | MVP Phase 4 |
-| ENH-08 | `/hive` Claude Code skill | P3 | v3.3 | v3.0 CLI stable | Not started |
-| ENH-09 | Session recovery / --resume | P3 | v3.4 | Crash data | Not started |
-| ENH-10 | Reverify with updated ACs | P3 | v3.4 | ENH-09 | Not started |
-| ENH-11 | Multi-project orchestration | P3 | v3.5 | Single-project solid | Not started |
-| ENH-12 | Adaptive role weighting | P3 | v3.6 | Multi-chain data | Not started |
-| FW-08 | Context hygiene / filtered memory per story | P3 | v3.3 | ENH-03 | Not started |
-| FW-09 | Design-first workflow variant | P3 | v3.4 | RD-09 | Not started |
-| FW-10 | Agent hooks for automated side-effects | P3 | v3.4 | RD-03 | Not started |
-| FW-12 | Event-driven pipeline triggers | P3 | v3.4 | RD-03 | Not started |
-| FW-13 | Visual verification / Computer Use for UI stories | P3 | v3.5 | FW-11 | Not started |
-| FW-14 | Multi-repo orchestration | P3 | v3.5 | ENH-11 | Not started |
-| PRD-01 | Stress tier system (Low–Critical) | P3 | v1.1 | MVP baseline | Not started |
-| PRD-02 | System Flood (full reset) | P3 | v1.1 | PRD-01 | Not started |
-| PRD-03 | LLM-as-Judge verify phase | P3 | v1.1 | MVP verify data | Not started |
-| PRD-04 | Anti-phantom SHIP gate | P3 | v1.1 | PRD-03 | Not started |
-| PRD-05 | code-reviewer agent | P1 | v3.1 | — | MVP Phase 4 |
-| PRD-06 | log-summarizer agent | P1 | v3.1 | — | MVP Phase 4 |
-| PRD-07 | Docker sandbox for tests | P3 | v1.2 | Isolation need proven | Not started |
-| PRD-08 | Auto-spec gen (AST extraction) | P3 | v1.2 | Hand-written specs baseline | Not started |
-| PRD-09 | Scenario suite extraction (agent) | P3 | v1.2 | Hand-written scenarios baseline | Not started |
-| PRD-10 | Evidence registry | P3 | v1.2 | Execution data accumulated | Not started |
-| PRD-11 | Full QCS 0-5 with auto-calc | P3 | v1.2 | v1.1 3-level data | Not started |
-| PRD-12 | Dynamic agent creation | P3 | v1.2 | Agent type data | Not started |
-| PRD-13 | Parallel evolution / evolutionary selector | P3 | v1.3 | Failure rate data | Not started |
-| PRD-14 | Noah's Ark archive (prompt DNA) | P3 | v1.3 | PRD-02 | Not started |
-| PRD-15 | Neural feedback loop (win/loss) | P3 | v1.3 | Execution patterns | Not started |
-| PRD-16 | Auto-spec gen phase 2 (runtime) | P3 | v1.3 | PRD-08 | Not started |
-| PRD-17 | Scenario extraction phase 2 (runtime) | P3 | v1.3 | PRD-09 | Not started |
-| PRD-18 | VS Code adapter | P3 | v1.3 | CLI stable | Not started |
-| PRD-19 | Slack adapter | P3 | v1.3 | CLI stable | Not started |
-| PRD-20 | KB graduation full automation | P3 | TBD | Manual graduation proven | Not started |
+| ID | Name | Priority | Target | Blocked By | Status | Dogfood |
+|----|------|----------|--------|------------|--------|---------|
+| RD-01 | Exponential backoff + retry | P0 | v3.1 | — | MVP Phase 2 | Manual |
+| RD-02 | Graceful error recovery | P0 | v3.1 | — | MVP Phase 2 | Manual |
+| RD-03 | Config file support | P0 | v3.1 | — | MVP Phase 1 | Manual |
+| RD-04 | Structured output parsing | P0 | v3.1 | — | MVP Phase 2 | Manual |
+| RD-05 | Cost/token tracking | P1 | v3.1 | — | MVP Phase 3 | Manual |
+| ENH-02 | Dependency-aware story scheduling | P1 | v3.1 | E2E pass | MVP Phase 3 | Manual |
+| ENH-03 | Parallel story execution | P1 | v3.1 | ENH-02 | MVP Phase 5 | Required |
+| RD-06 | Provider abstraction | P1 | v3.1 | — | Not started | — |
+| RD-07 | Mid-story checkpointing | P1 | v3.1 | — | Not started | — |
+| FW-01 | Sub-task decomposition for complex stories | P1 | v3.1 | ENH-02 | MVP Phase 5 | Required |
+| FW-02 | Clean baseline verification before execution | P1 | v3.1 | — | MVP Phase 3 | Manual |
+| FW-03 | Project constitution / principles document | P1 | v3.1 | RD-03 | Not started | — |
+| ENH-01 | DC feedback loop port | P2 | v3.1 | E2E Bugs 5+6 | Not started | — |
+| ENH-04 | Tooling dependency detection | P2 | v3.1 | E2E pass | Not started | — |
+| ENH-05 | Output truncation monitoring | P2 | v3.1 | E2E pass | Not started | — |
+| RD-08 | KB deduplication | P2 | v3.1 | — | Not started | — |
+| RD-09 | CLI help & discoverability | P2 | v3.1 | — | Not started | — |
+| RD-10 | Plan stage parallelism | P2 | v3.1 | — | Not started | — |
+| RD-11 | Test coverage for critical paths | P2 | v3.1 | — | Not started | — |
+| FW-04 | EARS-style acceptance criteria formalization | P2 | v3.1 | — | Not started | — |
+| FW-05 | Delta markers for brownfield iteration | P2 | v3.1 | — | Not started | — |
+| FW-06 | Quick mode / fast-forward for small changes | P2 | v3.1 | RD-09 | Not started | — |
+| ENH-13 | Checkpoint sound notification | P2 | v3.1 | — | MVP Phase 3 | Trial |
+| ENH-14 | Bug-fix mode (`--bug`) | P2 | v3.2 | FW-06 | Not started | — |
+| ENH-15 | AI-first manifest file (live) | P1 | v3.1 | — | MVP Phase 3 | Manual |
+| ENH-16 | Role-report feedback loop | P1 | v3.1 | — | MVP Phase 4 | Eligible |
+| FW-07 | Spec self-update during implementation | P2 | v3.2 | RD-04 | Not started | — |
+| FW-11 | Docker-sandboxed agent execution | P2 | v3.2 | PRD-07 | Not started | — |
+| FW-15 | Agent profiles / permission scoping | P2 | v3.2 | RD-03 | Not started | — |
+| FW-16 | AI-first reports / code anchors | P2 | v3.2 | RD-04 | Not started | — |
+| ENH-06 | Cross-story pattern mining | P3 | v3.2 | Retrospective data | Not started | — |
+| ENH-07 | Synthesizer split | P1 | v3.1 | — | MVP Phase 4 | Eligible |
+| ENH-08 | `/hive` Claude Code skill | P3 | v3.3 | v3.0 CLI stable | Not started | — |
+| ENH-09 | Session recovery / --resume | P3 | v3.4 | Crash data | Not started | — |
+| ENH-10 | Reverify with updated ACs | P3 | v3.4 | ENH-09 | Not started | — |
+| ENH-11 | Multi-repo module config + CWD threading | P1 | v3.1 | ENH-03 | MVP Phase 6 | Eligible |
+| ENH-12 | Adaptive role weighting | P3 | v3.6 | Multi-chain data | Not started | — |
+| FW-08 | Context hygiene / filtered memory per story | P3 | v3.3 | ENH-03 | Not started | — |
+| FW-09 | Design-first workflow variant | P3 | v3.4 | RD-09 | Not started | — |
+| FW-10 | Agent hooks for automated side-effects | P3 | v3.4 | RD-03 | Not started | — |
+| FW-12 | Event-driven pipeline triggers | P3 | v3.4 | RD-03 | Not started | — |
+| FW-13 | Visual verification / Computer Use for UI stories | P3 | v3.5 | FW-11 | Not started | — |
+| FW-14 | Integration verification stage | P1 | v3.1 | ENH-11 | MVP Phase 6 | Eligible |
+| PRD-01 | Stress tier system (Low–Critical) | P3 | v1.1 | MVP baseline | Not started | — |
+| PRD-02 | System Flood (full reset) | P3 | v1.1 | PRD-01 | Not started | — |
+| PRD-03 | LLM-as-Judge verify phase | P3 | v1.1 | MVP verify data | Not started | — |
+| PRD-04 | Anti-phantom SHIP gate | P3 | v1.1 | PRD-03 | Not started | — |
+| PRD-05 | code-reviewer agent | P1 | v3.1 | — | MVP Phase 4 | Eligible |
+| PRD-06 | log-summarizer agent | P1 | v3.1 | — | MVP Phase 4 | Eligible |
+| PRD-07 | Docker sandbox for tests | P3 | v1.2 | Isolation need proven | Not started | — |
+| PRD-08 | Auto-spec gen (AST extraction) | P3 | v1.2 | Hand-written specs baseline | Not started | — |
+| PRD-09 | Scenario suite extraction (agent) | P3 | v1.2 | Hand-written scenarios baseline | Not started | — |
+| PRD-10 | Evidence registry | P3 | v1.2 | Execution data accumulated | Not started | — |
+| PRD-11 | Full QCS 0-5 with auto-calc | P3 | v1.2 | v1.1 3-level data | Not started | — |
+| PRD-12 | Dynamic agent creation | P3 | v1.2 | Agent type data | Not started | — |
+| PRD-13 | Parallel evolution / evolutionary selector | P3 | v1.3 | Failure rate data | Not started | — |
+| PRD-14 | Noah's Ark archive (prompt DNA) | P3 | v1.3 | PRD-02 | Not started | — |
+| PRD-15 | Neural feedback loop (win/loss) | P3 | v1.3 | Execution patterns | Not started | — |
+| PRD-16 | Auto-spec gen phase 2 (runtime) | P3 | v1.3 | PRD-08 | Not started | — |
+| PRD-17 | Scenario extraction phase 2 (runtime) | P3 | v1.3 | PRD-09 | Not started | — |
+| PRD-18 | VS Code adapter | P3 | v1.3 | CLI stable | Not started | — |
+| PRD-19 | Slack adapter | P3 | v1.3 | CLI stable | Not started | — |
+| PRD-20 | KB graduation full automation | P3 | TBD | Manual graduation proven | Not started | — |
 
 ---
 
@@ -385,6 +388,27 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 
 ---
 
+### ENH-16: Role-Report Feedback Loop
+
+**Priority:** P1 | **Effort:** Medium | **Blocked by:** — | **MVP Phase 4**
+**Source:** `.hive-mind/design/role-report-feedback-loop.md`
+**Detailed plan:** `.hive-mind/plans/role-report-feedback-loop-plan.md`
+
+> **ELI5:** Five specialists write reports during planning, but the workers who build and test never read them. This wires each report to the agents that would benefit from it.
+
+**Problem:** Role-reports (analyst, architect, reviewer, security, tester) are generated during the plan stage but never consumed by execution-phase agents. Each agent re-derives insights from scratch or misses them entirely. Step files already cherry-pick some findings (D1, M2) but the selection is ad-hoc.
+
+**Two sub-features:**
+
+| Part | What | Affected Files |
+|------|------|----------------|
+| **A: Planning enrichment** | After role-reports generate, feed findings back into step files (architect D-notes, reviewer M-notes, security HIGH risks), acceptance-criteria (analyst/tester gap cases), and execution-plan (complexity justification, security risk level) | Plan-stage prompts, plan assembly logic |
+| **B: Execution context** | During execution, selectively inject role-reports as agent context: implementer gets architect+security+analyst; tester gets tester-role+analyst+security; refactor gets architect+reviewer; etc. | Agent prompt construction, role-to-agent mapping |
+
+**Scope:** Modify plan-stage orchestration (Part A) and exec-stage agent spawning (Part B). No changes to role-report generation or spec/critique processes.
+
+---
+
 ### RD-08: Knowledge Base Deduplication
 
 **Priority:** P2 | **Effort:** Small | **File:** `src/memory/graduation.ts`
@@ -515,6 +539,34 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 - Reuses EXECUTE sub-pipeline (implementer → tester → fixer → evaluator → committer) from the standard flow
 - Skips PLAN stage entirely — no story decomposition needed for single-issue fixes
 - For complex bugs touching multiple subsystems, diagnostician can recommend escalating to full pipeline mode
+
+---
+
+### ENH-11: Multi-Repo Module Config + CWD Threading
+
+**Priority:** P1 | **Effort:** Medium | **Blocked by:** ENH-03 (parallel execution)
+**Files:** `src/types/execution-plan.ts`, `src/orchestrator.ts`, `src/agents/spawner.ts`, `src/stages/execute-build.ts`, `src/stages/execute-verify.ts`, `src/stages/execute-commit.ts`, `src/index.ts`
+
+> **ELI5:** Instead of one kitchen making one meal, the restaurant has multiple kitchens — each needs its own ingredients delivered to the right counter, not all dumped in the same spot.
+
+**Problem:** The pipeline assumes a single working directory. All agent spawns, file operations, and commit stages operate on `process.cwd()`. Multi-repo workflows require explicit CWD per module.
+
+**Fix — Two components:**
+
+**Module Configuration:**
+- PRD metadata gains an optional `modules` array declaring each repo module (name, relative path, role: dependency/consumer/standalone)
+- Schema version detection: if `modules` present, schema ≥ v2; if absent, backward-compatible v1
+- Module path resolution: relative paths resolved against PRD location at parse time
+
+**CWD Threading:**
+- `orchestrator.ts`: thread `moduleCwd` through stage dispatch
+- `spawner.ts`: `spawnAgent()` accepts optional `cwd` parameter, passed to `child_process.spawn`
+- Execute stages receive and use `moduleCwd` instead of `process.cwd()`
+- Story type gains optional `module?: string` field linking each story to its target module
+
+**Backward compatibility:** When no `modules` field exists in the PRD, all behavior defaults to current single-repo behavior. Zero changes for single-repo users.
+
+**Full design:** See `.hive-mind/design/multi-repo-enhancements.md` (Waves 1-2: Module Configuration + CWD Threading)
 
 ---
 
@@ -666,9 +718,7 @@ The symbol is the **primary anchor** (survives insertions/deletions). The lineRa
 
 | ID | Feature | Blocked By |
 |----|---------|------------|
-| ENH-11 | Multi-project orchestration | Single-project solid |
 | FW-13 | Visual verification / Computer Use for UI stories | FW-11 (Docker sandbox) |
-| FW-14 | Multi-repo orchestration | ENH-11 (multi-project) |
 
 ### v3.6
 
@@ -767,22 +817,24 @@ The symbol is the **primary anchor** (survives insertions/deletions). The lineRa
 
 ---
 
-### FW-14: Multi-Repo Orchestration
+### FW-14: Integration Verification Stage
 
-**Priority:** P3 | **Effort:** Large | **Blocked by:** ENH-11 (multi-project orchestration)
-**Files:** `src/index.ts`, `src/orchestrator.ts`, `src/stages/execute-commit.ts`
+**Priority:** P1 | **Effort:** Medium | **Blocked by:** ENH-11 (multi-repo module config)
+**Files:** new `src/stages/integration-verify.ts`, `src/orchestrator.ts`, `src/types/execution-plan.ts`
 **Inspired by:** Warp Oz (agents can modify files across multiple repositories in a single run)
 
-> **ELI5:** When the restaurant changes its menu, someone needs to update the website, the delivery app, and the in-store display — all at once, not one at a time hoping they stay in sync.
+> **ELI5:** When the restaurant changes its menu, someone needs to verify the website, the delivery app, and the in-store display all show the same prices — not just that each one individually looks fine.
 
-**Problem:** The pipeline operates on a single repository. Cross-repo changes (e.g., update API contract in server repo + client repo, or update internal docs alongside code) require separate runs with no coordination. Changes can drift out of sync.
+**Problem:** After implementing stories across multiple modules, there's no verification that the modules work together. Each module's tests pass in isolation, but cross-module contracts (API types, shared interfaces, import paths) may be broken.
 
 **Fix:**
-- `--repos repo1,repo2` flag accepts multiple repository paths
-- Synthesizer generates stories scoped to specific repos (each story gets a `targetRepo` field)
-- Implementer receives repo context for its story's target repo only
-- Commit stage creates coordinated PRs in each repo, linked by a shared run ID
-- Verification runs per-repo (each repo's test suite runs independently)
+- New `integration-verify` stage runs after all module stories are committed
+- Spawns a verification agent per module boundary (e.g., shared-lib ↔ web-app)
+- Agent runs cross-module type checks (`tsc --noEmit` across module boundaries) and integration tests if configured
+- Results feed into the report stage alongside per-module verify results
+- Skipped automatically in single-repo mode (no modules = no boundaries)
+
+**Full design:** See `.hive-mind/design/multi-repo-enhancements.md` (Wave 4: Integration Verification)
 
 ---
 
@@ -842,6 +894,7 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 | **Cost awareness** | None | Manual tracking | Budget controls + tracking | Budget + dry-run |
 | **Parallelism** | Sequential only | Sequential only | Wave-based stories | Wave-based + plan stage |
 | **Provider flexibility** | Claude CLI only | Claude CLI only | Multi-provider | Multi-provider |
+| **Multi-repo support** | Single repo only | Single repo only | Module-aware orchestration | Full multi-repo with integration verification |
 | **Resumability** | Stage-level only | Stage + story-level | Stage + story + mid-story | Full |
 | **Task granularity** | Whole-story only | Whole-story only | Sub-task decomposition | Sub-task + filtered context |
 | **Spec quality** | Free-form ACs | Free-form ACs | EARS-style WHEN/THEN ACs | EARS + delta markers + self-update |
@@ -868,4 +921,4 @@ These are from the original Hive Mind PRD (v1.0–v1.3 roadmap). They apply to t
 
 ---
 
-*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11. AI-first reports item (FW-16) added 2026-03-11. Checkpoint sound notification (ENH-13) added 2026-03-11. AI-first manifest (ENH-15) added 2026-03-11. MVP plan (15 items, 5 phases) created 2026-03-11 — ENH-07, PRD-05, PRD-06 promoted from P3 to P1.*
+*Consolidated from: Enhancement Backlog + Production Reliability Roadmap + Framework Comparison Analysis (2026-03-11). Warp Oz items (FW-11 through FW-15) added 2026-03-11. AI-first reports item (FW-16) added 2026-03-11. Checkpoint sound notification (ENH-13) added 2026-03-11. AI-first manifest (ENH-15) added 2026-03-11. MVP plan (15 items, 5 phases) created 2026-03-11 — ENH-07, PRD-05, PRD-06 promoted from P3 to P1. Multi-repo Phase 6 (ENH-11, FW-14) promoted from P3 to P1 (2026-03-12) — supersedes old `--repos` flag approach with PRD-declared modules.*

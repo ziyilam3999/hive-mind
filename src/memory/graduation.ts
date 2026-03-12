@@ -1,5 +1,6 @@
 import { readFileSafe, writeFileAtomic, fileExists, ensureDir } from "../utils/file-io.js";
 import { isoTimestamp } from "../utils/timestamp.js";
+import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 import { appendFileSync } from "node:fs";
 
@@ -18,6 +19,7 @@ const KB_FILE_MAP: Record<string, { file: string; series: string }> = {
 
 export function identifyGraduationCandidates(
   memoryContent: string,
+  config: HiveMindConfig,
 ): GraduationCandidate[] {
   const candidates: GraduationCandidate[] = [];
   const sections = ["PATTERNS", "MISTAKES", "DISCOVERIES"];
@@ -37,13 +39,13 @@ export function identifyGraduationCandidates(
       .filter((line) => line.trim().startsWith("- "));
 
     for (const entry of entries) {
-      // Stability: check for date pattern suggesting 3+ runs
+      // Stability: check for date patterns
       const dateMatches = entry.match(/\d{4}-\d{2}-\d{2}/g);
-      const hasStability = dateMatches !== null && dateMatches.length >= 1;
+      const hasStability = dateMatches !== null && dateMatches.length >= config.graduationMinDates;
 
-      // Evidence: cites 2+ story IDs
+      // Evidence: cites story IDs
       const storyRefs = entry.match(/US-\d+/g);
-      const hasEvidence = storyRefs !== null && new Set(storyRefs).size >= 2;
+      const hasEvidence = storyRefs !== null && new Set(storyRefs).size >= config.graduationMinStoryRefs;
 
       // Generalizability: no hardcoded paths
       const hasHardcodedPaths = /[A-Z]:\\|\/home\/|\/Users\//.test(entry);

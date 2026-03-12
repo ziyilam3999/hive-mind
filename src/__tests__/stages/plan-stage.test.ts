@@ -1,19 +1,26 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("../../agents/spawner.js", () => ({
-  spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string }) => {
+vi.mock("../../agents/spawner.js", () => {
+  const impl = async (config: { outputFile: string; type: string }) => {
     const { writeFileSync, mkdirSync } = await import("node:fs");
     const { dirname } = await import("node:path");
     mkdirSync(dirname(config.outputFile), { recursive: true });
     writeFileSync(config.outputFile, `# Mock output for ${config.type}`);
     return { success: true, outputFile: config.outputFile };
-  }),
-}));
+  };
+  return {
+    spawnAgentWithRetry: vi.fn(impl),
+    spawnAgentsParallel: vi.fn(async (configs: Array<{ outputFile: string; type: string }>) => {
+      return Promise.all(configs.map(impl));
+    }),
+  };
+});
 
 import { scanForRoleKeywords, shouldActivateRole, runPlanStage } from "../../stages/plan-stage.js";
-import { spawnAgentWithRetry } from "../../agents/spawner.js";
+import { spawnAgentWithRetry, spawnAgentsParallel } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { getDefaultConfig } from "../../config/loader.js";
 
 describe("plan-stage keyword scanning", () => {
   it("mandatory roles always activated", () => {
@@ -47,6 +54,8 @@ describe("plan-stage keyword scanning", () => {
   });
 });
 
+const config = getDefaultConfig();
+
 describe("plan-stage role independence", () => {
   const testDir = join(process.cwd(), ".test-plan-stage");
   const hmDir = join(testDir, ".hive-mind");
@@ -58,6 +67,7 @@ describe("plan-stage role independence", () => {
       "# SPEC\n## Requirements\n- Build a function to export data",
     );
     vi.mocked(spawnAgentWithRetry).mockClear();
+    vi.mocked(spawnAgentsParallel).mockClear();
   }
 
   function cleanup() {
@@ -68,21 +78,19 @@ describe("plan-stage role independence", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runPlanStage(hmDir);
+      await runPlanStage(hmDir, config);
       consoleSpy.mockRestore();
 
-      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
-      // Filter role agent calls (not synthesizer)
-      const roleCalls = calls.filter(
-        (c) => !["synthesizer"].includes(c[0].type),
-      );
+      // Role agents are spawned via spawnAgentsParallel
+      const parallelCalls = vi.mocked(spawnAgentsParallel).mock.calls;
+      expect(parallelCalls.length).toBeGreaterThanOrEqual(1);
 
-      // Each role agent is a separate spawn call
-      expect(roleCalls.length).toBeGreaterThanOrEqual(2);
+      const roleConfigs = parallelCalls[0][0];
+      expect(roleConfigs.length).toBeGreaterThanOrEqual(2);
 
       // Each receives SPEC as input
-      for (const call of roleCalls) {
-        expect(call[0].inputFiles.some((f: string) => f.includes("SPEC-v1.0.md"))).toBe(true);
+      for (const cfg of roleConfigs) {
+        expect(cfg.inputFiles.some((f: string) => f.includes("SPEC-v1.0.md"))).toBe(true);
       }
     } finally {
       cleanup();

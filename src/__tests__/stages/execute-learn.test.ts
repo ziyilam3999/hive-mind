@@ -15,6 +15,7 @@ import { runLearn } from "../../stages/execute-learn.js";
 import { spawnAgentWithRetry } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { getDefaultConfig } from "../../config/loader.js";
 
 const makeStory = (overrides?: Partial<Story>): Story => ({
   id: "US-99",
@@ -32,6 +33,8 @@ const makeStory = (overrides?: Partial<Story>): Story => ({
   commitHash: null,
   ...overrides,
 });
+
+const config = getDefaultConfig();
 
 describe("execute-learn", () => {
   const testDir = join(process.cwd(), ".test-exec-learn");
@@ -52,7 +55,7 @@ describe("execute-learn", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const failedStory = makeStory({ status: "failed", attempts: 3 });
-      const learningPath = await runLearn(failedStory, testDir);
+      const learningPath = await runLearn(failedStory, testDir, config);
       consoleSpy.mockRestore();
 
       expect(existsSync(learningPath)).toBe(true);
@@ -66,7 +69,7 @@ describe("execute-learn", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runLearn(makeStory(), testDir);
+      await runLearn(makeStory(), testDir, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -86,7 +89,7 @@ describe("execute-learn", () => {
 
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runLearn(makeStory(), testDir);
+      await runLearn(makeStory(), testDir, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;

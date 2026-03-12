@@ -4,6 +4,8 @@ import { readFileSafe, fileExists } from "./utils/file-io.js";
 import { runShell } from "./utils/shell.js";
 import type { Checkpoint } from "./types/checkpoint.js";
 import { runPipeline, resumeFromCheckpoint } from "./orchestrator.js";
+import { loadConfig } from "./config/loader.js";
+import type { HiveMindConfig } from "./config/schema.js";
 
 export type ParsedCommand =
   | { command: "start"; prdPath: string }
@@ -56,6 +58,7 @@ export function parseArgs(argv: string[]): ParsedCommand {
 
 export async function main(): Promise<void> {
   const parsed = parseArgs(process.argv);
+  const config = loadConfig(process.cwd());
 
   switch (parsed.command) {
     case "start": {
@@ -69,7 +72,7 @@ export async function main(): Promise<void> {
         console.error("Error: claude CLI not found on PATH");
         process.exit(1);
       }
-      await runPipeline(parsed.prdPath, ".hive-mind");
+      await runPipeline(parsed.prdPath, ".hive-mind", config);
       break;
     }
     case "approve": {
@@ -78,7 +81,7 @@ export async function main(): Promise<void> {
         console.error("Error: no active checkpoint");
         process.exit(1);
       }
-      await resumeFromCheckpoint(checkpoint, ".hive-mind");
+      await resumeFromCheckpoint(checkpoint, ".hive-mind", config);
       break;
     }
     case "reject": {
@@ -88,7 +91,7 @@ export async function main(): Promise<void> {
         process.exit(1);
       }
       checkpoint.feedback = parsed.feedback;
-      await resumeFromCheckpoint(checkpoint, ".hive-mind");
+      await resumeFromCheckpoint(checkpoint, ".hive-mind", config);
       break;
     }
     case "status": {

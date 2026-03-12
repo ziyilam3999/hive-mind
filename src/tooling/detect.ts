@@ -1,4 +1,5 @@
 import { runShell } from "../utils/shell.js";
+import type { HiveMindConfig } from "../config/schema.js";
 
 export interface ToolingRequirement {
   tool: string;
@@ -41,8 +42,9 @@ export function parseRequiredTooling(specContent: string): ToolingRequirement[] 
 
 export async function detectTool(
   requirement: ToolingRequirement,
+  config: HiveMindConfig,
 ): Promise<{ detected: boolean; version?: string }> {
-  const result = await runShell(requirement.detectCommand, { timeout: 30_000 });
+  const result = await runShell(requirement.detectCommand, { timeout: config.toolingDetectTimeout });
   if (result.exitCode === 0) {
     const version = result.stdout.trim().split("\n")[0] || undefined;
     return { detected: true, version };
@@ -52,12 +54,13 @@ export async function detectTool(
 
 export async function detectAllTools(
   requirements: ToolingRequirement[],
+  config: HiveMindConfig,
 ): Promise<{ allDetected: boolean; results: Map<string, boolean> }> {
   const results = new Map<string, boolean>();
   let allDetected = true;
 
   for (const req of requirements) {
-    const { detected } = await detectTool(req);
+    const { detected } = await detectTool(req, config);
     results.set(req.tool, detected);
     if (detected) {
       console.log(`TOOLING_VERIFIED: ${req.tool}`);

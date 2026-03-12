@@ -4,6 +4,7 @@ import { runShell } from "../utils/shell.js";
 import { readFileSafe } from "../utils/file-io.js";
 import { parseImplReport, parseFixReport } from "../reports/parser.js";
 import { getReportPath } from "../reports/templates.js";
+import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 
 export interface CommitResult {
@@ -58,6 +59,7 @@ export async function runCommit(
   story: Story,
   hiveMindDir: string,
   verifyResult: VerifyResult,
+  _config: HiveMindConfig,
 ): Promise<CommitResult> {
   // Collect modified files
   const implReportPath = join(hiveMindDir, getReportPath(story.id, "impl-report.md"));
