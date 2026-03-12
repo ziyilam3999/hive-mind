@@ -3,7 +3,7 @@
 > **ELI5: What is this file?**
 > This is the single source of truth for everything Hive Mind plans to build. It merges two previous documents — the Enhancement Backlog (feature ideas) and the Production Reliability Roadmap (infrastructure fixes) — into one prioritized list. Items are ordered by urgency: P0 items must land before Hive Mind is production-usable, P1 items build production confidence, P2 items add polish, and everything beyond is future vision.
 
-**MVP Plan:** 19 items across 6 phases selected for production readiness. See `.hive-mind/plans/mvp-plan.md` for full design and dependency graph. Items marked "MVP Phase N" in the table below are included.
+**MVP Plan:** 20 items across 6 phases selected for production readiness. See `.hive-mind/plans/mvp-plan.md` for full design and dependency graph. Items marked "MVP Phase N" in the table below are included.
 
 **Dogfooding Strategy:** Phases 1-2 are developed manually (they fix the infrastructure that makes dogfooding risky). Phase 3 includes a calibration trial (ENH-13). Phases 4-5 use the pipeline to build itself, with one PRD per item. See `mvp-plan.md § Dogfooding Strategy` for details and the self-referential safety rule.
 
@@ -26,6 +26,7 @@
 | RD-03 | Config file support | P0 | v3.1 | — | MVP Phase 1 | Manual |
 | RD-04 | Structured output parsing | P0 | v3.1 | — | MVP Phase 2 | Manual |
 | RD-05 | Cost/token tracking | P1 | v3.1 | — | MVP Phase 3 | Manual |
+| RD-12 | Agent output mode fix | P0 | v3.1 | — | MVP Phase 3 | Manual |
 | ENH-02 | Dependency-aware story scheduling | P1 | v3.1 | E2E pass | MVP Phase 3 | Manual |
 | ENH-03 | Parallel story execution | P1 | v3.1 | ENH-02 | MVP Phase 5 | Required |
 | RD-06 | Provider abstraction | P1 | v3.1 | — | Not started | — |
@@ -446,6 +447,19 @@ Ship two implementations: `ClaudeCLIProvider` (current behavior) and `AnthropicA
 **Problem:** The agent spawner — the most critical component — has zero test coverage.
 
 **Fix:** Unit tests for retry logic, integration tests with mock Claude CLI, e2e test with sample PRD.
+
+---
+
+### RD-12: Agent Output Mode Fix
+
+**Problem:** `--print` flag causes agents to dump raw session JSON to stdout instead of using
+tools to write output files. Discovered in Phase 2 Tier 3 live test — both stories produced
+raw JSON as output. Parser defaults to FAIL.
+
+**Fix:** Remove `--print` from `spawnClaude()` args. Agents already instructed to use Write tool.
+**Effort:** Small (1 line + fallback simplification)
+**Risk:** Low. Rollback: one-line revert.
+**Evidence:** Phase 2 Tier 3 — `phase-2-learnings.md` lines 41-48.
 
 ---
 

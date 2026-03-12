@@ -1,6 +1,6 @@
 # MVP Plan: Hive Mind v3 Production Readiness
 
-> 19 items across 6 phases to move Hive Mind from "interesting prototype" to "production-usable."
+> 20 items across 6 phases to move Hive Mind from "interesting prototype" to "production-usable."
 
 ---
 
@@ -23,7 +23,7 @@ The framework comparison ([framework-comparison.md](../../docs/framework-compari
 
 ---
 
-## MVP Overview: 19 Items in 6 Phases
+## MVP Overview: 20 Items in 6 Phases
 
 | # | ID | Name | Phase | Effort | Detailed Plan |
 |---|---|---|---|---|---|
@@ -32,20 +32,21 @@ The framework comparison ([framework-comparison.md](../../docs/framework-compari
 | 3 | RD-01 | Exponential backoff + retry | 2: Reliability | Small | Below |
 | 4 | RD-04 | Structured output parsing | 2: Reliability | Medium | Below |
 | 5 | RD-02 | Graceful error recovery | 2: Reliability | Medium | Below |
-| 6 | RD-05 | Cost/token tracking | 3: Visibility & DX | Medium | Below |
-| 7 | FW-02 | Clean baseline verification | 3: Visibility & DX | Small | Below |
-| 8 | ENH-15 | AI-first manifest | 3: Visibility & DX | Small | [manifest-plan.md](manifest-plan.md) |
-| 9 | ENH-13 | Checkpoint sound notification | 3: Visibility & DX | Small | Below |
-| 10 | ENH-02 | Dependency-aware scheduling | 3: Visibility & DX | Small | Below |
-| 11 | ENH-07 | Synthesizer split | 4: Pipeline Quality | Medium | Below |
-| 12 | PRD-05 | Code-reviewer agent | 4: Pipeline Quality | Small-Medium | Below |
-| 13 | PRD-06 | Log-summarizer agent | 4: Pipeline Quality | Small | Below |
-| 16 | ENH-16 | Role-report feedback loop | 4: Pipeline Quality | Medium | [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) |
-| 14 | ENH-03 | Parallel story execution | 5: Execution Power | Large | Below |
-| 15 | FW-01 | Sub-task decomposition | 5: Execution Power | Large | Below |
-| 17 | ENH-11 | Multi-repo module config + CWD threading | 6: Multi-Repo | Medium | Below |
-| 18 | FW-14 | Integration verification stage | 6: Multi-Repo | Medium | Below |
-| 19 | — | Module-aware story ordering + contracts | 6: Multi-Repo | Small-Medium | Below |
+| 6 | RD-12 | Agent output mode fix | 3: Visibility & DX | Small | Below |
+| 7 | RD-05 | Cost/token tracking | 3: Visibility & DX | Medium | Below |
+| 8 | FW-02 | Clean baseline verification | 3: Visibility & DX | Small | Below |
+| 9 | ENH-15 | AI-first manifest | 3: Visibility & DX | Small | [manifest-plan.md](manifest-plan.md) |
+| 10 | ENH-13 | Checkpoint sound notification | 3: Visibility & DX | Small | Below |
+| 11 | ENH-02 | Dependency-aware scheduling | 3: Visibility & DX | Small | Below |
+| 12 | ENH-07 | Synthesizer split | 4: Pipeline Quality | Medium | Below |
+| 13 | PRD-05 | Code-reviewer agent | 4: Pipeline Quality | Small-Medium | Below |
+| 14 | PRD-06 | Log-summarizer agent | 4: Pipeline Quality | Small | Below |
+| 17 | ENH-16 | Role-report feedback loop | 4: Pipeline Quality | Medium | [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) |
+| 15 | ENH-03 | Parallel story execution | 5: Execution Power | Large | Below |
+| 16 | FW-01 | Sub-task decomposition | 5: Execution Power | Large | Below |
+| 18 | ENH-11 | Multi-repo module config + CWD threading | 6: Multi-Repo | Medium | Below |
+| 19 | FW-14 | Integration verification stage | 6: Multi-Repo | Medium | Below |
+| 20 | — | Module-aware story ordering + contracts | 6: Multi-Repo | Small-Medium | Below |
 
 ### Dependency Graph
 
@@ -55,7 +56,8 @@ Phase 1:  RD-03 (config) ──────┐
                                 │             RD-04 (structured output)
                                 │             RD-02 (error recovery)
                                 │
-                                ├── Phase 3:  RD-05 (cost tracking)
+                                ├── Phase 3:  RD-12 (output mode fix)
+                                │             RD-05 (cost tracking)
                                 │             FW-02 (baseline check)
                                 │             ENH-15 (manifest)
                                 │             ENH-13 (sound notification)
@@ -294,7 +296,22 @@ See [spawner-upgrade-plan.md](spawner-upgrade-plan.md) for full design. Summary:
 
 ## Phase 3: Visibility & DX
 
-### 6. RD-05: Cost/Token Tracking
+### 6. RD-12: Agent Output Mode Fix
+
+**Problem:** `spawnClaude()` passes `--print`, which makes Claude dump the full session to stdout.
+When agents don't Write their output file, fallback saves raw JSON as file content. Parser can't
+extract status → defaults to FAIL. Both Phase 2 Tier 3 stories failed for this reason.
+
+**Fix:**
+- Remove `--print` from args in `spawnClaude()` (line 74 of `src/utils/shell.ts`)
+- Simplify stdout fallback in `spawnAgent()` — without `--print`, stdout is minimal when agents
+  use Write tool as instructed (`prompts.ts` line 128-129)
+- `--output-format json` remains — still provides metadata (cost, model, session_id)
+
+**Risk:** LOW. Agents already instructed to use Write tool. Rollback: one-line revert.
+**Files:** `src/utils/shell.ts` (1 line), `src/agents/spawner.ts` (simplify lines 38-44)
+
+### 7. RD-05: Cost/Token Tracking
 
 **Problem:** Zero token tracking. 25-35+ agent calls per story with no cost visibility.
 
@@ -307,7 +324,7 @@ See [spawner-upgrade-plan.md](spawner-upgrade-plan.md) for full design. Summary:
 
 **Files:** `src/agents/spawner.ts`, new `src/utils/cost-tracker.ts`
 
-### 7. FW-02: Clean Baseline Verification
+### 8. FW-02: Clean Baseline Verification
 
 **Problem:** EXECUTE stage assumes codebase compiles and existing tests pass. If they don't, implementer's changes get blamed for pre-existing failures, burning through all retry attempts.
 
@@ -319,14 +336,14 @@ See [spawner-upgrade-plan.md](spawner-upgrade-plan.md) for full design. Summary:
 
 **Files:** `src/orchestrator.ts`, new `src/stages/baseline-check.ts`
 
-### 8. ENH-15: AI-First Manifest
+### 9. ENH-15: AI-First Manifest
 
 See [manifest-plan.md](manifest-plan.md) for full design. Summary:
 - New `src/manifest/generator.ts` with `updateManifest(hiveMindDir)`
 - Two-part `.hive-mind/MANIFEST.md`: static navigation (~500 tokens) + auto-generated artifact inventory
 - Called at stage boundaries in `orchestrator.ts` + `hive-mind manifest` CLI command
 
-### 9. ENH-13: Checkpoint Sound Notification
+### 10. ENH-13: Checkpoint Sound Notification
 
 **Problem:** Pipeline reaches checkpoint, writes file, exits silently. Human away from terminal doesn't know it's time to review.
 
@@ -338,7 +355,7 @@ See [manifest-plan.md](manifest-plan.md) for full design. Summary:
 
 **Files:** new `src/utils/notify.ts`, `src/orchestrator.ts` (4 call sites), `src/index.ts` (`--silent` flag)
 
-### 10. ENH-02: Dependency-Aware Story Scheduling
+### 11. ENH-02: Dependency-Aware Story Scheduling
 
 **Problem:** `getNextStory()` in `src/state/execution-plan.ts` returns first `not-started` story by array position. The `dependencies: string[]` field exists on every `Story` but is never read.
 
@@ -354,6 +371,7 @@ See [manifest-plan.md](manifest-plan.md) for full design. Summary:
 **All Tier 1+2 must pass. Tier 3 = ENH-13 dogfood trial (recommended).**
 
 **Tier 1 (Unit):**
+- Agent output mode: `spawnClaude()` args do NOT include `--print`
 - Cost tracker accumulates tokens per agent spawn, per story, and pipeline total
 - Cost tracker handles missing/malformed usage data (returns 0, not crash)
 - `--budget` flag halts pipeline when budget exceeded
@@ -379,7 +397,7 @@ See [manifest-plan.md](manifest-plan.md) for full design. Summary:
 
 ## Phase 4: Pipeline Quality
 
-### 11. ENH-07: Synthesizer Split
+### 12. ENH-07: Synthesizer Split
 
 **Problem:** The synthesizer is a single Opus agent doing 3 distinct jobs: story decomposition, AC generation, and EC generation. A single agent optimizing for all three produces lower-quality ACs/ECs.
 
@@ -407,7 +425,7 @@ Steps 2 and 3 can run per-story in parallel (independent inputs).
 - `src/agents/model-map.ts` — assign models (Opus for planner, Sonnet for AC/EC)
 - `src/stages/plan-stage.ts` — replace single synthesizer call (lines 124-168) with 3-agent pipeline
 
-### 12. PRD-05: Code-Reviewer Agent
+### 13. PRD-05: Code-Reviewer Agent
 
 **Problem:** No automated code quality review. The verify stage checks functional correctness (ACs pass) but not code quality (readability, patterns, performance, security).
 
@@ -452,7 +470,7 @@ Steps 2 and 3 can run per-story in parallel (independent inputs).
 - `src/agents/model-map.ts` — assign Sonnet
 - `src/stages/report-stage.ts` — spawn code-reviewer before reporter
 
-### 13. PRD-06: Log-Summarizer Agent
+### 14. PRD-06: Log-Summarizer Agent
 
 **Problem:** `manager-log.jsonl` accumulates structured event data across the entire pipeline run, but nobody analyzes it. Retry patterns, parser confidence ratios, and failure chains are invisible.
 
@@ -499,7 +517,7 @@ Steps 2 and 3 can run per-story in parallel (independent inputs).
 - `src/agents/model-map.ts` — assign Haiku
 - `src/stages/report-stage.ts` — spawn log-summarizer before reporter
 
-### 16. ENH-16: Role-Report Feedback Loop
+### 17. ENH-16: Role-Report Feedback Loop
 
 See [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) for full design. Summary:
 
@@ -549,7 +567,7 @@ See [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) for f
 
 ## Phase 5: Execution Power
 
-### 14. ENH-03: Parallel Story Execution
+### 15. ENH-03: Parallel Story Execution
 
 **Problem:** Stories execute one at a time. Independent stories with no mutual dependencies could run in parallel.
 
@@ -582,7 +600,7 @@ Wave 2: [US-02, US-04]                 ← run after wave 1 completes
 - `src/memory/memory-manager.ts` — add write mutex for `appendToMemory()`
 - Config: `maxConcurrency` option via RD-03
 
-### 15. FW-01: Sub-Task Decomposition
+### 16. FW-01: Sub-Task Decomposition
 
 **Problem:** The `Story` type has no sub-task concept. The implementer receives an entire story as one atomic unit. For complex stories touching 5+ files, this leads to incomplete implementations and wasted verify cycles.
 
@@ -663,7 +681,7 @@ Else:
 
 **Backward compatibility:** Single-repo mode is unchanged. When no `modules` field exists in the PRD metadata, all behavior defaults to current single-repo behavior.
 
-### 17. ENH-11: Multi-Repo Module Config + CWD Threading
+### 18. ENH-11: Multi-Repo Module Config + CWD Threading
 
 **Problem:** The pipeline assumes a single working directory. All agent spawns, file operations, and commit stages operate on `process.cwd()`. Multi-repo workflows require explicit CWD per module.
 
@@ -691,7 +709,7 @@ Else:
 
 **Files:** `src/types/execution-plan.ts`, `src/orchestrator.ts`, `src/agents/spawner.ts`, `src/stages/execute-build.ts`, `src/stages/execute-verify.ts`, `src/stages/execute-commit.ts`, `src/index.ts` (PRD parser)
 
-### 18. FW-14: Integration Verification Stage
+### 19. FW-14: Integration Verification Stage
 
 **Problem:** After implementing stories across multiple modules, there's no verification that the modules work together. Each module's tests pass in isolation, but cross-module contracts (API types, shared interfaces, import paths) may be broken.
 
@@ -704,7 +722,7 @@ Else:
 
 **Files:** new `src/stages/integration-verify.ts`, `src/orchestrator.ts` (stage dispatch), `src/types/execution-plan.ts` (integration verify results)
 
-### 19. Module-Aware Story Ordering + Contracts
+### 20. Module-Aware Story Ordering + Contracts
 
 **Problem:** The dependency scheduler (ENH-02) and wave executor (ENH-03) operate on story-level dependencies only. With multi-repo, stories in a consumer module may depend on stories in a dependency module being completed first.
 

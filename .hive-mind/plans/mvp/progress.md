@@ -55,11 +55,12 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 6 | RD-05 | Cost/token tracking | [ ] | — |
-| 7 | FW-02 | Clean baseline verification | [ ] | — |
-| 8 | ENH-15 | AI-first manifest | [ ] | — |
-| 9 | ENH-13 | Checkpoint sound notification | [ ] | — |
-| 10 | ENH-02 | Dependency-aware scheduling | [ ] | — |
+| 6 | RD-12 | Agent output mode fix | [ ] | — |
+| 7 | RD-05 | Cost/token tracking | [ ] | — |
+| 8 | FW-02 | Clean baseline verification | [ ] | — |
+| 9 | ENH-15 | AI-first manifest | [ ] | — |
+| 10 | ENH-13 | Checkpoint sound notification | [ ] | — |
+| 11 | ENH-02 | Dependency-aware scheduling | [ ] | — |
 
 **Smoke Test Gate:**
 - [ ] Tier 1 (Unit) — pass date: —
@@ -75,10 +76,10 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 11 | ENH-07 | Synthesizer split | [ ] | — |
-| 12 | PRD-05 | Code-reviewer agent | [ ] | — |
-| 13 | PRD-06 | Log-summarizer agent | [ ] | — |
-| 16 | ENH-16 | Role-report feedback loop | [ ] | — |
+| 12 | ENH-07 | Synthesizer split | [ ] | — |
+| 13 | PRD-05 | Code-reviewer agent | [ ] | — |
+| 14 | PRD-06 | Log-summarizer agent | [ ] | — |
+| 17 | ENH-16 | Role-report feedback loop | [ ] | — |
 
 **Smoke Test Gate:**
 - [ ] Tier 1 (Unit) — pass date: —
@@ -94,8 +95,8 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 14 | ENH-03 | Parallel story execution | [ ] | — |
-| 15 | FW-01 | Sub-task decomposition | [ ] | — |
+| 15 | ENH-03 | Parallel story execution | [ ] | — |
+| 16 | FW-01 | Sub-task decomposition | [ ] | — |
 
 **Smoke Test Gate:**
 - [ ] Tier 1 (Unit) — pass date: —
@@ -111,9 +112,9 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 17 | ENH-11 | Multi-repo module config + CWD threading | [ ] | — |
-| 18 | FW-14 | Integration verification stage | [ ] | — |
-| 19 | — | Module-aware story ordering + contracts | [ ] | — |
+| 18 | ENH-11 | Multi-repo module config + CWD threading | [ ] | — |
+| 19 | FW-14 | Integration verification stage | [ ] | — |
+| 20 | — | Module-aware story ordering + contracts | [ ] | — |
 
 **Smoke Test Gate:**
 - [ ] Tier 1 (Unit) — pass date: —
