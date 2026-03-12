@@ -72,7 +72,7 @@ describe("spawnAgent", () => {
     const callArgs = mockSpawn.mock.calls[0][0];
     expect(callArgs.model).toBe("sonnet"); // from config.modelAssignments
     expect(callArgs.outputFormat).toBe("json");
-    expect(callArgs.allowedTools).toEqual(["Read", "Glob", "Grep"]);
+    expect(callArgs.allowedTools).toEqual(["Read", "Glob", "Grep", "Write"]);
     expect(callArgs.timeout).toBe(config.agentTimeout);
   });
 
@@ -288,8 +288,8 @@ describe("spawnAgentsParallel", () => {
 });
 
 describe("getToolsForAgent", () => {
-  it("returns read-only tools for critic", () => {
-    expect(getToolsForAgent("critic")).toEqual(["Read", "Glob", "Grep"]);
+  it("returns output tools for critic", () => {
+    expect(getToolsForAgent("critic")).toEqual(["Read", "Glob", "Grep", "Write"]);
   });
 
   it("returns full dev tools for implementer", () => {
@@ -297,7 +297,7 @@ describe("getToolsForAgent", () => {
   });
 
   it("returns shell tools for tester-exec", () => {
-    expect(getToolsForAgent("tester-exec")).toEqual(["Read", "Glob", "Grep", "Bash"]);
+    expect(getToolsForAgent("tester-exec")).toEqual(["Read", "Glob", "Grep", "Bash", "Write"]);
   });
 
   it("returns tools for every agent type", () => {

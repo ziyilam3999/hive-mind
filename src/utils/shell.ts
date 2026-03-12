@@ -85,8 +85,7 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
 
     args.push("--dangerously-skip-permissions");
 
-    // Prompt as positional argument — no shell escaping needed
-    args.push("--", options.prompt);
+    // Prompt via stdin to avoid shell escaping issues on Windows (cmd.exe garbles multi-line args)
 
     const env = { ...process.env };
     delete env.CLAUDECODE;
@@ -96,8 +95,12 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
       cwd: options.cwd,
       env,
       shell: process.platform === "win32",
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
+
+    // Write prompt to stdin and close
+    child.stdin!.write(options.prompt);
+    child.stdin!.end();
 
     let stdout = "";
     let stderr = "";

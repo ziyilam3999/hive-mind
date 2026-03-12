@@ -36,6 +36,7 @@ export async function spawnAgent(
 
   // Agent must create output file via Write tool (no fallback — raw stdout is session JSON)
   const outputExists = fileExists(config.outputFile);
+  // No debug logging — strict output contract (RD-12)
   return {
     success: outputExists,
     outputFile: config.outputFile,

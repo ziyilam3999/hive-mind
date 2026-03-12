@@ -200,7 +200,6 @@ ${inputBlock}
 ## OUTPUT (MANDATORY)
 You MUST use the Write tool to create this file: ${config.outputFile}
 This is not optional — if this file does not exist when you finish, you will be marked as FAILED.
-You have full tool access (Write, Read, Edit, Bash, Glob, Grep).
 If you also need to create source code files, use the Write tool for those too.
 ${ELI5_AGENTS.has(config.type) ? `
 ## ELI5 REQUIREMENT
