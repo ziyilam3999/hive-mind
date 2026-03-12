@@ -41,6 +41,14 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
 
   // Tooling setup (needs shell to install tools)
   "tooling-setup": SHELL_ONLY_TOOLS,
+
+  // Phase 4 — pipeline quality agents
+  "planner": READ_ONLY_TOOLS,
+  "ac-generator": READ_ONLY_TOOLS,
+  "ec-generator": READ_ONLY_TOOLS,
+  "code-reviewer": READ_ONLY_TOOLS,
+  "log-summarizer": READ_ONLY_TOOLS,
+  "enricher": READ_ONLY_TOOLS,
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {

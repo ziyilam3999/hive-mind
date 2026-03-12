@@ -41,6 +41,12 @@ export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
   "learner": "haiku",
   "reporter": "haiku",
   "retrospective": "sonnet",
+  "planner": "opus",
+  "ac-generator": "sonnet",
+  "ec-generator": "sonnet",
+  "code-reviewer": "sonnet",
+  "log-summarizer": "haiku",
+  "enricher": "sonnet",
 };
 
 export const DEFAULT_CONFIG: HiveMindConfig = {

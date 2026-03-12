@@ -32,6 +32,12 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "learner": "Capture what worked/failed in ELI5, produce learning.md",
   "reporter": "Generate consolidated-report.md from all artifacts",
   "retrospective": "Synthesize learnings, update memory.md, trigger graduation",
+  "planner": "Read spec + role-reports, produce execution-plan.json with story skeletons (no ACs/ECs)",
+  "ac-generator": "Read story skeleton + spec sections, produce acceptance criteria for the story",
+  "ec-generator": "Read story skeleton + ACs, produce executable verification commands for the story",
+  "code-reviewer": "Review implementation reports + source files, produce code-review-report.md",
+  "log-summarizer": "Analyze manager-log.jsonl for pipeline health patterns (retry rates, cost outliers, slow agents)",
+  "enricher": "Read step file + role-reports, append Implementation Guidance / Security Requirements / Edge Cases sections",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -98,7 +104,67 @@ const AGENT_RULES: Record<string, string[]> = {
     "NO-HACKS: Do not disable tests, weaken assertions, or work around the problem.",
     "REPORT-FORMAT: Output must follow fix-report.md template exactly.",
   ],
+  "planner": [
+    "SKELETON-ONLY: Produce story skeletons with GOAL, SPEC REFS, INPUT, OUTPUT. Do NOT generate ACs or ECs.",
+    "STRUCTURED-OUTPUT: Output must be valid JSON matching EXECUTION_PLAN_SCHEMA.",
+    "COMPLETE-COVERAGE: Every requirement in the spec must map to at least one story.",
+    "DEPENDENCY-ORDER: Stories must be ordered so dependencies are resolved before dependents.",
+    "ROLE-AWARE: Reference which role-reports informed each story via rolesUsed field.",
+  ],
+  "ac-generator": [
+    "SPEC-GROUNDED: Every AC must trace to a specific spec section or requirement.",
+    "TESTABLE: Each AC must be verifiable via a concrete shell command or assertion.",
+    "COMPLETE: Cover all functional requirements from the story skeleton's SPEC REFS.",
+    "NO-OVERLAP: Do not duplicate ACs across stories. Each AC belongs to exactly one story.",
+    "FORMAT: Output as numbered markdown list with UAT command for each AC.",
+  ],
+  "ec-generator": [
+    "BINARY: Every EC must produce exactly PASS or FAIL when run via shell.",
+    "AUTOMATED: Each EC must be a single shell command that exits 0 (PASS) or non-zero (FAIL).",
+    "AC-COVERAGE: At least one EC per AC. Every AC must have verification.",
+    "IDEMPOTENT: ECs must be safe to run multiple times without side effects.",
+    "FORMAT: Output as numbered markdown list with exact shell commands.",
+  ],
+  "code-reviewer": [
+    "EVIDENCE-BASED: Cite specific file:line for every finding. No vague observations.",
+    "SEVERITY: Classify each finding as critical, major, or minor.",
+    "NO-STYLE: Do not critique formatting, naming conventions, or style unless it causes bugs.",
+    "ACTIONABLE: Every finding must include a concrete fix recommendation.",
+    "REPORT-FORMAT: Output must follow code-review-report.md template exactly.",
+  ],
+  "log-summarizer": [
+    "DATA-DRIVEN: Base all findings on actual log entries. Cite timestamps and agent IDs.",
+    "PATTERNS: Focus on retry rates, cost outliers, slow agents, and failure clusters.",
+    "CONCISE: Summarize in bullet points. No verbose narratives.",
+    "QUANTITATIVE: Include counts, percentages, and durations where available.",
+    "REPORT-FORMAT: Output must follow log-analysis.md template exactly.",
+  ],
+  "enricher": [
+    "APPEND-ONLY: Add new sections (## Implementation Guidance, ## Security Requirements, ## Edge Cases). NEVER modify existing content.",
+    "ROLE-GROUNDED: Every guidance item must trace to a specific role-report finding.",
+    "CONCISE: Keep each added section to 3-5 key points.",
+    "PRESERVE-STRUCTURE: Existing step file sections must remain intact and unmodified.",
+    "VALIDATE: After enrichment, verify all original sections are still present.",
+  ],
 };
+
+export const ROLE_REPORT_MAPPING: Partial<Record<AgentType, AgentType[]>> = {
+  "implementer": ["architect", "security", "analyst"],
+  "tester-exec": ["tester-role", "analyst", "security"],
+  "diagnostician": ["architect", "security", "tester-role"],
+  "refactorer": ["architect", "reviewer"],
+  "learner": ["architect", "security", "analyst", "reviewer", "tester-role"],
+};
+
+export function getRoleReportsForAgent(
+  agentType: AgentType,
+  rolesUsed: AgentType[],
+): AgentType[] {
+  const mapping = ROLE_REPORT_MAPPING[agentType];
+  if (!mapping) return [];
+  const rolesSet = new Set(rolesUsed);
+  return mapping.filter((role) => rolesSet.has(role));
+}
 
 export function getAgentRules(agentType: AgentType): string[] {
   return AGENT_RULES[agentType] ?? [];
@@ -146,6 +212,9 @@ or
 <!-- STATUS: {"result": "FAIL", "details": "brief reason"} -->
 This must be a valid JSON object inside an HTML comment. "result" is "PASS" or "FAIL". "details" is optional.
 This block is parsed mechanically — do NOT omit it, do NOT alter the format.
+` : ""}${config.roleReportContents ? `## ROLE REPORTS
+The following role-report excerpts are relevant to your task:
+${config.roleReportContents}
 ` : ""}## MEMORY
 ${config.memoryContent}`;
 }

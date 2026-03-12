@@ -21,7 +21,13 @@ export type AgentType =
   | "fixer"
   | "learner"
   | "reporter"
-  | "retrospective";
+  | "retrospective"
+  | "planner"
+  | "ac-generator"
+  | "ec-generator"
+  | "code-reviewer"
+  | "log-summarizer"
+  | "enricher";
 
 export interface AgentConfig {
   type: AgentType;
@@ -30,6 +36,7 @@ export interface AgentConfig {
   outputFile: string;
   rules: string[];
   memoryContent: string;
+  roleReportContents?: string;
 }
 
 export interface AgentResult {
