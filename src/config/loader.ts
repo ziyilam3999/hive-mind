@@ -41,6 +41,8 @@ export function validateConfig(raw: unknown): ValidationResult {
     "memoryGraduationThreshold",
     "kbSizeWarningWords",
     "reportExcerptLength",
+    "retryBaseDelayMs",
+    "retryMaxDelayMs",
   ];
 
   for (const key of positiveNumbers) {
@@ -138,6 +140,8 @@ export function loadConfig(projectRoot: string): HiveMindConfig {
     toolingDetectTimeout: (obj.toolingDetectTimeout as number | undefined) ?? defaults.toolingDetectTimeout,
     maxRetries: (obj.maxRetries as number | undefined) ?? defaults.maxRetries,
     maxAttempts: (obj.maxAttempts as number | undefined) ?? defaults.maxAttempts,
+    retryBaseDelayMs: (obj.retryBaseDelayMs as number | undefined) ?? defaults.retryBaseDelayMs,
+    retryMaxDelayMs: (obj.retryMaxDelayMs as number | undefined) ?? defaults.retryMaxDelayMs,
     memoryWordCap: (obj.memoryWordCap as number | undefined) ?? defaults.memoryWordCap,
     memoryGraduationThreshold: (obj.memoryGraduationThreshold as number | undefined) ?? defaults.memoryGraduationThreshold,
     graduationMinDates: (obj.graduationMinDates as number | undefined) ?? defaults.graduationMinDates,

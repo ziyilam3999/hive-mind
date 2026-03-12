@@ -33,9 +33,9 @@ export interface ManagerLogEntry {
   storyCount?: number;
   storyIds?: string[];
   parsedStatus?: string;
-  parserConfidence?: "matched" | "default";
+  parserConfidence?: "structured" | "matched" | "default";
   rawExcerpt?: string;
   error?: string;
   evalParsedStatus?: string;
-  evalParserConfidence?: "matched" | "default";
+  evalParserConfidence?: "structured" | "matched" | "default";
 }

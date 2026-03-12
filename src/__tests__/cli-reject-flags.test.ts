@@ -1,31 +1,20 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { parseArgs } from "../index.js";
+import { HiveMindError } from "../utils/errors.js";
 
 describe("CLI rejects invalid flags", () => {
   it("rejects --spec flag", () => {
-    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("exit"); });
-    const mockError = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => parseArgs(["node", "cli", "start", "--spec", "foo"])).toThrow("exit");
-    expect(mockError).toHaveBeenCalledWith(expect.stringContaining("--spec"));
-    mockExit.mockRestore();
-    mockError.mockRestore();
+    expect(() => parseArgs(["node", "cli", "start", "--spec", "foo"])).toThrow(HiveMindError);
+    expect(() => parseArgs(["node", "cli", "start", "--spec", "foo"])).toThrow("--spec");
   });
 
   it("rejects --goal flag", () => {
-    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("exit"); });
-    const mockError = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => parseArgs(["node", "cli", "start", "--goal", "foo"])).toThrow("exit");
-    expect(mockError).toHaveBeenCalledWith(expect.stringContaining("--goal"));
-    mockExit.mockRestore();
-    mockError.mockRestore();
+    expect(() => parseArgs(["node", "cli", "start", "--goal", "foo"])).toThrow(HiveMindError);
+    expect(() => parseArgs(["node", "cli", "start", "--goal", "foo"])).toThrow("--goal");
   });
 
   it("rejects --qcs flag", () => {
-    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("exit"); });
-    const mockError = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => parseArgs(["node", "cli", "start", "--qcs", "foo"])).toThrow("exit");
-    expect(mockError).toHaveBeenCalledWith(expect.stringContaining("--qcs"));
-    mockExit.mockRestore();
-    mockError.mockRestore();
+    expect(() => parseArgs(["node", "cli", "start", "--qcs", "foo"])).toThrow(HiveMindError);
+    expect(() => parseArgs(["node", "cli", "start", "--qcs", "foo"])).toThrow("--qcs");
   });
 });

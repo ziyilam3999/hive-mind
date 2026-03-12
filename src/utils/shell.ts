@@ -95,6 +95,7 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
     const child: ChildProcess = spawn("claude", args, {
       cwd: options.cwd,
       env,
+      shell: process.platform === "win32",
       stdio: ["ignore", "pipe", "pipe"],
     });
 

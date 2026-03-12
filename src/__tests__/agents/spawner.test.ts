@@ -16,9 +16,19 @@ vi.mock("../../utils/file-io.js", () => ({
   ensureDir: vi.fn(),
 }));
 
+// Mock backoff sleep to avoid real delays
+vi.mock("../../utils/backoff.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils/backoff.js")>();
+  return {
+    ...actual,
+    sleep: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 import { spawnAgent, spawnAgentWithRetry, spawnAgentsParallel } from "../../agents/spawner.js";
 import { spawnClaude } from "../../utils/shell.js";
 import { fileExists } from "../../utils/file-io.js";
+import { sleep } from "../../utils/backoff.js";
 
 const config = getDefaultConfig();
 
@@ -168,6 +178,54 @@ describe("spawnAgentWithRetry", () => {
     const result = await spawnAgentWithRetry(makeAgentConfig(), config);
     expect(result.success).toBe(true);
     expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls sleep with backoff between retry attempts", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "fail" });
+    vi.mocked(fileExists).mockReturnValue(false);
+    const mockSleep = vi.mocked(sleep);
+
+    const customConfig = { ...config, maxRetries: 3 };
+    await spawnAgentWithRetry(makeAgentConfig(), customConfig);
+
+    // 1 initial + 3 retries = 4 spawn calls, 3 sleeps (before retries 1, 2, 3)
+    expect(mockSpawn).toHaveBeenCalledTimes(4);
+    expect(mockSleep).toHaveBeenCalledTimes(3);
+
+    // Each sleep call receives a number (the backoff delay)
+    for (const call of mockSleep.mock.calls) {
+      expect(typeof call[0]).toBe("number");
+      expect(call[0]).toBeGreaterThan(0);
+    }
+  });
+
+  it("does not sleep before first attempt", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({
+      exitCode: 0, stdout: "ok", stderr: "",
+      json: { result: "ok", cost_usd: 0, model: "sonnet", session_id: "", duration_ms: 0, raw: {} },
+    });
+    const mockSleep = vi.mocked(sleep);
+
+    await spawnAgentWithRetry(makeAgentConfig(), config);
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(mockSleep).not.toHaveBeenCalled();
+  });
+
+  it("does not sleep when maxRetries is 0 and first attempt fails", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "fail" });
+    vi.mocked(fileExists).mockReturnValue(false);
+    const mockSleep = vi.mocked(sleep);
+
+    const customConfig = { ...config, maxRetries: 0 };
+    const result = await spawnAgentWithRetry(makeAgentConfig(), customConfig);
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(mockSleep).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
   });
 });
 

@@ -5,6 +5,11 @@ const ELI5_AGENTS: Set<AgentType> = new Set([
   "spec-drafter", "spec-corrector", "critic",
 ]);
 
+/** Agents that produce status reports (PASS/FAIL) — get structured output instruction */
+const STATUS_AGENTS: Set<AgentType> = new Set([
+  "tester-exec", "evaluator", "implementer", "fixer",
+]);
+
 const AGENT_JOBS: Record<AgentType, string> = {
   "researcher": "Read PRD + codebase + knowledge-base/*, produce research-report.md",
   "justifier": "For each implementation item, justify WHY and HOW in ELI5",
@@ -133,6 +138,13 @@ For each major section or finding, include a blockquote explanation in plain lan
 > **ELI5:** [analogy a non-programmer can understand]
 Use everyday analogies (factory workers, recipe books, filing cabinets). Avoid jargon. The ELI5 explains WHY this matters, not just WHAT it is.` : ""}
 
-## MEMORY
+${STATUS_AGENTS.has(config.type) ? `## STATUS BLOCK (REQUIRED)
+Place this HTML comment in the FIRST 200 characters of your output file:
+<!-- STATUS: {"result": "PASS"} -->
+or
+<!-- STATUS: {"result": "FAIL", "details": "brief reason"} -->
+This must be a valid JSON object inside an HTML comment. "result" is "PASS" or "FAIL". "details" is optional.
+This block is parsed mechanically — do NOT omit it, do NOT alter the format.
+` : ""}## MEMORY
 ${config.memoryContent}`;
 }

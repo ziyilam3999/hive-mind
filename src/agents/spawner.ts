@@ -5,6 +5,7 @@ import { fileExists, writeFileAtomic, ensureDir } from "../utils/file-io.js";
 import { buildPrompt } from "./prompts.js";
 import { getToolsForAgent } from "./tool-permissions.js";
 import { dirname } from "node:path";
+import { calculateBackoffDelay, sleep } from "../utils/backoff.js";
 
 export async function spawnAgent(
   config: AgentConfig,
@@ -67,6 +68,14 @@ export async function spawnAgentWithRetry(
   const retries = maxRetries ?? hiveMindConfig.maxRetries;
   let lastResult: AgentResult | undefined;
   for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      const delay = calculateBackoffDelay(
+        attempt - 1,
+        hiveMindConfig.retryBaseDelayMs,
+        hiveMindConfig.retryMaxDelayMs,
+      );
+      await sleep(delay);
+    }
     lastResult = await spawnAgent(config, hiveMindConfig);
     if (lastResult.success) return lastResult;
   }

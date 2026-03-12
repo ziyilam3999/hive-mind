@@ -18,6 +18,7 @@ import {
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
 import { isoTimestamp } from "./utils/timestamp.js";
 import { join } from "node:path";
+import { HiveMindError } from "./utils/errors.js";
 import { runSpecStage as specStage } from "./stages/spec-stage.js";
 import { runPlanStage as planStage } from "./stages/plan-stage.js";
 import { runBuild } from "./stages/execute-build.js";
@@ -34,8 +35,7 @@ export async function runPipeline(
   config: HiveMindConfig,
 ): Promise<void> {
   if (!fileExists(prdPath)) {
-    console.error(`Error: PRD file not found: ${prdPath}`);
-    process.exit(1);
+    throw new HiveMindError(`PRD file not found: ${prdPath}`);
   }
 
   ensureDir(hiveMindDir);
@@ -89,8 +89,7 @@ export async function resumeFromCheckpoint(
           if (!allDetected) {
             const setupOk = await runToolingSetup(requirements, hiveMindDir, config);
             if (!setupOk) {
-              console.error("Tooling setup failed. Please install required tools manually.");
-              process.exit(1);
+              throw new HiveMindError("Tooling setup failed. Please install required tools manually.");
             }
           }
         }
@@ -246,7 +245,15 @@ export async function runExecuteStage(
           attempt: verifyResult.attempts,
         }));
       } else {
-        plan = updateStoryStatus(plan, story.id, "failed");
+        const failedId = story.id;
+        plan = updateStoryStatus(plan, failedId, "failed");
+        // Persist error details for post-mortem (C-ATOMIC-1, F30)
+        plan = {
+          ...plan,
+          stories: plan.stories.map((s) =>
+            s.id === failedId ? { ...s, errorMessage: "Verification failed after max attempts", lastFailedStage: "verify" } : s,
+          ),
+        };
 
         appendLogEntry(logPath, createLogEntry("FAILED", {
           cycle: 1,
@@ -260,14 +267,23 @@ export async function runExecuteStage(
       // LEARN sub-pipeline (US-16) -- always, even if failed
       await runLearn(story, hiveMindDir, config);
     } catch (err) {
-      console.error(`Error executing story ${story.id}:`, err);
-      plan = updateStoryStatus(plan, story.id, "failed");
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const failedId = story!.id;
+      console.error(`Error executing story ${failedId}:`, errorMessage);
+      plan = updateStoryStatus(plan, failedId, "failed");
+      // Persist error details atomically for post-mortem analysis (C-ATOMIC-1, F30)
+      plan = {
+        ...plan,
+        stories: plan.stories.map((s) =>
+          s.id === failedId ? { ...s, errorMessage, lastFailedStage: "execute" } : s,
+        ),
+      };
       saveExecutionPlan(planPath, plan);
 
       appendLogEntry(logPath, createLogEntry("FAILED", {
         cycle: 1,
         storyId: story.id,
-        reason: String(err),
+        reason: errorMessage,
       }));
     }
 

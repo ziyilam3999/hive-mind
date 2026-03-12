@@ -183,6 +183,7 @@ Before moving to Phase N+1, verify:
 - [ ] Knowledge base updated (if reusable patterns found)
 - [ ] Memory updated (if applicable)
 - [ ] `progress.md` updated with completion dates and gate status
+- [ ] Phase work committed to git (commit hash recorded in `progress.md`)
 - [ ] Next phase's implementation plan created (consulting all inputs)
 
 ---

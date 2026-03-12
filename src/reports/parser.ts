@@ -1,9 +1,31 @@
 export interface ParseResult {
   status: string;
-  confidence: "matched" | "default";
+  confidence: "structured" | "matched" | "default";
 }
 
 export function parseReportStatus(markdown: string): ParseResult {
+  // Level 0: Structured JSON status block (highest priority)
+  // Format: <!-- STATUS: {"result": "PASS", "details": "..."} -->
+  const jsonBlockMatch = markdown.match(/<!--\s*STATUS:\s*(\{[^}]*\})\s*-->/);
+  if (jsonBlockMatch) {
+    try {
+      const parsed = JSON.parse(jsonBlockMatch[1]) as { result?: string; details?: string };
+      if (parsed.result === "PASS" || parsed.result === "FAIL") {
+        return { status: parsed.result, confidence: "structured" };
+      }
+    } catch {
+      // Malformed JSON — fall through to regex cascade
+      console.warn("Malformed JSON in STATUS block, falling back to regex cascade");
+    }
+  }
+
+  // Level 1+: Regex cascade (fallback)
+  if (!jsonBlockMatch) {
+    // No JSON block present — this is expected for agents that don't support it yet
+  } else {
+    // JSON block was present but unparseable — already warned above
+  }
+
   // 1. Explicit heading: ## STATUS: PASS or ## VERDICT: PASS
   const statusMatch = markdown.match(/##\s+(?:STATUS|VERDICT):\s*(\w+)/i);
   if (statusMatch) return { status: statusMatch[1].toUpperCase(), confidence: "matched" };
@@ -41,7 +63,7 @@ export function parseReportStatus(markdown: string): ParseResult {
 
 export function parseTestReport(
   markdown: string,
-): { status: string; confidence: "matched" | "default"; results: { acId: string; result: string }[] } {
+): { status: string; confidence: "structured" | "matched" | "default"; results: { acId: string; result: string }[] } {
   const { status, confidence } = parseReportStatus(markdown);
   const results: { acId: string; result: string }[] = [];
   const rows = markdown.match(/^\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|$/gm);
@@ -58,7 +80,7 @@ export function parseTestReport(
 
 export function parseEvalReport(
   markdown: string,
-): { verdict: string; confidence: "matched" | "default"; results: { ecId: string; result: string }[] } {
+): { verdict: string; confidence: "structured" | "matched" | "default"; results: { ecId: string; result: string }[] } {
   const { status: verdict, confidence } = parseReportStatus(markdown);
   const results: { ecId: string; result: string }[] = [];
   const rows = markdown.match(/^\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|[^|]+\|$/gm);
@@ -75,7 +97,7 @@ export function parseEvalReport(
 
 export function parseImplReport(
   markdown: string,
-): { status: string; confidence: "matched" | "default"; filesCreated: string[] } {
+): { status: string; confidence: "structured" | "matched" | "default"; filesCreated: string[] } {
   const { status, confidence } = parseReportStatus(markdown);
   const filesCreated: string[] = [];
 

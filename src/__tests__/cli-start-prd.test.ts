@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { parseArgs } from "../index.js";
+import { HiveMindError } from "../utils/errors.js";
 
 describe("CLI start command", () => {
   it("parses start --prd correctly", () => {
@@ -7,11 +8,8 @@ describe("CLI start command", () => {
     expect(result).toEqual({ command: "start", prdPath: "./test.md" });
   });
 
-  it("exits if --prd missing", () => {
-    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("exit"); });
-    const mockError = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => parseArgs(["node", "cli", "start"])).toThrow("exit");
-    mockExit.mockRestore();
-    mockError.mockRestore();
+  it("throws HiveMindError if --prd missing", () => {
+    expect(() => parseArgs(["node", "cli", "start"])).toThrow(HiveMindError);
+    expect(() => parseArgs(["node", "cli", "start"])).toThrow("--prd");
   });
 });

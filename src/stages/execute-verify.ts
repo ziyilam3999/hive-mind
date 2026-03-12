@@ -17,7 +17,7 @@ export interface VerifyResult {
   attempts: number;
   testReportPath: string;
   evalReportPath: string;
-  parserConfidence: "matched" | "default";
+  parserConfidence: "structured" | "matched" | "default";
 }
 
 export async function runVerify(
@@ -37,7 +37,7 @@ export async function runVerify(
 
   let attempt = 0;
   let plan: ExecutionPlan | undefined;
-  let lastConfidence: "matched" | "default" = "default";
+  let lastConfidence: "structured" | "matched" | "default" = "default";
   const testReportPath = join(hiveMindDir, getReportPath(story.id, "test-report.md"));
   const evalReportPath = join(hiveMindDir, getReportPath(story.id, "eval-report.md"));
 
@@ -128,7 +128,7 @@ export async function runVerify(
     // parser couldn't determine status (default confidence), don't retry.
     // The test suite already confirmed correctness; an unparseable eval report
     // should not force unnecessary fix cycles.
-    if (evalResult.verdict === "FAIL" && evalResult.confidence === "default" && testResult.confidence === "matched") {
+    if (evalResult.verdict === "FAIL" && evalResult.confidence === "default" && (testResult.confidence === "matched" || testResult.confidence === "structured")) {
       console.warn(`Warning: Eval parser returned default confidence for ${story.id} (attempt ${attempt}). Test passed with matched confidence — treating as PASS.`);
       return { passed: true, attempts: attempt, testReportPath, evalReportPath, parserConfidence: lastConfidence };
     }

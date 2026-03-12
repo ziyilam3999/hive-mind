@@ -6,13 +6,15 @@ import type { Checkpoint } from "./types/checkpoint.js";
 import { runPipeline, resumeFromCheckpoint } from "./orchestrator.js";
 import { loadConfig } from "./config/loader.js";
 import type { HiveMindConfig } from "./config/schema.js";
+import { HiveMindError } from "./utils/errors.js";
 
 export type ParsedCommand =
   | { command: "start"; prdPath: string }
   | { command: "approve" }
   | { command: "reject"; feedback: string }
   | { command: "status" }
-  | { command: "abort" };
+  | { command: "abort" }
+  | { command: "resume"; from?: string; skipFailed?: boolean };
 
 const REJECTED_FLAGS = ["--spec", "--goal", "--qcs"];
 
@@ -22,8 +24,7 @@ export function parseArgs(argv: string[]): ParsedCommand {
 
   for (const flag of REJECTED_FLAGS) {
     if (args.includes(flag)) {
-      console.error(`Error: unknown option '${flag}'. Hive Mind v3 takes only --prd.`);
-      process.exit(1);
+      throw new HiveMindError(`Unknown option '${flag}'. Hive Mind v3 takes only --prd.`);
     }
   }
 
@@ -31,8 +32,7 @@ export function parseArgs(argv: string[]): ParsedCommand {
     case "start": {
       const prdIdx = args.indexOf("--prd");
       if (prdIdx === -1 || !args[prdIdx + 1]) {
-        console.error("Error: start requires --prd <path>");
-        process.exit(1);
+        throw new HiveMindError("start requires --prd <path>");
       }
       return { command: "start", prdPath: args[prdIdx + 1] };
     }
@@ -41,8 +41,7 @@ export function parseArgs(argv: string[]): ParsedCommand {
     case "reject": {
       const fbIdx = args.indexOf("--feedback");
       if (fbIdx === -1 || !args[fbIdx + 1]) {
-        console.error("Error: reject requires --feedback <text>");
-        process.exit(1);
+        throw new HiveMindError("reject requires --feedback <text>");
       }
       return { command: "reject", feedback: args[fbIdx + 1] };
     }
@@ -50,9 +49,14 @@ export function parseArgs(argv: string[]): ParsedCommand {
       return { command: "status" };
     case "abort":
       return { command: "abort" };
+    case "resume": {
+      const fromIdx = args.indexOf("--from");
+      const from = fromIdx !== -1 ? args[fromIdx + 1] : undefined;
+      const skipFailed = args.includes("--skip-failed");
+      return { command: "resume", from, skipFailed };
+    }
     default:
-      console.error(`Error: unknown command '${cmd}'. Available: start, approve, reject, status, abort`);
-      process.exit(1);
+      throw new HiveMindError(`Unknown command '${cmd}'. Available: start, approve, reject, status, abort, resume`);
   }
 }
 
@@ -63,14 +67,12 @@ export async function main(): Promise<void> {
   switch (parsed.command) {
     case "start": {
       if (!fileExists(parsed.prdPath)) {
-        console.error(`Error: PRD file not found: ${parsed.prdPath}`);
-        process.exit(1);
+        throw new HiveMindError(`PRD file not found: ${parsed.prdPath}`);
       }
       const claudeCmd = process.platform === "win32" ? "where claude" : "command -v claude";
       const claudeCheck = await runShell(claudeCmd);
       if (claudeCheck.exitCode !== 0) {
-        console.error("Error: claude CLI not found on PATH");
-        process.exit(1);
+        throw new HiveMindError("claude CLI not found on PATH");
       }
       await runPipeline(parsed.prdPath, ".hive-mind", config);
       break;
@@ -78,8 +80,7 @@ export async function main(): Promise<void> {
     case "approve": {
       const checkpoint = readCheckpointFile();
       if (!checkpoint) {
-        console.error("Error: no active checkpoint");
-        process.exit(1);
+        throw new HiveMindError("No active checkpoint");
       }
       await resumeFromCheckpoint(checkpoint, ".hive-mind", config);
       break;
@@ -87,8 +88,7 @@ export async function main(): Promise<void> {
     case "reject": {
       const checkpoint = readCheckpointFile();
       if (!checkpoint) {
-        console.error("Error: no active checkpoint");
-        process.exit(1);
+        throw new HiveMindError("No active checkpoint");
       }
       checkpoint.feedback = parsed.feedback;
       await resumeFromCheckpoint(checkpoint, ".hive-mind", config);
@@ -114,6 +114,44 @@ export async function main(): Promise<void> {
       console.log("Pipeline aborted.");
       break;
     }
+    case "resume": {
+      const planPath = ".hive-mind/plans/execution-plan.json";
+      if (!fileExists(planPath)) {
+        throw new HiveMindError("No execution plan found. Run 'start' and 'approve' first.");
+      }
+      const { loadExecutionPlan, updateStoryStatus, saveExecutionPlan } = await import("./state/execution-plan.js");
+      let plan = loadExecutionPlan(planPath);
+
+      // --from <storyId>: mark all stories before the specified one as "skipped"
+      if (parsed.from) {
+        const storyIdx = plan.stories.findIndex((s) => s.id === parsed.from);
+        if (storyIdx === -1) {
+          throw new HiveMindError(`Story not found: ${parsed.from}`);
+        }
+        for (let i = 0; i < storyIdx; i++) {
+          const s = plan.stories[i];
+          if (s.status === "not-started") {
+            plan = updateStoryStatus(plan, s.id, "skipped");
+          }
+        }
+        saveExecutionPlan(planPath, plan);
+      }
+
+      // --skip-failed: mark all failed stories as "skipped"
+      if (parsed.skipFailed) {
+        for (const s of plan.stories) {
+          if (s.status === "failed") {
+            plan = updateStoryStatus(plan, s.id, "skipped");
+          }
+        }
+        saveExecutionPlan(planPath, plan);
+      }
+
+      const { runExecuteStage, runReportStage } = await import("./orchestrator.js");
+      await runExecuteStage(".hive-mind", config);
+      await runReportStage(".hive-mind", config);
+      break;
+    }
   }
 }
 
@@ -130,7 +168,11 @@ function readCheckpointFile(): Checkpoint | null {
 const isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"));
 if (isDirectRun) {
   main().catch((err) => {
-    console.error(err);
+    if (err instanceof HiveMindError) {
+      console.error(`Error: ${err.message}`);
+    } else {
+      console.error(err);
+    }
     process.exit(1);
   });
 }

@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 1 — Foundation ✅ COMPLETE | **Next Action:** Begin Phase 2 (RD-01 Exponential backoff) | **Updated:** 2026-03-12
+**Phase:** 2 — Reliability (complete, ready to commit) | **Next Action:** Commit Phase 2 | **Updated:** 2026-03-12
 
 ---
 
@@ -10,9 +10,9 @@
 
 | Metric | Baseline | Current |
 |--------|----------|---------|
-| Test files | 25 | 28 |
-| Total tests | 95 | 129 |
-| Source files | 38 | 43 |
+| Test files | 25 | 31 |
+| Total tests | 95 | 169 |
+| Source files | 38 | 46 |
 | TypeScript errors | 0 | 0 |
 
 ---
@@ -29,6 +29,7 @@
 - [x] Tier 2 (Integration) — pass date: 2026-03-12 (6 integration tests)
 
 **Learnings captured:** [x] → `learnings/phase-1-learnings.md`
+**Committed:** [x] → `3ad7bc3` (2026-03-12)
 
 ---
 
@@ -36,16 +37,17 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 3 | RD-01 | Exponential backoff + retry | [ ] | — |
-| 4 | RD-04 | Structured output parsing | [ ] | — |
-| 5 | RD-02 | Graceful error recovery | [ ] | — |
+| 3 | RD-01 | Exponential backoff + retry | [x] | 2026-03-12 |
+| 4 | RD-04 | Structured output parsing | [x] | 2026-03-12 |
+| 5 | RD-02 | Graceful error recovery | [x] | 2026-03-12 |
 
 **Smoke Test Gate:**
-- [ ] Tier 1 (Unit) — pass date: —
-- [ ] Tier 2 (Integration) — pass date: —
-- [ ] Tier 3 (Live — MANDATORY) — pass date: —
+- [x] Tier 1 (Unit) — pass date: 2026-03-12 (169 tests, 31 files)
+- [x] Tier 2 (Integration) — pass date: 2026-03-12 (10 integration tests)
+- [x] Tier 3 (Live — MANDATORY) — pass date: 2026-03-12 (2 stories, no crash, errors persisted, pipeline continued past failures)
 
-**Learnings captured:** [ ] → `learnings/phase-2-learnings.md`
+**Learnings captured:** [x] → `learnings/phase-2-learnings.md`
+**Committed:** [ ] → —
 
 ---
 
@@ -65,6 +67,7 @@
 - [ ] Tier 3 (Dogfood trial — recommended) — pass date: —
 
 **Learnings captured:** [ ] → `learnings/phase-3-learnings.md`
+**Committed:** [ ] → —
 
 ---
 
@@ -83,6 +86,7 @@
 - [ ] Tier 3 (Dogfood — at least 1 run) — pass date: —
 
 **Learnings captured:** [ ] → `learnings/phase-4-learnings.md`
+**Committed:** [ ] → —
 
 ---
 
@@ -99,6 +103,7 @@
 - [ ] Tier 3 (Dogfood — MANDATORY) — pass date: —
 
 **Learnings captured:** [ ] → `learnings/phase-5-learnings.md`
+**Committed:** [ ] → —
 
 ---
 
@@ -116,3 +121,4 @@
 - [ ] Tier 3 (Dogfood — recommended) — pass date: —
 
 **Learnings captured:** [ ] → `learnings/phase-6-learnings.md`
+**Committed:** [ ] → —

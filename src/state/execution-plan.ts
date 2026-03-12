@@ -2,8 +2,9 @@ import type { ExecutionPlan, Story, StoryStatus } from "../types/execution-plan.
 import { readFileSafe, writeFileAtomic } from "../utils/file-io.js";
 
 const VALID_TRANSITIONS: Record<string, StoryStatus[]> = {
-  "not-started": ["in-progress"],
+  "not-started": ["in-progress", "skipped"],
   "in-progress": ["passed", "failed"],
+  "failed": ["skipped"],
 };
 
 export function loadExecutionPlan(planPath: string): ExecutionPlan {
@@ -52,7 +53,7 @@ export function validateExecutionPlan(plan: unknown): plan is ExecutionPlan {
 }
 
 function isValidStatus(status: string): status is StoryStatus {
-  return ["not-started", "in-progress", "passed", "failed"].includes(status);
+  return ["not-started", "in-progress", "passed", "failed", "skipped"].includes(status);
 }
 
 export function updateStoryStatus(
@@ -111,5 +112,5 @@ export function getStory(
 }
 
 export function getNextStory(plan: ExecutionPlan): Story | undefined {
-  return plan.stories.find((s) => s.status === "not-started");
+  return plan.stories.find((s) => s.status === "not-started" || s.status === "in-progress");
 }

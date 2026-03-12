@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { parseTestReport, parseEvalReport, parseReportStatus, parseImplReport } from "../../reports/parser.js";
 
 describe("parser handles malformed input", () => {
@@ -139,6 +139,74 @@ describe("parser handles emoji-prefixed status lines", () => {
     const result = parseReportStatus(markdown);
     expect(result.status).toBe("PASS");
     expect(result.confidence).toBe("matched");
+  });
+});
+
+describe("Level 0: Structured JSON status block", () => {
+  it("extracts PASS from JSON status block", () => {
+    const markdown = `<!-- STATUS: {"result": "PASS"} -->\n# Test Report\nAll tests passed.`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("structured");
+  });
+
+  it("extracts FAIL with details from JSON status block", () => {
+    const markdown = `<!-- STATUS: {"result": "FAIL", "details": "2 tests failed"} -->\n# Test Report`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("FAIL");
+    expect(result.confidence).toBe("structured");
+  });
+
+  it("falls back to regex when no JSON block present", () => {
+    const markdown = `## STATUS: PASS\nDetails here`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("matched");
+  });
+
+  it("falls back to regex on malformed JSON in status block", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const markdown = `<!-- STATUS: {bad json} -->\n## STATUS: PASS`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("matched");
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Malformed JSON"));
+    warnSpy.mockRestore();
+  });
+
+  it("JSON block wins over regex when both present", () => {
+    const markdown = `<!-- STATUS: {"result": "PASS"} -->\n## STATUS: FAIL\nSome findings`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("structured");
+  });
+
+  it("falls back to regex when JSON result is not PASS or FAIL", () => {
+    const markdown = `<!-- STATUS: {"result": "UNKNOWN"} -->\n## STATUS: PASS`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("matched");
+  });
+
+  it("handles JSON block with extra whitespace", () => {
+    const markdown = `<!--  STATUS:  {"result": "PASS"}  -->\nReport`;
+    const result = parseReportStatus(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("structured");
+  });
+
+  it("works through parseTestReport delegation", () => {
+    const markdown = `<!-- STATUS: {"result": "PASS"} -->\n# Test Report\n| AC | Description | Command | Expected | Result |\n| AC-1 | Check | cmd | PASS | PASS |`;
+    const result = parseTestReport(markdown);
+    expect(result.status).toBe("PASS");
+    expect(result.confidence).toBe("structured");
+  });
+
+  it("works through parseEvalReport delegation", () => {
+    const markdown = `<!-- STATUS: {"result": "FAIL", "details": "EC-2 failed"} -->\n# Eval Report`;
+    const result = parseEvalReport(markdown);
+    expect(result.verdict).toBe("FAIL");
+    expect(result.confidence).toBe("structured");
   });
 });
 

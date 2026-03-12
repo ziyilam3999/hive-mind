@@ -6,6 +6,8 @@ export interface HiveMindConfig {
   toolingDetectTimeout: number;
   maxRetries: number;
   maxAttempts: number;
+  retryBaseDelayMs: number;
+  retryMaxDelayMs: number;
   memoryWordCap: number;
   memoryGraduationThreshold: number;
   graduationMinDates: number;
@@ -45,6 +47,8 @@ export const DEFAULT_CONFIG: HiveMindConfig = {
   toolingDetectTimeout: 30_000,
   maxRetries: 1,
   maxAttempts: 3,
+  retryBaseDelayMs: 1000,
+  retryMaxDelayMs: 16_000,
   memoryWordCap: 400,
   memoryGraduationThreshold: 300,
   graduationMinDates: 1,

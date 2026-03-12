@@ -1,4 +1,4 @@
-export type StoryStatus = "not-started" | "in-progress" | "passed" | "failed";
+export type StoryStatus = "not-started" | "in-progress" | "passed" | "failed" | "skipped";
 export type Complexity = "low" | "medium" | "high";
 export type RoleName = "analyst" | "reviewer" | "security" | "architect" | "tester";
 
@@ -16,6 +16,8 @@ export interface Story {
   maxAttempts: number;
   committed: boolean;
   commitHash: string | null;
+  errorMessage?: string;
+  lastFailedStage?: string;
 }
 
 export interface ExecutionPlan {
