@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 4 — Pipeline Quality (complete) | **Next Action:** Phase 4 Tier 3 dogfood, then begin Phase 5 | **Updated:** 2026-03-12
+**Phase:** 4 — Pipeline Quality (complete) | **Next Action:** Begin Phase 5 | **Updated:** 2026-03-13
 
 ---
 
@@ -87,7 +87,7 @@
 **Smoke Test Gate:**
 - [x] Tier 1 (Unit) — pass date: 2026-03-12 (239 tests, 40 files)
 - [x] Tier 2 (Integration) — pass date: 2026-03-12 (2 new integration test files)
-- [ ] Tier 3 (Dogfood — at least 1 run) — pass date: — (pending)
+- [x] Tier 3 (Dogfood — at least 1 run) — pass date: 2026-03-13 (3/4 stories passed, US-03 failed on EC command bug not code bug)
 
 **Learnings captured:** [x] → `learnings/phase-4-learnings.md`
 **Knowledge-base synced:** [x] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md` (2026-03-12)
