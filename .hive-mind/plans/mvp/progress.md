@@ -91,7 +91,7 @@
 
 **Learnings captured:** [x] → `learnings/phase-4-learnings.md`
 **Knowledge-base synced:** [ ] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md`
-**Committed:** [x] → (pending commit hash)
+**Committed:** [x] → `6d8ea67` (2026-03-12)
 
 ---
 
