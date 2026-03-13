@@ -13,6 +13,7 @@ describe("getDefaultConfig", () => {
     expect(config.toolingDetectTimeout).toBe(30_000);
     expect(config.maxRetries).toBe(1);
     expect(config.maxAttempts).toBe(3);
+    expect(config.maxConcurrency).toBe(3);
     expect(config.memoryWordCap).toBe(400);
     expect(config.memoryGraduationThreshold).toBe(300);
     expect(config.graduationMinDates).toBe(1);
@@ -49,6 +50,19 @@ describe("validateConfig", () => {
     expect(result.valid).toBe(false);
     expect(result.errors[0]).toContain("agentTimeout");
     expect(result.errors[0]).toContain("positive");
+  });
+
+  it("rejects negative maxConcurrency", () => {
+    const result = validateConfig({ maxConcurrency: -1 });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("maxConcurrency");
+    expect(result.errors[0]).toContain("positive");
+  });
+
+  it("rejects zero maxConcurrency", () => {
+    const result = validateConfig({ maxConcurrency: 0 });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("maxConcurrency");
   });
 
   it("rejects non-integer maxRetries", () => {

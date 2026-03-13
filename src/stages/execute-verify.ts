@@ -1,12 +1,12 @@
 import type { Story } from "../types/execution-plan.js";
-import type { ExecutionPlan } from "../types/execution-plan.js";
 import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules, buildRoleReportContents } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, ensureDir, fileExists } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
 import { parseTestReport, parseEvalReport } from "../reports/parser.js";
-import { incrementAttempts, saveExecutionPlan } from "../state/execution-plan.js";
+// Plan writes (incrementAttempts, saveExecutionPlan) removed from runVerify.
+// Attempt tracking is now local; the wave executor owns all plan state mutations.
 import { appendLogEntry, createLogEntry } from "../state/manager-log.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
@@ -24,7 +24,7 @@ export interface VerifyResult {
 export async function runVerify(
   story: Story,
   hiveMindDir: string,
-  planPath: string,
+  planPath: string | undefined,
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
@@ -39,23 +39,12 @@ export async function runVerify(
   const maxAttempts = story.maxAttempts;
 
   let attempt = 0;
-  let plan: ExecutionPlan | undefined;
   let lastConfidence: "structured" | "matched" | "default" = "default";
   const testReportPath = join(hiveMindDir, getReportPath(story.id, "test-report.md"));
   const evalReportPath = join(hiveMindDir, getReportPath(story.id, "eval-report.md"));
 
   while (attempt < maxAttempts) {
     attempt++;
-
-    // Increment attempt counter in execution-plan.json
-    if (fileExists(planPath)) {
-      const { loadExecutionPlan } = await import("../state/execution-plan.js");
-      plan = incrementAttempts(
-        plan ?? loadExecutionPlan(planPath),
-        story.id,
-      );
-      saveExecutionPlan(planPath, plan);
-    }
 
     // E.3: Tester — runs ACs via Bash
     console.log(`E.3: Running tester for ${story.id} (attempt ${attempt})...`);

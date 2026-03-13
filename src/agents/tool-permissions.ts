@@ -50,6 +50,7 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
   "code-reviewer": OUTPUT_TOOLS,
   "log-summarizer": OUTPUT_TOOLS,
   "enricher": OUTPUT_TOOLS,
+
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {

@@ -4,7 +4,8 @@ import { HiveMindError } from "../utils/errors.js";
 
 const VALID_TRANSITIONS: Record<string, StoryStatus[]> = {
   "not-started": ["in-progress", "skipped"],
-  "in-progress": ["passed", "failed"],
+  // "not-started" allowed for crash recovery: resetCrashedStories resets in-progress → not-started
+  "in-progress": ["passed", "failed", "not-started"],
   "failed": ["skipped"],
 };
 
@@ -187,3 +188,41 @@ export function validateDependencies(plan: ExecutionPlan): void {
     );
   }
 }
+
+/**
+ * Crash recovery: reset any "in-progress" stories back to "not-started".
+ * Called at the top of runExecuteStage to recover from prior crash/abort.
+ */
+export function resetCrashedStories(plan: ExecutionPlan): ExecutionPlan {
+  const hasCrashed = plan.stories.some((s) => s.status === "in-progress");
+  if (!hasCrashed) return plan;
+
+  return {
+    ...plan,
+    stories: plan.stories.map((s) =>
+      s.status === "in-progress" ? { ...s, status: "not-started" as StoryStatus } : s,
+    ),
+  };
+}
+
+/**
+ * Greedy wave construction: select stories from `ready` list that don't have
+ * overlapping sourceFiles. Iterates in plan order; if a candidate's sourceFiles
+ * overlap with any already-selected story, defer it to the next wave.
+ * Worst case (all files overlap) degrades to sequential — same as current behavior.
+ */
+export function filterNonOverlapping(stories: Story[]): Story[] {
+  const selected: Story[] = [];
+  const usedFiles = new Set<string>();
+
+  for (const story of stories) {
+    const hasOverlap = story.sourceFiles.some((f) => usedFiles.has(f));
+    if (!hasOverlap) {
+      selected.push(story);
+      for (const f of story.sourceFiles) usedFiles.add(f);
+    }
+  }
+
+  return selected;
+}
+

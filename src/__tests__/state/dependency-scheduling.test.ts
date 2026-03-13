@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getNextStory, getReadyStories, validateDependencies } from "../../state/execution-plan.js";
+import { getNextStory, getReadyStories, validateDependencies, resetCrashedStories, filterNonOverlapping } from "../../state/execution-plan.js";
 import { HiveMindError } from "../../utils/errors.js";
 import type { ExecutionPlan, Story } from "../../types/execution-plan.js";
 
@@ -157,5 +157,91 @@ describe("validateDependencies", () => {
     ]);
     expect(() => validateDependencies(plan)).toThrow(HiveMindError);
     expect(() => validateDependencies(plan)).toThrow("unknown story: US-99");
+  });
+});
+
+describe("resetCrashedStories", () => {
+  it("resets in-progress stories to not-started", () => {
+    const plan = makePlan([
+      makeStory({ id: "US-01", status: "in-progress" }),
+      makeStory({ id: "US-02", status: "passed" }),
+      makeStory({ id: "US-03", status: "not-started" }),
+    ]);
+    const result = resetCrashedStories(plan);
+    expect(result.stories[0].status).toBe("not-started");
+    expect(result.stories[1].status).toBe("passed");
+    expect(result.stories[2].status).toBe("not-started");
+  });
+
+  it("returns same plan if no in-progress stories", () => {
+    const plan = makePlan([
+      makeStory({ id: "US-01", status: "passed" }),
+      makeStory({ id: "US-02", status: "not-started" }),
+    ]);
+    const result = resetCrashedStories(plan);
+    expect(result).toBe(plan); // same reference — no copy needed
+  });
+
+  it("resets multiple in-progress stories", () => {
+    const plan = makePlan([
+      makeStory({ id: "US-01", status: "in-progress" }),
+      makeStory({ id: "US-02", status: "in-progress" }),
+    ]);
+    const result = resetCrashedStories(plan);
+    expect(result.stories.every((s) => s.status === "not-started")).toBe(true);
+  });
+});
+
+describe("filterNonOverlapping", () => {
+  it("selects all stories with no file overlap", () => {
+    const stories = [
+      makeStory({ id: "US-01", sourceFiles: ["a.ts"] }),
+      makeStory({ id: "US-02", sourceFiles: ["b.ts"] }),
+      makeStory({ id: "US-03", sourceFiles: ["c.ts"] }),
+    ];
+    const wave = filterNonOverlapping(stories);
+    expect(wave.map((s) => s.id)).toEqual(["US-01", "US-02", "US-03"]);
+  });
+
+  it("defers stories with overlapping files", () => {
+    const stories = [
+      makeStory({ id: "US-01", sourceFiles: ["a.ts", "b.ts"] }),
+      makeStory({ id: "US-02", sourceFiles: ["b.ts", "c.ts"] }),
+      makeStory({ id: "US-03", sourceFiles: ["d.ts"] }),
+    ];
+    const wave = filterNonOverlapping(stories);
+    // US-02 overlaps with US-01 on b.ts — deferred
+    expect(wave.map((s) => s.id)).toEqual(["US-01", "US-03"]);
+  });
+
+  it("selects stories with empty sourceFiles (no overlap possible)", () => {
+    const stories = [
+      makeStory({ id: "US-01", sourceFiles: [] }),
+      makeStory({ id: "US-02", sourceFiles: [] }),
+    ];
+    const wave = filterNonOverlapping(stories);
+    expect(wave.map((s) => s.id)).toEqual(["US-01", "US-02"]);
+  });
+
+  it("degrades to single story when all overlap", () => {
+    const stories = [
+      makeStory({ id: "US-01", sourceFiles: ["shared.ts"] }),
+      makeStory({ id: "US-02", sourceFiles: ["shared.ts"] }),
+      makeStory({ id: "US-03", sourceFiles: ["shared.ts"] }),
+    ];
+    const wave = filterNonOverlapping(stories);
+    expect(wave.map((s) => s.id)).toEqual(["US-01"]);
+  });
+
+  it("handles diamond dependency file patterns", () => {
+    const stories = [
+      makeStory({ id: "US-01", sourceFiles: ["a.ts", "shared.ts"] }),
+      makeStory({ id: "US-02", sourceFiles: ["b.ts"] }),
+      makeStory({ id: "US-03", sourceFiles: ["shared.ts", "c.ts"] }),
+      makeStory({ id: "US-04", sourceFiles: ["d.ts"] }),
+    ];
+    const wave = filterNonOverlapping(stories);
+    // US-03 overlaps with US-01 on shared.ts — deferred
+    expect(wave.map((s) => s.id)).toEqual(["US-01", "US-02", "US-04"]);
   });
 });

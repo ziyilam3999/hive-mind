@@ -5,6 +5,7 @@ import { fileExists } from "../utils/file-io.js";
 import { buildPrompt } from "./prompts.js";
 import { getToolsForAgent } from "./tool-permissions.js";
 import { calculateBackoffDelay, sleep } from "../utils/backoff.js";
+import { runWithConcurrency } from "../utils/concurrency.js";
 
 export async function spawnAgent(
   config: AgentConfig,
@@ -75,28 +76,11 @@ export async function spawnAgentsParallel(
   hiveMindConfig: HiveMindConfig,
   options?: { maxConcurrency?: number },
 ): Promise<AgentResult[]> {
-  const maxConcurrency = options?.maxConcurrency ?? configs.length;
+  const limit = options?.maxConcurrency ?? configs.length;
 
-  if (maxConcurrency >= configs.length) {
-    // All at once
-    return Promise.all(
-      configs.map((config) => spawnAgentWithRetry(config, hiveMindConfig)),
-    );
-  }
+  const tasks = configs.map((config) => () => spawnAgentWithRetry(config, hiveMindConfig));
+  const settled = await runWithConcurrency(tasks, limit);
 
-  // Worker-pool pattern for bounded concurrency
-  const results: AgentResult[] = new Array(configs.length);
-  let nextIndex = 0;
-
-  async function worker(): Promise<void> {
-    while (nextIndex < configs.length) {
-      const idx = nextIndex++;
-      results[idx] = await spawnAgentWithRetry(configs[idx], hiveMindConfig);
-    }
-  }
-
-  const workers = Array.from({ length: maxConcurrency }, () => worker());
-  await Promise.all(workers);
-
-  return results;
+  // Extract values — spawnAgentWithRetry never throws (returns error result), so all are fulfilled
+  return settled.map((r) => (r as PromiseFulfilledResult<AgentResult>).value);
 }

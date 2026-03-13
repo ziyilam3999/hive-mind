@@ -6,6 +6,7 @@ export interface HiveMindConfig {
   toolingDetectTimeout: number;
   maxRetries: number;
   maxAttempts: number;
+  maxConcurrency: number;
   retryBaseDelayMs: number;
   retryMaxDelayMs: number;
   memoryWordCap: number;
@@ -55,6 +56,7 @@ export const DEFAULT_CONFIG: HiveMindConfig = {
   toolingDetectTimeout: 30_000,
   maxRetries: 1,
   maxAttempts: 3,
+  maxConcurrency: 3,
   retryBaseDelayMs: 1000,
   retryMaxDelayMs: 16_000,
   memoryWordCap: 400,

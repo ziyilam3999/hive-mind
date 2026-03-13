@@ -8,14 +8,18 @@ import {
   deleteCheckpoint,
   getCheckpointMessage,
 } from "./state/checkpoint.js";
+import type { Story } from "./types/execution-plan.js";
 import {
   loadExecutionPlan,
   saveExecutionPlan,
   updateStoryStatus,
-  getNextStory,
   markCommitted,
   validateDependencies,
+  getReadyStories,
+  resetCrashedStories,
+  filterNonOverlapping,
 } from "./state/execution-plan.js";
+import { runWithConcurrency } from "./utils/concurrency.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
 import { isoTimestamp } from "./utils/timestamp.js";
 import { join } from "node:path";
@@ -25,7 +29,7 @@ import { CostTracker } from "./utils/cost-tracker.js";
 import { runSpecStage as specStage } from "./stages/spec-stage.js";
 import { runPlanStage as planStage } from "./stages/plan-stage.js";
 import { runBuild } from "./stages/execute-build.js";
-import { runVerify } from "./stages/execute-verify.js";
+import { runVerify, type VerifyResult } from "./stages/execute-verify.js";
 import { runCommit } from "./stages/execute-commit.js";
 import { runLearn } from "./stages/execute-learn.js";
 import { parseRequiredTooling, detectAllTools } from "./tooling/detect.js";
@@ -218,6 +222,48 @@ export async function runPlanStage(
   await planStage(hiveMindDir, config, feedback);
 }
 
+export interface StoryExecutionResult {
+  storyId: string;
+  passed: boolean;
+  commitHash?: string;
+  errorMessage?: string;
+  attempts: number;
+}
+
+/**
+ * Executes a single story: BUILD → VERIFY only.
+ * Pure function — returns results, never writes to execution plan.
+ * Plan state mutations are owned by the wave executor.
+ */
+export async function executeOneStory(
+  story: Story,
+  hiveMindDir: string,
+  config: HiveMindConfig,
+  costTracker?: CostTracker,
+  roleReportsDir?: string,
+): Promise<StoryExecutionResult> {
+  const logPath = join(hiveMindDir, "manager-log.jsonl");
+
+  // BUILD sub-pipeline (US-13)
+  console.log(`[${story.id}] BUILD: Starting...`);
+  await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir);
+
+  appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
+    storyId: story.id,
+  }));
+
+  // VERIFY sub-pipeline (US-14) — no plan writes (refactored in Step 5)
+  console.log(`[${story.id}] VERIFY: Starting...`);
+  const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir);
+
+  return {
+    storyId: story.id,
+    passed: verifyResult.passed,
+    attempts: verifyResult.attempts,
+    errorMessage: verifyResult.passed ? undefined : "Verification failed after max attempts",
+  };
+}
+
 export async function runExecuteStage(
   hiveMindDir: string,
   config: HiveMindConfig,
@@ -236,33 +282,70 @@ export async function runExecuteStage(
 
   validateDependencies(plan);
 
-  let story = getNextStory(plan);
-  while (story) {
-    console.log(`Executing story: ${story.id} - ${story.title}`);
+  // Crash recovery: reset any in-progress stories from prior crash/abort
+  plan = resetCrashedStories(plan);
+  if (plan.stories.some((s) => s.status === "not-started")) {
+    saveExecutionPlan(planPath, plan);
+  }
 
-    plan = updateStoryStatus(plan, story.id, "in-progress");
+  const roleReportsDir = join(hiveMindDir, "plans", "role-reports");
+
+  // Wave executor: process stories in waves of non-overlapping, dependency-ready stories
+  while (true) {
+    const ready = getReadyStories(plan);
+    const wave = filterNonOverlapping(ready);
+    if (wave.length === 0) break;
+
+    console.log(`\nWave: executing ${wave.map((s) => s.id).join(", ")}`);
+
+    // Mark wave stories as in-progress
+    for (const s of wave) {
+      plan = updateStoryStatus(plan, s.id, "in-progress");
+    }
     saveExecutionPlan(planPath, plan);
 
-    try {
-      // BUILD sub-pipeline (US-13)
-      const roleReportsDir = join(hiveMindDir, "plans", "role-reports");
-      await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir);
+    // Parallel BUILD+VERIFY (bounded by maxConcurrency)
+    const tasks = wave.map((s) => () => executeOneStory(s, hiveMindDir, config, costTracker, roleReportsDir));
+    const settled = await runWithConcurrency(tasks, config.maxConcurrency);
 
-      appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
-        storyId: story.id,
-      }));
+    // Sequential post-wave: COMMIT → plan update → save
+    for (let i = 0; i < settled.length; i++) {
+      const story = wave[i];
+      const result = settled[i];
 
-      // VERIFY sub-pipeline (US-14)
-      const verifyResult = await runVerify(story, hiveMindDir, planPath, config, costTracker, roleReportsDir);
+      if (result.status === "rejected") {
+        // Unexpected error (e.g. agent crash)
+        const errorMessage = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        console.error(`[${story.id}] Error:`, errorMessage);
+        plan = updateStoryStatus(plan, story.id, "failed");
+        plan = {
+          ...plan,
+          stories: plan.stories.map((s) =>
+            s.id === story.id ? { ...s, errorMessage, lastFailedStage: "execute" } : s,
+          ),
+        };
 
-      // Reload plan from disk -- runVerify writes attempt increments via saveExecutionPlan.
-      // Without this reload, the stale in-memory plan overwrites the incremented attempts to 0.
-      plan = loadExecutionPlan(planPath);
-
-      if (verifyResult.passed) {
-        // COMMIT sub-pipeline (US-15)
-        const commitResult = await runCommit(story, hiveMindDir, verifyResult, config);
+        appendLogEntry(logPath, createLogEntry("FAILED", {
+          cycle: 1,
+          storyId: story.id,
+          reason: errorMessage,
+        }));
+      } else if (result.value.passed) {
+        // COMMIT sub-pipeline (US-15) — serialized, no git races
+        console.log(`[${story.id}] COMMIT: Starting...`);
+        const commitResult = await runCommit(story, hiveMindDir, {
+          passed: true,
+          attempts: result.value.attempts,
+          testReportPath: join(hiveMindDir, `reports/${story.id}/test-report.md`),
+          evalReportPath: join(hiveMindDir, `reports/${story.id}/eval-report.md`),
+          parserConfidence: "default",
+        }, config);
         plan = updateStoryStatus(plan, story.id, "passed");
+
+        // Track attempts from verify
+        for (let a = 0; a < result.value.attempts; a++) {
+          plan = { ...plan, stories: plan.stories.map((s) => s.id === story.id ? { ...s, attempts: s.attempts + 1 } : s) };
+        }
 
         if (commitResult.committed && commitResult.commitHash) {
           plan = markCommitted(plan, story.id, commitResult.commitHash);
@@ -272,7 +355,7 @@ export async function runExecuteStage(
             commitHash: commitResult.commitHash,
           }));
         } else {
-          console.warn(`Warning: Commit failed for ${story.id}: ${commitResult.error ?? "unknown error"}`);
+          console.warn(`[${story.id}] Warning: Commit failed: ${commitResult.error ?? "unknown error"}`);
           appendLogEntry(logPath, createLogEntry("COMMIT_FAILED", {
             storyId: story.id,
             error: commitResult.error ?? "unknown error",
@@ -284,56 +367,38 @@ export async function runExecuteStage(
           storyId: story.id,
           testResults: { total: 0, passed: 0, failed: 0 },
           evalVerdict: "PASS",
-          attempt: verifyResult.attempts,
+          attempt: result.value.attempts,
         }));
       } else {
-        const failedId = story.id;
-        plan = updateStoryStatus(plan, failedId, "failed");
-        // Persist error details for post-mortem (C-ATOMIC-1, F30)
+        // Verification failed after max attempts
+        plan = updateStoryStatus(plan, story.id, "failed");
         plan = {
           ...plan,
           stories: plan.stories.map((s) =>
-            s.id === failedId ? { ...s, errorMessage: "Verification failed after max attempts", lastFailedStage: "verify" } : s,
+            s.id === story.id ? { ...s, errorMessage: result.value.errorMessage ?? "Verification failed", lastFailedStage: "verify", attempts: result.value.attempts } : s,
           ),
         };
 
         appendLogEntry(logPath, createLogEntry("FAILED", {
           cycle: 1,
           storyId: story.id,
-          reason: "Verification failed after max attempts",
+          reason: result.value.errorMessage ?? "Verification failed after max attempts",
         }));
       }
-
-      saveExecutionPlan(planPath, plan);
-      await safeUpdateManifest(hiveMindDir);
-
-      // LEARN sub-pipeline (US-16) -- always, even if failed
-      await runLearn(story, hiveMindDir, config, costTracker, roleReportsDir);
-
-      // Check budget after each story
-      costTracker?.enforceBudget();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const failedId = story!.id;
-      console.error(`Error executing story ${failedId}:`, errorMessage);
-      plan = updateStoryStatus(plan, failedId, "failed");
-      // Persist error details atomically for post-mortem analysis (C-ATOMIC-1, F30)
-      plan = {
-        ...plan,
-        stories: plan.stories.map((s) =>
-          s.id === failedId ? { ...s, errorMessage, lastFailedStage: "execute" } : s,
-        ),
-      };
-      saveExecutionPlan(planPath, plan);
-
-      appendLogEntry(logPath, createLogEntry("FAILED", {
-        cycle: 1,
-        storyId: story.id,
-        reason: errorMessage,
-      }));
     }
 
-    story = getNextStory(plan);
+    // Single disk write per wave
+    saveExecutionPlan(planPath, plan);
+    await safeUpdateManifest(hiveMindDir);
+
+    // Sequential LEARN — no memory.md races
+    for (const story of wave) {
+      console.log(`[${story.id}] LEARN: Starting...`);
+      await runLearn(story, hiveMindDir, config, costTracker, roleReportsDir);
+    }
+
+    // Budget enforcement after wave (not per-story)
+    costTracker?.enforceBudget();
   }
 
   // Check if all stories failed
