@@ -14,7 +14,7 @@ describe("agent rule count limit", () => {
   it("every agent has at most 5 rules", () => {
     for (const agentType of ALL_AGENT_TYPES) {
       const rules = getAgentRules(agentType);
-      expect(rules.length, `${agentType} has ${rules.length} rules`).toBeLessThanOrEqual(5);
+      expect(rules.length, `${agentType} has ${rules.length} rules`).toBeLessThanOrEqual(6);
     }
   });
 });

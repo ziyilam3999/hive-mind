@@ -29,6 +29,9 @@ export class CostTracker {
     costUsd: number | undefined,
     durationMs: number | undefined,
   ): void {
+    if (costUsd === undefined) {
+      console.warn(`[CostTracker] Missing cost data for ${agentType} (${storyId}) — defaulting to $0. Pipeline totals may undercount.`);
+    }
     this.entries.push({
       storyId,
       agentType,

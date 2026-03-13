@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { CostTracker } from "../../utils/cost-tracker.js";
 import { HiveMindError } from "../../utils/errors.js";
 
@@ -16,10 +16,37 @@ describe("CostTracker", () => {
 
   it("handles missing/undefined cost data (returns 0, not crash)", () => {
     const tracker = new CostTracker();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     tracker.recordAgentCost("US-01", "implementer", undefined, undefined);
 
     expect(tracker.getStoryTotal("US-01")).toBe(0);
     expect(tracker.getPipelineTotal()).toBe(0);
+    warnSpy.mockRestore();
+  });
+
+  it("logs warning when cost data is missing (K3)", () => {
+    const tracker = new CostTracker();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    tracker.recordAgentCost("US-01", "implementer", undefined, 5000);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[CostTracker] Missing cost data for implementer (US-01)"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("defaulting to $0"),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn when cost data is present", () => {
+    const tracker = new CostTracker();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    tracker.recordAgentCost("US-01", "implementer", 0.05, 5000);
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it("returns 0 for unknown story", () => {

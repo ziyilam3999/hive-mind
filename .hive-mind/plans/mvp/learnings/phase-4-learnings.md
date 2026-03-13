@@ -144,3 +144,16 @@ Code was correct (11/12 ECs passed, all 12 ACs passed in test reports). EC-10 fa
 Phase 4 is the most architecturally significant phase since the initial build. The synthesizer split changes how plans are generated (1 agent → 3 agents), the two-batch report stage changes how reports are produced (1 batch → 2 batches with dependencies), and the role-report feedback loop threads cross-phase context through every execution agent. Despite the scope, all changes are additive or replacements of isolated pipeline steps — the orchestrator's core loop is unchanged (only 3 lines added for `roleReportsDir` threading).
 
 The Tier 3 dogfood (run-06) validated all Phase 4 features end-to-end with real Claude API calls. Two critical bugs were found pre-run (Write tool permissions, Windows stdin) — both fixed and committed. The one story failure (US-03) was an EC authoring bug, not a pipeline or code defect. Code correctness remains 100% across all runs (now 16/16 stories across 6 runs).
+
+### Post-Dogfood Fixes (2026-03-13)
+
+Four known issues (K1-K4) identified from dogfood analysis, all fixed:
+
+| Fix | What Changed | Files |
+|-----|-------------|-------|
+| K1 (F44) | Fixer now receives step file as first input; STEP-FILE-IS-CANONICAL rule added | `execute-verify.ts`, `prompts.ts` |
+| K2 | JSON parse catch block now logs warning with error + truncated stdout | `shell.ts` |
+| K3 | `recordAgentCost()` warns when cost data is undefined | `cost-tracker.ts` |
+| K4 | Step file passed to fixer in both fast-path and escalated-path | `execute-verify.ts` |
+
+New tests: 7 (shell-json-parse: 3, cost-tracker: 2, execute-verify: 1, spawner: 1). Total: 246 tests, 42 files.

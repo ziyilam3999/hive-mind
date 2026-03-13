@@ -10,8 +10,8 @@
 
 | Metric | Baseline | Current |
 |--------|----------|---------|
-| Test files | 25 | 40 |
-| Total tests | 95 | 239 |
+| Test files | 25 | 42 |
+| Total tests | 95 | 246 |
 | Source files | 38 | 50 |
 | TypeScript errors | 0 | 0 |
 
@@ -95,7 +95,20 @@
 
 ---
 
+## Known Issues (Phase 4 Tier 3 — run-06)
+
+| # | Issue | Severity | Phase 5 Prereq? | Status | Fixed |
+|---|-------|----------|-----------------|--------|-------|
+| K1 | Duplicate EC sources (F44) — fixer patches wrong file | HIGH | Yes | [x] | 2026-03-13 |
+| K2 | JSON parse silent failure in shell.ts | HIGH | Yes | [x] | 2026-03-13 |
+| K3 | Cost tracking blind spots ($0 default) | MEDIUM | No | [x] | 2026-03-13 |
+| K4 | Fixer file targeting — no explicit mapping | MEDIUM | Yes | [x] | 2026-03-13 |
+
+---
+
 ## Phase 5: Execution Power
+
+**Prerequisites:** K1, K2, K4 must be resolved before Phase 5 Tier 3 dogfood.
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|

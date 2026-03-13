@@ -105,6 +105,7 @@ const AGENT_RULES: Record<string, string[]> = {
     "TARGETED: Change only what is necessary to fix the failing ACs. Do not refactor unrelated code.",
     "DIAGNOSIS-GUIDED: If a diagnosis-report.md exists, follow its recommended fix.",
     "NO-HACKS: Do not disable tests, weaken assertions, or work around the problem.",
+    "STEP-FILE-IS-CANONICAL: The step file (US-XX.md) is the single source of truth for ACs and ECs. If you need to fix an AC or EC command, patch the step file directly. Do NOT patch separate files like US-XX-ecs.md or US-XX-acs.md — the evaluator only reads from the assembled step file.",
     "REPORT-FORMAT: Output must follow fix-report.md template exactly.",
   ],
   "planner": [

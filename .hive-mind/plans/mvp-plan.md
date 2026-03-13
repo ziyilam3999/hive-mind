@@ -565,13 +565,36 @@ See [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) for f
 
 ---
 
+## Known Issues (from Phase 4 Tier 3 Dogfood — run-06)
+
+> Discovered during the Phase 4 dogfood run (2026-03-13). These should be resolved before Phase 5's mandatory Tier 3 dogfood.
+
+| # | ID | Issue | Severity | Phase 5 Prereq? |
+|---|---|-------|----------|-----------------|
+| K1 | F44 | **Duplicate EC sources** — ECs exist in both `acceptance-criteria.md` and `US-XX-ecs.md`. Fixer patches whichever it finds first (usually wrong file). Evaluator reads from `US-XX-ecs.md`. Caused US-03 to fail all 3 retries despite correct code. | HIGH | Yes |
+| K2 | — | **JSON parse silent failure** — `shell.ts:136` has empty catch block. If agent stdout isn't valid JSON, error is swallowed silently. Could mask agent failures and produce misleading cost/token data. | HIGH | Yes |
+| K3 | — | **Cost tracking blind spots** — Missing cost data defaults to `$0` with no warning. Pipeline cost totals may undercount. No log entry when cost data is absent. | MEDIUM | No |
+| K4 | — | **Fixer file targeting** — Fixer agent has no explicit mapping of which file to patch. It greps the workspace and patches whatever matches first, which may differ from the file the evaluator reads. Related to K1 but broader. | MEDIUM | Yes |
+
+### Resolution Strategy
+
+- **K1 + K4** (duplicate ECs + fixer targeting): Establish single source of truth for ECs. The evaluator and fixer must read/write the same canonical file. Remove or symlink the duplicate.
+- **K2** (silent JSON failure): Add error logging in the catch block. Log the raw stdout and the parse error so failures are visible in `manager-log.jsonl`.
+- **K3** (cost blind spots): Add a warning log entry when cost/token data is missing from agent response. Low priority — doesn't affect correctness.
+
+---
+
 ## Phase 5: Execution Power
+
+### Prerequisites: Known Issue Fixes
+
+Before starting Phase 5 implementation, resolve **K1, K2, K4** from the Known Issues section above. These are HIGH-severity bugs that will cause Phase 5's mandatory Tier 3 dogfood to hit the same retry failures (K1/K4) or silently lose debugging information (K2).
 
 ### 16. ENH-03: Parallel Story Execution
 
 **Problem:** Stories execute one at a time. Independent stories with no mutual dependencies could run in parallel.
 
-**Prerequisites:** ENH-02 (dependency scheduling) must land first — provides the dependency graph.
+**Prerequisites:** ENH-02 (dependency scheduling) must land first — provides the dependency graph. Known issues K1, K2, K4 must be resolved.
 
 **Fix — Wave-based execution:**
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { getDefaultConfig } from "../../config/loader.js";
 import { getToolsForAgent } from "../../agents/tool-permissions.js";
+import { getAgentRules } from "../../agents/prompts.js";
 import type { AgentConfig } from "../../types/agents.js";
 
 // Mock spawnClaude at the shell level
@@ -298,6 +299,14 @@ describe("getToolsForAgent", () => {
 
   it("returns shell tools for tester-exec", () => {
     expect(getToolsForAgent("tester-exec")).toEqual(["Read", "Glob", "Grep", "Bash", "Write"]);
+  });
+
+  it("fixer rules include STEP-FILE-IS-CANONICAL (K1/K4)", () => {
+    const rules = getAgentRules("fixer");
+    const hasCanonicalRule = rules.some((r: string) =>
+      r.includes("STEP-FILE-IS-CANONICAL") && r.includes("single source of truth"),
+    );
+    expect(hasCanonicalRule).toBe(true);
   });
 
   it("returns tools for every agent type", () => {

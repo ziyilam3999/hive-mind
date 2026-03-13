@@ -122,6 +122,47 @@ describe("execute-verify", () => {
     }
   });
 
+  it("fixer receives step file as first input (K1/K4)", async () => {
+    setup();
+    try {
+      const { spawnAgentWithRetry: mockSpawn } = await import("../../agents/spawner.js");
+      let testerCallCount = 0;
+      vi.mocked(mockSpawn).mockImplementation(async (config) => {
+        spawnCalls.push({ type: config.type, inputFiles: [...config.inputFiles] });
+        const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+        const { dirname } = await import("node:path");
+        md(dirname(config.outputFile), { recursive: true });
+        if (config.type === "tester-exec") {
+          testerCallCount++;
+          if (testerCallCount === 1) {
+            wf(config.outputFile, "## STATUS: FAIL\n| AC-0 | lint | npx eslint | FAIL | FAIL |");
+          } else {
+            wf(config.outputFile, "## STATUS: PASS\n");
+          }
+        } else if (config.type === "evaluator") {
+          wf(config.outputFile, "## VERDICT: PASS\n");
+        } else {
+          wf(config.outputFile, `# Mock ${config.type}`);
+        }
+        return { success: true, outputFile: config.outputFile };
+      });
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      consoleSpy.mockRestore();
+
+      // Fixer should have been called with step file as first input
+      const fixerCall = spawnCalls.find((c) => c.type === "fixer");
+      expect(fixerCall).toBeDefined();
+      expect(fixerCall!.inputFiles[0]).toContain("US-99-test.md");
+      // Step file is the canonical source — not US-99-ecs.md or acceptance-criteria.md
+      expect(fixerCall!.inputFiles[0]).not.toContain("-ecs.md");
+      expect(fixerCall!.inputFiles[0]).not.toContain("acceptance-criteria");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("attempt 1 = fast path (no diagnostician)", async () => {
     setup();
     try {

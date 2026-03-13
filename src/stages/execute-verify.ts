@@ -174,6 +174,7 @@ async function runFixPipeline(
   roleReportsDir?: string,
 ): Promise<void> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
+  const stepFilePath = join(hiveMindDir, story.stepFile);
 
   const failReportPath = failureType === "ac"
     ? join(reportsDir, "test-report.md")
@@ -193,7 +194,7 @@ async function runFixPipeline(
     await spawnAgentWithRetry({
       type: "fixer",
       model: "sonnet",
-      inputFiles: [failReportPath, ...priorFixReports],
+      inputFiles: [stepFilePath, failReportPath, ...priorFixReports],
       outputFile: fixReportPath,
       rules: getAgentRules("fixer"),
       memoryContent,
@@ -228,7 +229,7 @@ async function runFixPipeline(
     await spawnAgentWithRetry({
       type: "fixer",
       model: "sonnet",
-      inputFiles: [diagReportPath, failReportPath, ...priorFixReports, ...priorDiagReports],
+      inputFiles: [stepFilePath, diagReportPath, failReportPath, ...priorFixReports, ...priorDiagReports],
       outputFile: fixReportPath,
       rules: getAgentRules("fixer"),
       memoryContent,

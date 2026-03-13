@@ -133,8 +133,9 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
             duration_ms: typeof parsed.duration_ms === "number" ? parsed.duration_ms : 0,
             raw: parsed,
           };
-        } catch {
-          // JSON parse failed — fall back to raw stdout (defensive per plan)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[spawnClaude] JSON parse failed — falling back to raw stdout. Error: ${msg}. stdout (first 200 chars): ${stdout.slice(0, 200)}`);
         }
       }
 
