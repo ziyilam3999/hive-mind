@@ -115,17 +115,26 @@
 |---|---|------|--------|-----------|
 | 16 | ENH-03 | Parallel story execution | [x] | 2026-03-13 |
 | 17 | FW-01 | Sub-task decomposition | [ ] | — |
-| 18 | ENH-17 | Compliance reviewer agent | [x] | 2026-03-13 (uncommitted) |
-| 19 | ENH-18 | Compliance fixer agent | [x] | 2026-03-13 (uncommitted) |
+| 18 | ENH-17 | Compliance reviewer agent | [x] | 2026-03-13 |
+| 19 | ENH-18 | Compliance fixer agent | [x] | 2026-03-13 |
 
 **Smoke Test Gate:**
-- [x] Tier 1 (Unit) — pass date: 2026-03-13 (302 tests, 45 files)
-- [ ] Tier 2 (Integration) — pass date: —
-- [ ] Tier 3 (Dogfood — MANDATORY) — pass date: —
+- [x] Tier 1 (Unit) — pass date: 2026-03-13 (303 tests, 45 files)
+- [x] Tier 2 (Integration) — pass date: 2026-03-13
+- [x] Tier 3 (Dogfood — MANDATORY) — pass date: 2026-03-13
 
-**Learnings captured:** [ ] → `learnings/phase-5-learnings.md`
-**Knowledge-base synced:** [ ] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md`
-**Committed:** [~] → ENH-03: `0a66d3a` (2026-03-13) | ENH-17/18 + gap fixes: uncommitted
+**Tier 3 Dogfood Results (string-utils PRD, 4 stories):**
+- Wave 1: US-01, US-03, US-04 executed in parallel (ENH-03 validated)
+- Wave 2: US-02 waited for US-01 dependency (scheduling validated)
+- 4/4 stories COMPLETED + COMMITTED
+- Compliance check: US-01 (5 done), US-03 (10 done), US-04 (14 done), US-02 (29 done) — ENH-17 validated
+- Compliance fix loop: US-02 FAIL → fixer fixed 1 item → re-review PASS — ENH-18 validated
+- US-01, US-04 needed 1 verify retry each (fixer applied); US-02, US-03 passed first attempt
+- Bugs found: cost data always $0 (CLI JSON array format, field name mismatch), redundant report archives on first attempt — both fixed in `5ae476b`
+
+**Learnings captured:** [x] → `learnings/phase-5-learnings.md` (2026-03-13)
+**Knowledge-base synced:** [x] → P46, P47, F47, F48 added to knowledge-base (2026-03-13)
+**Committed:** [x] → ENH-03: `0a66d3a` | ENH-17/18: `6d41f7a` | dogfood fixes: `5ae476b`
 
 ---
 
