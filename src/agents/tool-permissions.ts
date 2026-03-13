@@ -51,7 +51,8 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
   "log-summarizer": OUTPUT_TOOLS,
   "enricher": OUTPUT_TOOLS,
 
-  // Phase 5 — compliance agents
+  // Phase 5 — decomposer + compliance agents
+  "decomposer": OUTPUT_TOOLS,
   "compliance-reviewer": OUTPUT_TOOLS,
   "compliance-fixer": DEV_TOOLS,
 

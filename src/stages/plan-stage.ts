@@ -1,5 +1,5 @@
 import type { AgentConfig } from "../types/agents.js";
-import type { Story } from "../types/execution-plan.js";
+import type { Story, SubTask } from "../types/execution-plan.js";
 import { spawnAgentWithRetry, spawnAgentsParallel } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
@@ -231,7 +231,23 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
     );
   }
 
-  // Step 3b: Enricher — add Implementation Guidance / Security / Edge Cases per story
+  // Step 3b: Decomposer — break high-complexity stories into sub-tasks (FW-01)
+  const highComplexityStories = stories.filter((s) => s.complexity === "high");
+  if (highComplexityStories.length > 0) {
+    console.log(`Running decomposer for ${highComplexityStories.length} high-complexity stories...`);
+    for (const story of highComplexityStories) {
+      const subTasks = await decomposeStory(story, stepsDir, feedbackMemory, config);
+      if (subTasks.length > 0) {
+        story.subTasks = subTasks;
+        console.log(`  ${story.id}: decomposed into ${subTasks.length} sub-tasks`);
+      }
+    }
+    // Persist sub-tasks into execution-plan.json
+    planData.stories = stories;
+    writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
+  }
+
+  // Step 3c: Enricher — add Implementation Guidance / Security / Edge Cases per story
   console.log("Running enricher per story...");
   for (const story of stories) {
     const stepFilePath = join(stepsDir, `${story.id}.md`);
@@ -313,6 +329,64 @@ ${story.complexityJustification ? `- Complexity Justification: ${story.complexit
 ${story.dependencyImpact ? `- Dependency Impact: ${story.dependencyImpact}` : ""}
 `;
   writeFileAtomic(join(stepsDir, `${story.id}-skeleton.md`), skeleton);
+}
+
+/**
+ * FW-01: Decompose a high-complexity story into sub-tasks.
+ * Non-fatal: if decomposer crashes or returns unparseable output, returns [].
+ */
+async function decomposeStory(
+  story: Story,
+  stepsDir: string,
+  memoryContent: string,
+  config: HiveMindConfig,
+): Promise<SubTask[]> {
+  // Skip decomposition if fewer than 3 source files (rule SIZE-BOUND)
+  if (story.sourceFiles.length < 3) return [];
+
+  const stepFilePath = join(stepsDir, `${story.id}.md`);
+  const outputPath = join(stepsDir, `${story.id}-subtasks.json`);
+
+  try {
+    await spawnAgentWithRetry({
+      type: "decomposer",
+      model: "sonnet",
+      inputFiles: [stepFilePath],
+      outputFile: outputPath,
+      rules: getAgentRules("decomposer"),
+      memoryContent,
+    }, config);
+
+    const content = readFileSafe(outputPath);
+    if (!content) {
+      console.warn(`[${story.id}] Decomposer produced no output — skipping decomposition (P39)`);
+      return [];
+    }
+
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed)) {
+      console.warn(`[${story.id}] Decomposer output is not an array — skipping decomposition (P39)`);
+      return [];
+    }
+
+    if (parsed.length === 0) return [];
+
+    // Validate and normalize sub-tasks
+    const subTasks: SubTask[] = parsed.map((st: Record<string, unknown>, i: number) => ({
+      id: typeof st.id === "string" ? st.id : `${story.id}.${i + 1}`,
+      title: typeof st.title === "string" ? st.title : `Sub-task ${i + 1}`,
+      targetFiles: Array.isArray(st.targetFiles) ? st.targetFiles as string[] : [],
+      acceptanceCriteria: Array.isArray(st.acceptanceCriteria) ? st.acceptanceCriteria as string[] : [],
+      exitCriteria: Array.isArray(st.exitCriteria) ? st.exitCriteria as string[] : [],
+      status: "not-started" as const,
+      attempts: 0,
+    }));
+
+    return subTasks;
+  } catch (err) {
+    console.warn(`[${story.id}] Decomposer crashed — skipping decomposition (P39): ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
 }
 
 export function assembleStepFile(

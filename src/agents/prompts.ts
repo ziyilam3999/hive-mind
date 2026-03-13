@@ -43,6 +43,7 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "enricher": "Read step file + role-reports, append Implementation Guidance / Security Requirements / Edge Cases sections",
   "compliance-reviewer": "Read step file + impl-report + source files, check every instruction has a corresponding implementation, produce compliance-report.md",
   "compliance-fixer": "Read compliance-report MISSING items + step file + source files, implement the missing instructions, produce compliance-fix-report.md",
+  "decomposer": "Break high-complexity story into 2-5 focused sub-tasks, each with clear targetFiles, acceptanceCriteria, and exitCriteria subsets",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -159,6 +160,13 @@ const AGENT_RULES: Record<string, string[]> = {
     "MINIMAL-DIFF: Make the smallest change that satisfies each missing instruction. A doc comment is one comment, not a rewrite.",
     "REPORT-CHANGES: Output MUST start with <!-- STATUS: {\"result\": \"PASS|FAIL\", \"itemsFixed\": N, \"itemsRemaining\": N} --> in first 200 chars. List each addressed item with file path and change description.",
     "NO-FUNCTIONAL-REGRESSION: Do not modify existing passing logic. Compliance fixes are additive (comments, tests, new functions). Run npm test after changes to verify no regressions.",
+  ],
+  "decomposer": [
+    "SCOPE-SPLIT: Each sub-task must target a disjoint subset of sourceFiles. No file should appear in two sub-tasks. [Wrong: both sub-tasks touch src/utils.ts] [Right: sub-task 1 targets src/types.ts, sub-task 2 targets src/utils.ts]",
+    "AC-PARTITION: Each acceptance criterion from the step file must appear in exactly one sub-task. No duplicates, no omissions.",
+    "EC-PARTITION: Each exit criterion must appear in exactly one sub-task. Assign to the sub-task whose targetFiles contain the tested code.",
+    "STRUCTURED-OUTPUT: Output MUST be a JSON array of sub-task objects: [{\"id\": \"US-XX.1\", \"title\": \"...\", \"targetFiles\": [...], \"acceptanceCriteria\": [...], \"exitCriteria\": [...]}]. No markdown, no prose — pure JSON.",
+    "SIZE-BOUND: Produce 2-5 sub-tasks. If the story has fewer than 3 source files, do NOT decompose (output empty array []).",
   ],
   "enricher": [
     "APPEND-ONLY: Add new sections (## Implementation Guidance, ## Security Requirements, ## Edge Cases). NEVER modify existing content.",

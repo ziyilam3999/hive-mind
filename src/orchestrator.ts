@@ -1,7 +1,7 @@
 import type { Checkpoint } from "./types/checkpoint.js";
-import type { ExecutionPlan } from "./types/execution-plan.js";
+import type { ExecutionPlan, SubTask } from "./types/execution-plan.js";
 import type { HiveMindConfig } from "./config/schema.js";
-import { fileExists, ensureDir, readFileSafe } from "./utils/file-io.js";
+import { fileExists, ensureDir, readFileSafe, writeFileAtomic } from "./utils/file-io.js";
 import { createMemoryFromTemplate } from "./memory/memory-manager.js";
 import {
   writeCheckpoint,
@@ -18,6 +18,10 @@ import {
   getReadyStories,
   resetCrashedStories,
   filterNonOverlapping,
+  updateSubTaskStatus,
+  incrementSubTaskAttempts,
+  allSubTasksPassed,
+  getPendingSubTasks,
 } from "./state/execution-plan.js";
 import { runWithConcurrency } from "./utils/concurrency.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
@@ -234,11 +238,29 @@ export interface StoryExecutionResult {
 }
 
 /**
- * Executes a single story: BUILD → VERIFY only.
+ * Executes a single story: BUILD → COMPLIANCE → VERIFY.
+ * If story has sub-tasks (FW-01), iterates through each sub-task with
+ * independent BUILD → VERIFY cycles. Sub-task failure retries only that sub-task.
  * Pure function — returns results, never writes to execution plan.
  * Plan state mutations are owned by the wave executor.
  */
 export async function executeOneStory(
+  story: Story,
+  hiveMindDir: string,
+  config: HiveMindConfig,
+  costTracker?: CostTracker,
+  roleReportsDir?: string,
+): Promise<StoryExecutionResult> {
+  // FW-01: If story has sub-tasks, execute per sub-task
+  if (story.subTasks && story.subTasks.length > 0) {
+    return executeStoryWithSubTasks(story, hiveMindDir, config, costTracker, roleReportsDir);
+  }
+
+  return executeWholeStory(story, hiveMindDir, config, costTracker, roleReportsDir);
+}
+
+/** Original whole-story execution path */
+async function executeWholeStory(
   story: Story,
   hiveMindDir: string,
   config: HiveMindConfig,
@@ -276,6 +298,127 @@ export async function executeOneStory(
     passed: verifyResult.passed,
     attempts: verifyResult.attempts,
     errorMessage: verifyResult.passed ? undefined : "Verification failed after max attempts",
+  };
+}
+
+/**
+ * FW-01: Execute a story with sub-tasks.
+ * Each sub-task gets its own BUILD → VERIFY cycle with a scoped step file.
+ * Failed sub-tasks are retried independently (not the whole story).
+ */
+async function executeStoryWithSubTasks(
+  story: Story,
+  hiveMindDir: string,
+  config: HiveMindConfig,
+  costTracker?: CostTracker,
+  roleReportsDir?: string,
+): Promise<StoryExecutionResult> {
+  const logPath = join(hiveMindDir, "manager-log.jsonl");
+  let totalAttempts = 0;
+
+  console.log(`[${story.id}] SUB-TASK EXECUTION: ${story.subTasks!.length} sub-tasks`);
+
+  for (const subTask of story.subTasks!) {
+    if (subTask.status === "passed") continue; // already done (resume case)
+
+    const scopedStory = createScopedStory(story, subTask, hiveMindDir);
+
+    // Retry loop for this sub-task
+    let passed = false;
+    for (let attempt = 1; attempt <= story.maxAttempts; attempt++) {
+      totalAttempts++;
+      console.log(`[${story.id}/${subTask.id}] BUILD: Starting (attempt ${attempt})...`);
+      await runBuild(scopedStory, hiveMindDir, config, costTracker, roleReportsDir);
+
+      appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
+        storyId: `${story.id}/${subTask.id}`,
+      }));
+
+      console.log(`[${story.id}/${subTask.id}] VERIFY: Starting...`);
+      const verifyResult = await runVerify(scopedStory, hiveMindDir, undefined, config, costTracker, roleReportsDir);
+
+      if (verifyResult.passed) {
+        console.log(`[${story.id}/${subTask.id}] PASSED`);
+        subTask.status = "passed";
+        passed = true;
+        break;
+      }
+
+      subTask.attempts = attempt;
+      if (attempt >= story.maxAttempts) {
+        console.warn(`[${story.id}/${subTask.id}] FAILED after ${attempt} attempts`);
+        subTask.status = "failed";
+      }
+    }
+
+    if (!passed) {
+      return {
+        storyId: story.id,
+        passed: false,
+        attempts: totalAttempts,
+        errorMessage: `Sub-task ${subTask.id} failed after max attempts`,
+      };
+    }
+  }
+
+  // All sub-tasks passed — run compliance on the whole story
+  const complianceResult = await runComplianceCheck(story, hiveMindDir, config, costTracker, roleReportsDir);
+  if (!complianceResult.skipped) {
+    appendLogEntry(logPath, createLogEntry("COMPLIANCE_CHECK", {
+      storyId: story.id,
+      passed: complianceResult.passed,
+      missing: complianceResult.result?.missing ?? 0,
+      done: complianceResult.result?.done ?? 0,
+    }));
+  }
+
+  return {
+    storyId: story.id,
+    passed: true,
+    attempts: totalAttempts,
+  };
+}
+
+/**
+ * Create a scoped Story-like object for a sub-task.
+ * Uses only the sub-task's targetFiles and creates a scoped step file
+ * with only the sub-task's ACs/ECs.
+ */
+function createScopedStory(story: Story, subTask: SubTask, hiveMindDir: string): Story {
+  // Write a scoped step file for this sub-task
+  const scopedStepFile = `plans/steps/${story.id}-${subTask.id}.md`;
+  const scopedStepPath = join(hiveMindDir, scopedStepFile);
+
+  const stepContent = `# ${story.id}/${subTask.id}: ${subTask.title}
+
+## GOAL
+${subTask.title}
+
+## SPEC REFERENCES
+${story.specSections.map((s) => `- ${s}`).join("\n")}
+
+## INPUT
+${subTask.targetFiles.map((f) => `- ${f}`).join("\n") || "- (none)"}
+
+## OUTPUT
+${subTask.targetFiles.map((f) => `- ${f}`).join("\n") || "- (TBD)"}
+
+## ACCEPTANCE CRITERIA
+${subTask.acceptanceCriteria.map((ac, i) => `- AC-${i}: ${ac}`).join("\n") || "- (none)"}
+
+## EXIT CRITERIA
+${subTask.exitCriteria.map((ec, i) => `- EC-${i}: ${ec}`).join("\n") || "- (none)"}
+`;
+
+  ensureDir(join(hiveMindDir, "plans", "steps"));
+  writeFileAtomic(scopedStepPath, stepContent);
+
+  return {
+    ...story,
+    id: `${story.id}-${subTask.id}`,
+    sourceFiles: subTask.targetFiles,
+    stepFile: scopedStepFile,
+    subTasks: undefined, // prevent recursion
   };
 }
 
