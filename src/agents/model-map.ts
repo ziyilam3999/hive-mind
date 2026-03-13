@@ -28,7 +28,6 @@ export const AGENT_MODEL_MAP: Record<AgentType, ModelTier> = {
   "code-reviewer": "sonnet",
   "log-summarizer": "haiku",
   "enricher": "sonnet",
-  "decomposer": "sonnet",
   "compliance-reviewer": "sonnet",
   "compliance-fixer": "sonnet",
 };

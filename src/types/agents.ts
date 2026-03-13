@@ -28,7 +28,6 @@ export type AgentType =
   | "code-reviewer"
   | "log-summarizer"
   | "enricher"
-  | "decomposer"
   | "compliance-reviewer"
   | "compliance-fixer";
 
