@@ -43,6 +43,7 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "enricher": "Read step file + role-reports, append Implementation Guidance / Security Requirements / Edge Cases sections",
   "compliance-reviewer": "Read step file + impl-report + source files, check every instruction has a corresponding implementation, produce compliance-report.md",
   "compliance-fixer": "Read compliance-report MISSING items + step file + source files, implement the missing instructions, produce compliance-fix-report.md",
+  "decomposer": "Break high-complexity story into 2-4 focused sub-tasks, splitting by file boundaries, producing structured JSON output",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -159,6 +160,13 @@ const AGENT_RULES: Record<string, string[]> = {
     "MINIMAL-DIFF: Make the smallest change that satisfies each missing instruction. A doc comment is one comment, not a rewrite.",
     "REPORT-CHANGES: Output MUST start with <!-- STATUS: {\"result\": \"PASS|FAIL\", \"itemsFixed\": N, \"itemsRemaining\": N} --> in first 200 chars. List each addressed item with file path and change description.",
     "NO-FUNCTIONAL-REGRESSION: Do not modify existing passing logic. Compliance fixes are additive (comments, tests, new functions). Run npm test after changes to verify no regressions.",
+  ],
+  "decomposer": [
+    "FILE-BOUNDARY: Split sub-tasks along file boundaries. Each sub-task owns a distinct subset of sourceFiles. No file appears in more than one sub-task.",
+    "SCOPE-SPLIT: Produce 2-4 sub-tasks. Each must be independently buildable and verifiable.",
+    "STRUCTURED-OUTPUT: Output MUST be valid JSON matching: { \"subTasks\": [{ \"id\": \"US-XX.1\", \"title\": \"...\", \"description\": \"...\", \"sourceFiles\": [\"...\"] }] }. No markdown fences.",
+    "SIZE-BOUND: Only decompose if story has 3+ sourceFiles. Stories with fewer files should not be decomposed.",
+    "COMPLETE-COVERAGE: The union of all sub-task sourceFiles must equal the story's sourceFiles. No file left unassigned.",
   ],
   "enricher": [
     "APPEND-ONLY: Add new sections (## Implementation Guidance, ## Security Requirements, ## Edge Cases). NEVER modify existing content.",

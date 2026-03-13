@@ -55,6 +55,8 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
   "compliance-reviewer": OUTPUT_TOOLS,
   "compliance-fixer": DEV_TOOLS,
 
+  // Phase 5 — decomposer (FW-01)
+  "decomposer": OUTPUT_TOOLS,
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {

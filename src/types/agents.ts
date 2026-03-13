@@ -29,7 +29,8 @@ export type AgentType =
   | "log-summarizer"
   | "enricher"
   | "compliance-reviewer"
-  | "compliance-fixer";
+  | "compliance-fixer"
+  | "decomposer";
 
 export interface AgentConfig {
   type: AgentType;

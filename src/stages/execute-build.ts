@@ -8,12 +8,18 @@ import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import { join } from "node:path";
 
+export interface SubTaskScope {
+  sourceFiles: string[];
+  title: string;
+}
+
 export async function runBuild(
   story: Story,
   hiveMindDir: string,
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
+  subTaskScope?: SubTaskScope,
 ): Promise<{ implReportPath: string; refactorReportPath: string }> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -50,7 +56,8 @@ export async function runBuild(
   const refactorReportPath = join(hiveMindDir, getReportPath(story.id, "refactor-report.md"));
   console.log(`E.2: Running refactorer for ${story.id}...`);
 
-  const sourceFiles = story.sourceFiles.map((f) => join(hiveMindDir, f));
+  const effectiveSourceFiles = subTaskScope ? subTaskScope.sourceFiles : story.sourceFiles;
+  const sourceFiles = effectiveSourceFiles.map((f) => join(hiveMindDir, f));
   const refactorRoleContents = roleReportsDir
     ? buildRoleReportContents("refactorer", story.rolesUsed, roleReportsDir)
     : undefined;

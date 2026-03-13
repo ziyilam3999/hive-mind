@@ -1,4 +1,4 @@
-import type { ExecutionPlan, Story, StoryStatus } from "../types/execution-plan.js";
+import type { ExecutionPlan, Story, StoryStatus, SubTask, SubTaskStatus } from "../types/execution-plan.js";
 import { readFileSafe, writeFileAtomic } from "../utils/file-io.js";
 import { HiveMindError } from "../utils/errors.js";
 
@@ -224,5 +224,74 @@ export function filterNonOverlapping(stories: Story[]): Story[] {
   }
 
   return selected;
+}
+
+// --- Sub-task state helpers (FW-01) ---
+
+const VALID_SUBTASK_TRANSITIONS: Record<string, SubTaskStatus[]> = {
+  "not-started": ["in-progress"],
+  "in-progress": ["passed", "failed"],
+  "failed": ["in-progress"], // retry
+};
+
+export function updateSubTaskStatus(
+  plan: ExecutionPlan,
+  storyId: string,
+  subTaskId: string,
+  status: SubTaskStatus,
+): ExecutionPlan {
+  const story = getStory(plan, storyId);
+  if (!story) throw new Error(`Story not found: ${storyId}`);
+  if (!story.subTasks || story.subTasks.length === 0) {
+    throw new Error(`Story ${storyId} has no sub-tasks`);
+  }
+  const subTask = story.subTasks.find((st) => st.id === subTaskId);
+  if (!subTask) throw new Error(`Sub-task not found: ${subTaskId}`);
+
+  const allowed = VALID_SUBTASK_TRANSITIONS[subTask.status];
+  if (!allowed || !allowed.includes(status)) {
+    throw new Error(`Invalid sub-task transition: ${subTask.status} -> ${status} for ${subTaskId}`);
+  }
+
+  return {
+    ...plan,
+    stories: plan.stories.map((s) =>
+      s.id === storyId
+        ? {
+            ...s,
+            subTasks: s.subTasks!.map((st) =>
+              st.id === subTaskId ? { ...st, status } : st,
+            ),
+          }
+        : s,
+    ),
+  };
+}
+
+export function getNextSubTask(story: Story): SubTask | undefined {
+  if (!story.subTasks) return undefined;
+  return story.subTasks.find(
+    (st) => st.status === "not-started" || (st.status === "failed" && st.attempts < st.maxAttempts),
+  );
+}
+
+export function incrementSubTaskAttempts(
+  plan: ExecutionPlan,
+  storyId: string,
+  subTaskId: string,
+): ExecutionPlan {
+  return {
+    ...plan,
+    stories: plan.stories.map((s) =>
+      s.id === storyId
+        ? {
+            ...s,
+            subTasks: s.subTasks!.map((st) =>
+              st.id === subTaskId ? { ...st, attempts: st.attempts + 1 } : st,
+            ),
+          }
+        : s,
+    ),
+  };
 }
 

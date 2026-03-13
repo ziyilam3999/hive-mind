@@ -21,6 +21,11 @@ export interface VerifyResult {
   parserConfidence: "structured" | "matched" | "default";
 }
 
+export interface SubTaskScope {
+  sourceFiles: string[];
+  title: string;
+}
+
 export async function runVerify(
   story: Story,
   hiveMindDir: string,
@@ -28,6 +33,7 @@ export async function runVerify(
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
+  subTaskScope?: SubTaskScope,
 ): Promise<VerifyResult> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);

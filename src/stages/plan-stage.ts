@@ -1,5 +1,5 @@
 import type { AgentConfig } from "../types/agents.js";
-import type { Story } from "../types/execution-plan.js";
+import type { Story, SubTask } from "../types/execution-plan.js";
 import { spawnAgentWithRetry, spawnAgentsParallel } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
@@ -272,6 +272,23 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
     }
   }
 
+  // Step 3c: Decomposer — break high-complexity stories into sub-tasks (FW-01)
+  // Runs AFTER enrichment so decomposer can see the enriched step file
+  const highComplexityStories = stories.filter((s) => s.complexity === "high");
+  if (highComplexityStories.length > 0) {
+    console.log(`Running decomposer for ${highComplexityStories.length} high-complexity stories...`);
+    for (const story of highComplexityStories) {
+      const subTasks = await decomposeStory(story, stepsDir, feedbackMemory, config);
+      if (subTasks.length > 0) {
+        story.subTasks = subTasks;
+        console.log(`  ${story.id}: decomposed into ${subTasks.length} sub-tasks`);
+      }
+    }
+    // Persist sub-tasks into execution-plan.json
+    planData.stories = stories;
+    writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
+  }
+
   // Step 4: AC consolidator
   console.log("Running AC consolidator...");
   const acPath = join(plansDir, "acceptance-criteria.md");
@@ -313,6 +330,74 @@ ${story.complexityJustification ? `- Complexity Justification: ${story.complexit
 ${story.dependencyImpact ? `- Dependency Impact: ${story.dependencyImpact}` : ""}
 `;
   writeFileAtomic(join(stepsDir, `${story.id}-skeleton.md`), skeleton);
+}
+
+/**
+ * FW-01: Decompose a high-complexity story into sub-tasks.
+ * Non-fatal (P39): if decomposer crashes or returns unparseable output, returns [].
+ * Decomposer output contract: { subTasks: [{ id, title, description, sourceFiles }] }
+ */
+async function decomposeStory(
+  story: Story,
+  stepsDir: string,
+  memoryContent: string,
+  config: HiveMindConfig,
+): Promise<SubTask[]> {
+  // SIZE-BOUND: Skip decomposition if fewer than 3 source files
+  if (story.sourceFiles.length < 3) return [];
+
+  const stepFilePath = join(stepsDir, `${story.id}.md`);
+  const outputPath = join(stepsDir, `${story.id}-subtasks.json`);
+
+  try {
+    await spawnAgentWithRetry({
+      type: "decomposer",
+      model: "sonnet",
+      inputFiles: [stepFilePath],
+      outputFile: outputPath,
+      rules: getAgentRules("decomposer"),
+      memoryContent,
+    }, config);
+
+    const content = readFileSafe(outputPath);
+    if (!content) {
+      console.warn(`[${story.id}] Decomposer produced no output — skipping decomposition (P39)`);
+      return [];
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      console.warn(`[${story.id}] Decomposer output is not valid JSON — skipping decomposition (P44)`);
+      return [];
+    }
+
+    // Validate output contract: { subTasks: [...] }
+    const rawSubTasks = parsed.subTasks;
+    if (!Array.isArray(rawSubTasks)) {
+      console.warn(`[${story.id}] Decomposer output missing subTasks array — skipping decomposition (P44)`);
+      return [];
+    }
+
+    if (rawSubTasks.length === 0) return [];
+
+    // Validate and normalize sub-tasks
+    const subTasks: SubTask[] = rawSubTasks.map((st: Record<string, unknown>, i: number) => ({
+      id: typeof st.id === "string" ? st.id : `${story.id}.${i + 1}`,
+      title: typeof st.title === "string" ? st.title : `Sub-task ${i + 1}`,
+      description: typeof st.description === "string" ? st.description : "",
+      sourceFiles: Array.isArray(st.sourceFiles) ? st.sourceFiles as string[] : [],
+      status: "not-started" as const,
+      attempts: 0,
+      maxAttempts: story.maxAttempts,
+    }));
+
+    return subTasks;
+  } catch (err) {
+    console.warn(`[${story.id}] Decomposer crashed — skipping decomposition (P39): ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
 }
 
 export function assembleStepFile(

@@ -50,6 +50,7 @@ export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
   "enricher": "sonnet",
   "compliance-reviewer": "sonnet",
   "compliance-fixer": "sonnet",
+  "decomposer": "sonnet",
 };
 
 export const DEFAULT_CONFIG: HiveMindConfig = {
