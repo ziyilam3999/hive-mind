@@ -133,6 +133,131 @@ export function checkEli5Presence(markdown: string): { hasEli5: boolean; section
   return { hasEli5: eli5s > 0, sectionCount: sections, eli5Count: eli5s };
 }
 
+export interface ComplianceResult {
+  result: "PASS" | "FAIL" | "unknown";
+  done: number;
+  missing: number;
+  uncertain: number;
+  confidence: "structured" | "default";
+  instructions: { instruction: string; status: string; evidence: string }[];
+}
+
+/**
+ * Parse compliance-report.md produced by the compliance-reviewer agent.
+ * Extracts the structured STATUS block (P31/RD-04) and the instruction table.
+ * Logs warning on parse failure (P44) — never silent catch.
+ */
+export function parseComplianceReport(markdown: string): ComplianceResult {
+  const defaultResult: ComplianceResult = {
+    result: "unknown",
+    done: 0,
+    missing: 0,
+    uncertain: 0,
+    confidence: "default",
+    instructions: [],
+  };
+
+  if (!markdown || markdown.trim().length === 0) {
+    console.warn("[parseComplianceReport] Empty compliance report — treating as unknown");
+    return defaultResult;
+  }
+
+  // Extract STATUS block from first 500 chars (P31 — verdict in first 200, but allow margin)
+  const statusMatch = markdown.slice(0, 500).match(/<!--\s*STATUS:\s*(\{[^}]*\})\s*-->/);
+  if (!statusMatch) {
+    console.warn(`[parseComplianceReport] Missing STATUS block — first 200 chars: ${markdown.slice(0, 200)}`);
+    return defaultResult;
+  }
+
+  let parsed: { result?: string; done?: number; missing?: number; uncertain?: number };
+  try {
+    parsed = JSON.parse(statusMatch[1]);
+  } catch (err) {
+    console.warn(`[parseComplianceReport] Malformed JSON in STATUS block: ${statusMatch[1]}`);
+    return defaultResult;
+  }
+
+  const result = parsed.result === "PASS" ? "PASS"
+    : parsed.result === "FAIL" ? "FAIL"
+    : "unknown";
+
+  // Parse instruction table rows
+  const instructions: { instruction: string; status: string; evidence: string }[] = [];
+  const rows = markdown.match(/^\|\s*\d+\s*\|[^|]+\|[^|]+\|[^|]+\|$/gm);
+  if (rows) {
+    for (const row of rows) {
+      const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
+      if (cells.length >= 4) {
+        instructions.push({
+          instruction: cells[1],
+          status: cells[2],
+          evidence: cells[3],
+        });
+      }
+    }
+  }
+
+  return {
+    result,
+    done: parsed.done ?? 0,
+    missing: parsed.missing ?? 0,
+    uncertain: parsed.uncertain ?? 0,
+    confidence: "structured",
+    instructions,
+  };
+}
+
+export interface ComplianceFixResult {
+  result: "PASS" | "FAIL" | "unknown";
+  itemsFixed: number;
+  itemsRemaining: number;
+  confidence: "structured" | "default";
+}
+
+/**
+ * Parse compliance-fix-report.md produced by the compliance-fixer agent.
+ * Extracts the structured STATUS block (P31/RD-04).
+ * Logs warning on parse failure (P44) — never silent catch.
+ */
+export function parseComplianceFixReport(markdown: string): ComplianceFixResult {
+  const defaultResult: ComplianceFixResult = {
+    result: "unknown",
+    itemsFixed: 0,
+    itemsRemaining: 0,
+    confidence: "default",
+  };
+
+  if (!markdown || markdown.trim().length === 0) {
+    console.warn("[parseComplianceFixReport] Empty compliance fix report — treating as unknown");
+    return defaultResult;
+  }
+
+  const statusMatch = markdown.slice(0, 500).match(/<!--\s*STATUS:\s*(\{[^}]*\})\s*-->/);
+  if (!statusMatch) {
+    console.warn(`[parseComplianceFixReport] Missing STATUS block — first 200 chars: ${markdown.slice(0, 200)}`);
+    return defaultResult;
+  }
+
+  let parsed: { result?: string; itemsFixed?: number; itemsRemaining?: number };
+  try {
+    parsed = JSON.parse(statusMatch[1]);
+  } catch {
+    console.warn(`[parseComplianceFixReport] Malformed JSON in STATUS block: ${statusMatch[1]}`);
+    return defaultResult;
+  }
+
+  const result = parsed.result === "PASS" ? "PASS"
+    : parsed.result === "FAIL" ? "FAIL"
+    : "unknown";
+
+  return {
+    result,
+    itemsFixed: parsed.itemsFixed ?? 0,
+    itemsRemaining: parsed.itemsRemaining ?? 0,
+    confidence: "structured",
+  };
+}
+
 export function parseFixReport(
   markdown: string,
 ): { fixesApplied: { file: string; description: string }[] } {

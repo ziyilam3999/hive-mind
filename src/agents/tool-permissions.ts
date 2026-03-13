@@ -51,6 +51,10 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
   "log-summarizer": OUTPUT_TOOLS,
   "enricher": OUTPUT_TOOLS,
 
+  // Phase 5 — compliance agents
+  "compliance-reviewer": OUTPUT_TOOLS,
+  "compliance-fixer": DEV_TOOLS,
+
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {

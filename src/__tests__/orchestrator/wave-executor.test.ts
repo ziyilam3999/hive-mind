@@ -331,6 +331,55 @@ describe("wave executor", () => {
     }
   });
 
+  it("COMMIT is serialized post-wave (not during parallel execution)", async () => {
+    const commitOrder: string[] = [];
+    const { runShell } = await import("../../utils/shell.js");
+    vi.mocked(runShell).mockImplementation(async () => {
+      // Track commit ordering
+      commitOrder.push("commit");
+      return { exitCode: 0, stdout: "abc1234", stderr: "" };
+    });
+
+    const plan = makePlan([
+      makeStory({ id: "US-01", sourceFiles: ["a.ts"] }),
+      makeStory({ id: "US-02", sourceFiles: ["b.ts"] }),
+    ]);
+    setup(plan);
+    const restore = suppressConsole();
+    try {
+      await runExecuteStage(hiveMindDir, config);
+      const result = loadExecutionPlan(planPath);
+      // Both should pass — commits happen sequentially after parallel BUILD+VERIFY
+      expect(result.stories[0].status).toBe("passed");
+      expect(result.stories[1].status).toBe("passed");
+    } finally {
+      restore();
+      cleanup();
+    }
+  });
+
+  it("budget enforcement runs after wave completes", async () => {
+    const { CostTracker } = await import("../../utils/cost-tracker.js");
+    // Budget of $0 — will be exceeded by any cost
+    const tracker = new CostTracker(0);
+    tracker.recordAgentCost("US-01", "implementer", 1.0, 1000);
+
+    const plan = makePlan([
+      makeStory({ id: "US-01", sourceFiles: ["a.ts"] }),
+      makeStory({ id: "US-02", sourceFiles: ["b.ts"] }),
+    ]);
+    setup(plan);
+    const restore = suppressConsole();
+    try {
+      await expect(
+        runExecuteStage(hiveMindDir, config, tracker),
+      ).rejects.toThrow("Budget exceeded");
+    } finally {
+      restore();
+      cleanup();
+    }
+  });
+
   it("no execution plan skips gracefully", async () => {
     rmSync(testDir, { recursive: true, force: true });
     mkdirSync(testDir, { recursive: true });

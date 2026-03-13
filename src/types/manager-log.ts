@@ -12,7 +12,9 @@ export type LogAction =
   | "VERIFY_ATTEMPT"
   | "COMMIT_COMPLETE"
   | "EVAL_ATTEMPT"
-  | "FIX_UNVERIFIED";
+  | "FIX_UNVERIFIED"
+  | "COMPLIANCE_CHECK"
+  | "COMPLIANCE_FIX";
 
 export interface ManagerLogEntry {
   timestamp: string;
@@ -39,4 +41,7 @@ export interface ManagerLogEntry {
   error?: string;
   evalParsedStatus?: string;
   evalParserConfidence?: "structured" | "matched" | "default";
+  passed?: boolean;
+  missing?: number;
+  done?: number;
 }

@@ -10,7 +10,7 @@ const ELI5_AGENTS: Set<AgentType> = new Set([
 
 /** Agents that produce status reports (PASS/FAIL) — get structured output instruction */
 const STATUS_AGENTS: Set<AgentType> = new Set([
-  "tester-exec", "evaluator", "implementer", "fixer",
+  "tester-exec", "evaluator", "implementer", "fixer", "compliance-reviewer", "compliance-fixer",
 ]);
 
 const AGENT_JOBS: Record<AgentType, string> = {
@@ -41,6 +41,8 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "code-reviewer": "Review implementation reports + source files, produce code-review-report.md",
   "log-summarizer": "Analyze manager-log.jsonl for pipeline health patterns (retry rates, cost outliers, slow agents)",
   "enricher": "Read step file + role-reports, append Implementation Guidance / Security Requirements / Edge Cases sections",
+  "compliance-reviewer": "Read step file + impl-report + source files, check every instruction has a corresponding implementation, produce compliance-report.md",
+  "compliance-fixer": "Read compliance-report MISSING items + step file + source files, implement the missing instructions, produce compliance-fix-report.md",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -143,6 +145,20 @@ const AGENT_RULES: Record<string, string[]> = {
     "CONCISE: Summarize in bullet points. No verbose narratives.",
     "QUANTITATIVE: Include counts, percentages, and durations where available.",
     "REPORT-FORMAT: Output must follow log-analysis.md template exactly.",
+  ],
+  "compliance-reviewer": [
+    "INSTRUCTION-COVERAGE: Every bullet/requirement in the step file must map to a concrete implementation. Grep source files for evidence. DONE = found (cite file:line). MISSING = not found. [Wrong: 'Looks implemented'] [Right: 'Found at src/state/manager-log.ts:13 — JSDoc comment present']",
+    "DOC-COVERAGE: Every 'document X' or 'add comment for X' instruction must have a corresponding code comment. MISSING if no comment within 5 lines of target. [Wrong: 'Comment probably exists'] [Right: 'Grepped src/utils/cost-tracker.ts:31 — no JSDoc found → MISSING']",
+    "TEST-COVERAGE: Every 'write test for X' instruction must have a matching test case. Grep __tests__/ for describe/it blocks. MISSING if no matching test. [Wrong: 'Tests exist in the test file'] [Right: 'Found it(\"does not write to execution plan\") at __tests__/stages/execute-verify.test.ts:215 → DONE']",
+    "NO-FALSE-POSITIVES: Only mark MISSING if grep finds zero matches. If ambiguous, mark UNCERTAIN with explanation. Never flag something as MISSING if you're unsure.",
+    "STRUCTURED-OUTPUT: Output MUST start with <!-- STATUS: {\"result\": \"PASS|FAIL\", \"done\": N, \"missing\": N, \"uncertain\": N} --> in first 200 chars. Then list each instruction with DONE/MISSING/UNCERTAIN + file:line evidence in a markdown table.",
+  ],
+  "compliance-fixer": [
+    "PLAN-DRIVEN: Only implement items flagged MISSING in the compliance report. Ignore UNCERTAIN and DONE items. [Wrong: refactoring code marked DONE] [Right: adding the missing JSDoc that was flagged MISSING]",
+    "STEP-FILE-ONLY: All changes must trace to an instruction in the step file. No creative additions beyond what the plan requires.",
+    "MINIMAL-DIFF: Make the smallest change that satisfies each missing instruction. A doc comment is one comment, not a rewrite.",
+    "REPORT-CHANGES: Output MUST start with <!-- STATUS: {\"result\": \"PASS|FAIL\", \"itemsFixed\": N, \"itemsRemaining\": N} --> in first 200 chars. List each addressed item with file path and change description.",
+    "NO-FUNCTIONAL-REGRESSION: Do not modify existing passing logic. Compliance fixes are additive (comments, tests, new functions). Run npm test after changes to verify no regressions.",
   ],
   "enricher": [
     "APPEND-ONLY: Add new sections (## Implementation Guidance, ## Security Requirements, ## Edge Cases). NEVER modify existing content.",

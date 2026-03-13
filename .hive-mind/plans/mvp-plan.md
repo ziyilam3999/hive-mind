@@ -1,6 +1,6 @@
 # MVP Plan: Hive Mind v3 Production Readiness
 
-> 20 items across 6 phases to move Hive Mind from "interesting prototype" to "production-usable."
+> 22 items across 6 phases to move Hive Mind from "interesting prototype" to "production-usable."
 
 ---
 
@@ -23,7 +23,7 @@ The framework comparison ([framework-comparison.md](../../docs/framework-compari
 
 ---
 
-## MVP Overview: 20 Items in 6 Phases
+## MVP Overview: 22 Items in 6 Phases
 
 | # | ID | Name | Phase | Effort | Detailed Plan |
 |---|---|---|---|---|---|
@@ -44,9 +44,11 @@ The framework comparison ([framework-comparison.md](../../docs/framework-compari
 | 15 | ENH-16 | Role-report feedback loop | 4: Pipeline Quality | Medium | [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) |
 | 16 | ENH-03 | Parallel story execution | 5: Execution Power | Large | Below |
 | 17 | FW-01 | Sub-task decomposition | 5: Execution Power | Large | Below |
-| 18 | ENH-11 | Multi-repo module config + CWD threading | 6: Post-MVP Multi-Repo | Medium | Below |
-| 19 | FW-14 | Integration verification stage | 6: Post-MVP Multi-Repo | Medium | Below |
-| 20 | — | Module-aware story ordering + contracts | 6: Post-MVP Multi-Repo | Small-Medium | Below |
+| 18 | ENH-17 | Compliance reviewer agent | 5: Execution Power | Small | Below |
+| 19 | ENH-18 | Compliance fixer agent | 5: Execution Power | Small | Below |
+| 20 | ENH-11 | Multi-repo module config + CWD threading | 6: Post-MVP Multi-Repo | Medium | Below |
+| 21 | FW-14 | Integration verification stage | 6: Post-MVP Multi-Repo | Medium | Below |
+| 22 | — | Module-aware story ordering + contracts | 6: Post-MVP Multi-Repo | Small-Medium | Below |
 
 ### Dependency Graph
 
@@ -70,6 +72,8 @@ Phase 1:  RD-03 (config) ──────┐
                                 │
                                 ├── Phase 5:  ENH-03 (parallel execution) ← needs ENH-02
                                 │             FW-01 (sub-tasks) ← benefits from ENH-02
+                                │             ENH-17 (compliance-reviewer) ← independent
+                                │             ENH-18 (compliance-fixer) ← needs ENH-17
                                 │
                                 └── Phase 6:  ENH-11 (multi-repo config + CWD) ← needs Phase 1 spawner upgrade
                                               FW-14 (integration verify) ← needs ENH-11
@@ -673,6 +677,162 @@ Else:
 - `src/stages/execute-verify.ts` — sub-task-aware verify loop
 - `src/state/execution-plan.ts` — sub-task state management helpers
 
+### 18. ENH-17: Compliance Reviewer Agent
+
+**Problem:** ACs/ECs verify functional correctness but not plan adherence. During ENH-03, 5 instructions in the step file were skipped (doc comments, tests, secondary features) — all passed tests but didn't follow the plan. This is a structural gap: the AC/EC model only covers what's testable via shell commands.
+
+**Fix — Post-BUILD compliance check:**
+
+An agent that reads the step file + impl-report + source files, checks every instruction has a corresponding implementation, and writes a structured compliance report.
+
+**Agent design:**
+- **Type:** `compliance-reviewer`
+- **Model:** sonnet (needs reasoning about plan-vs-code, not pattern matching)
+- **Tools:** OUTPUT_TOOLS (Read, Glob, Grep, Write) — **P42/F43: must include Write to create compliance-report.md; READ_ONLY would silently produce no output**
+- **Input:** `[step-file, impl-report, source files from story.sourceFiles]`
+- **Output:** `reports/{storyId}/compliance-report.md`
+
+**Output contract (P34 — strict, F27 — mandatory):**
+The compliance-report.md MUST contain:
+1. Structured status block in first 200 chars (P31, RD-04): `<!-- STATUS: {"result": "PASS|FAIL", "done": N, "missing": N, "uncertain": N} -->`
+2. Instruction checklist: each step file instruction with DONE/MISSING/UNCERTAIN + evidence
+
+**Output template (P4 — Wrong/Right example):**
+```markdown
+<!-- STATUS: {"result": "FAIL", "done": 8, "missing": 2, "uncertain": 1} -->
+# Compliance Report: US-99
+
+## Summary
+8 DONE, 2 MISSING, 1 UNCERTAIN — FAIL
+
+## Instructions
+| # | Instruction | Status | Evidence |
+|---|------------|--------|----------|
+| 1 | Add JSDoc to appendLogEntry | MISSING | No comment found at src/state/manager-log.ts:13 |
+| 2 | Write test for no-plan-writes | MISSING | No test matching "plan" in __tests__/stages/ |
+| 3 | Implement wave executor | DONE | src/orchestrator.ts:296 — while loop with getReadyStories |
+```
+
+❌ Wrong output: `# Report\nAll looks good, PASS` (no STATUS block, no instruction list — will parse as "default" confidence)
+✅ Right output: Template above with STATUS block + every instruction listed
+
+**Rules:**
+1. `INSTRUCTION-COVERAGE`: Every bullet/requirement in step file → grep source files for implementation. DONE = found. MISSING = not found. Must cite file:line as evidence.
+2. `DOC-COVERAGE`: Every "document X" / "add comment" instruction → grep for comment near target code. MISSING if no comment within 5 lines of target.
+3. `TEST-COVERAGE`: Every "write test for X" instruction → grep `__tests__/` for describe/it blocks matching the instruction. MISSING if no matching test.
+4. `NO-FALSE-POSITIVES`: Only MISSING if grep finds zero matches. If ambiguous, mark UNCERTAIN with explanation.
+5. `STRUCTURED-OUTPUT`: Must use the STATUS block format above. If agent omits STATUS block, output is corrupt (P39 corruption detection triggers).
+
+**Non-fatal with corruption detection (P39):**
+- Crash → proceed to VERIFY without compliance check, log warning (P44)
+- Output file not created → spawn failure, proceed to VERIFY, log warning
+- Output file exists but missing `<!-- STATUS:` marker → corrupt, proceed to VERIFY, log warning with first 200 chars of file (P44/F45)
+- Parseable STATUS block → use result
+
+**Files:**
+- `src/types/agents.ts` — add `"compliance-reviewer"` to AgentType
+- `src/agents/prompts.ts` — add job description + 5 rules + output template (with Wrong/Right example)
+- `src/agents/tool-permissions.ts` — add `"compliance-reviewer": OUTPUT_TOOLS` (**not** READ_ONLY — P42)
+- `src/agents/model-map.ts` — add `"compliance-reviewer": "sonnet"`
+- `src/config/schema.ts` — add to DEFAULT_MODEL_ASSIGNMENTS
+- `src/stages/execute-compliance.ts` — **new file** (separate concern from test verification in execute-verify.ts)
+- `src/orchestrator.ts` — call `runCompliance()` between `runBuild()` and `runVerify()` in `executeOneStory()`
+- `src/reports/parser.ts` — add `parseComplianceReport()` using STATUS block extraction (same pattern as other parsers)
+
+**Tests:** ~8
+- Compliance report parsing: valid STATUS block → correct result
+- Compliance report parsing: missing STATUS block → "default" confidence + warning logged (P44)
+- Non-fatal on crash: spawn failure → proceed to VERIFY (P39)
+- PASS passthrough: PASS report → skip compliance-fixer, proceed to VERIFY
+- FAIL triggers compliance-fixer: FAIL report → spawn fixer
+- OUTPUT_TOOLS permission set includes Write (P42 regression guard)
+- Instruction extraction from step file: bullets parsed correctly
+- Corrupt output detection: file exists but no STATUS marker → warning + skip
+
+### 19. ENH-18: Compliance Fixer Agent
+
+**Problem:** When the compliance-reviewer detects MISSING instructions, a dedicated agent should fix them. The existing `fixer` is optimized for functional failures (test FAIL → debug → patch). Compliance gaps are structural omissions (missing doc comments, tests, secondary features) that require plan-driven code generation — a different mental model.
+
+**Fix — Dedicated compliance fixer:**
+
+**Agent design:**
+- **Type:** `compliance-fixer`
+- **Model:** sonnet (needs to write code, tests, documentation from plan instructions)
+- **Tools:** FULL_TOOLS (Read, Write, Edit, Glob, Grep, Shell)
+- **Input:** `[step-file, compliance-report, impl-report, source files]`
+- **Output:** `reports/{storyId}/compliance-fix-report.md`
+
+**Output contract (P34 — strict, F27 — mandatory):**
+The compliance-fix-report.md MUST contain:
+1. Structured status block in first 200 chars (P31): `<!-- STATUS: {"result": "PASS|FAIL", "itemsFixed": N, "itemsRemaining": N} -->`
+2. Per-item change list: each MISSING item addressed with file path + change description
+
+**Output template (P4):**
+```markdown
+<!-- STATUS: {"result": "PASS", "itemsFixed": 2, "itemsRemaining": 0} -->
+# Compliance Fix Report: US-99
+
+## Changes Made
+| # | Missing Instruction | File | Change |
+|---|-------------------|------|--------|
+| 1 | Add JSDoc to appendLogEntry | src/state/manager-log.ts:13 | Added JSDoc documenting appendFileSync concurrency safety |
+| 2 | Write test for no-plan-writes | src/__tests__/stages/execute-verify.test.ts | Added "does not write to execution plan" test |
+```
+
+**Rules:**
+1. `PLAN-DRIVEN`: Only implement items flagged MISSING in compliance-report. Ignore UNCERTAIN/DONE.
+2. `STEP-FILE-ONLY`: All changes trace to step file instructions. No creative additions (F27 — contract, not suggestion).
+3. `MINIMAL-DIFF`: Smallest change per missing instruction. A doc comment is one comment, not a rewrite.
+4. `REPORT-CHANGES`: Must use STATUS block format. List each addressed item with file path (P6 — mechanical verification of changes).
+5. `NO-FUNCTIONAL-REGRESSION`: Don't modify existing passing logic. Compliance fixes are additive only. Run `npm test` after changes to verify no regressions (F28 — re-UAT after fix).
+
+**Flow:**
+```
+BUILD → compliance-reviewer → [FAIL] → compliance-fixer → compliance-reviewer (re-check) → VERIFY
+                             → [PASS] → VERIFY
+```
+
+- Max 2 compliance fix attempts (if 2 rounds can't fix it, instruction is likely ambiguous — proceed to VERIFY with warning)
+- Non-fatal (P39): compliance-fixer crash → proceed to VERIFY anyway, log warning (P44)
+- Skip re-check optimization (F39): if compliance-fixer reports `itemsFixed: 0` (no changes made), don't re-run reviewer — proceed to VERIFY with warning
+- Corruption detection: compliance-fix-report.md missing STATUS block → treat as crash, proceed to VERIFY
+
+**Files:**
+- `src/types/agents.ts` — add `"compliance-fixer"` to AgentType
+- `src/agents/prompts.ts` — add job description + 5 rules + output template
+- `src/agents/tool-permissions.ts` — add `"compliance-fixer": FULL_TOOLS`
+- `src/agents/model-map.ts` — add `"compliance-fixer": "sonnet"`
+- `src/config/schema.ts` — add to DEFAULT_MODEL_ASSIGNMENTS
+- `src/stages/execute-compliance.ts` — compliance fix loop lives here (same file as reviewer orchestration)
+- `src/reports/parser.ts` — add `parseComplianceFixReport()` using STATUS block extraction
+
+**Tests:** ~6
+- Compliance-fixer receives correct inputs (step-file + compliance-report + source files)
+- Re-review after fix: reviewer re-runs and checks MISSING items resolved
+- Max 2 attempts enforced: third attempt skipped, proceed to VERIFY with warning
+- Non-fatal on crash: spawn failure → proceed to VERIFY (P39)
+- Skip re-check when itemsFixed=0 (F39 — no re-testing unchanged code)
+- Compliance-fix-report parsing: valid STATUS block → correct extraction
+
+**Combined ENH-17 + ENH-18 estimated tests:** ~14
+
+**KB patterns applied:**
+| Pattern | How Applied |
+|---------|------------|
+| P42/F43 | compliance-reviewer gets OUTPUT_TOOLS (not READ_ONLY) — Write required for output |
+| P34 | Strict output contract — no fallback writes, spawn failure = loud error |
+| P31 | STATUS block in first 200 chars of both reports |
+| RD-04 | JSON status in HTML comment — same structured output as all other agents |
+| P39 | Non-fatal enrichment + corruption detection (missing STATUS marker) |
+| P44/F45 | Log warnings on parse failure with truncated input, never silent catch |
+| P4 | Wrong/Right examples in prompt for output format |
+| P6 | Mechanical detection — grep for evidence, cite file:line |
+| F27 | Output contract is mandatory, not suggestion |
+| F2 | Rules have concrete verification (grep-based evidence), not behavioral prose |
+| F39 | Skip re-check if compliance-fixer made no changes |
+| F28 | Compliance-fixer re-runs tests after changes to verify no regressions |
+| P16 | Self-contained inputs — agent gets everything it needs in input files |
+
 ### Phase 5 Smoke Test Gate
 
 **All Tier 1+2+3 must pass. Tier 3 is mandatory — this is the graduation test.**
@@ -684,12 +844,20 @@ Else:
 - Sub-task decomposition: high-complexity story split into `SubTask[]`
 - Sub-task failure retried independently (not full story)
 - Parent story marked "passed" only when all sub-tasks pass
+- Compliance-reviewer: STATUS block parsed → correct PASS/FAIL extraction (P31)
+- Compliance-reviewer: missing STATUS marker → corrupt output detected, warning logged (P39/P44)
+- Compliance-reviewer: OUTPUT_TOOLS includes Write (P42 regression guard)
+- Compliance-reviewer: crash → proceed to VERIFY without compliance check (P39)
+- Compliance-fixer: receives step-file + compliance-report + source files as input
+- Compliance-fixer: max 2 attempts enforced, non-fatal on crash
+- Compliance-fixer: itemsFixed=0 → skip re-review (F39)
 
 **Tier 2 (Integration):**
 - 5-story plan with 2 independent pairs + 1 dependent: mock spawner with artificial delays → verify parallel pairs execute concurrently (wall-clock < sequential)
 - Race condition: parallel stories writing to `execution-plan.json` → atomic writes prevent corruption
 - Sub-task lifecycle: 3-sub-task story, sub-task 2 fails → only sub-task 2 retried, sub-tasks 1+3 unchanged
 - Memory mutex: concurrent `appendToMemory()` calls don't corrupt `memory.md`
+- Compliance loop: reviewer FAIL → fixer → re-review → PASS → proceed to VERIFY
 
 **Tier 3 (Dogfood — MANDATORY):**
 - Run ENH-03 (parallel execution) through pipeline WITH parallel execution enabled — pipeline uses its own new feature to build itself
@@ -708,7 +876,7 @@ Else:
 
 **Backward compatibility:** Single-repo mode is unchanged. When no `modules` field exists in the PRD metadata, all behavior defaults to current single-repo behavior.
 
-### 18. ENH-11: Multi-Repo Module Config + CWD Threading
+### 20. ENH-11: Multi-Repo Module Config + CWD Threading
 
 **Problem:** The pipeline assumes a single working directory. All agent spawns, file operations, and commit stages operate on `process.cwd()`. Multi-repo workflows require explicit CWD per module.
 
@@ -736,7 +904,7 @@ Else:
 
 **Files:** `src/types/execution-plan.ts`, `src/orchestrator.ts`, `src/agents/spawner.ts`, `src/stages/execute-build.ts`, `src/stages/execute-verify.ts`, `src/stages/execute-commit.ts`, `src/index.ts` (PRD parser)
 
-### 19. FW-14: Integration Verification Stage
+### 21. FW-14: Integration Verification Stage
 
 **Problem:** After implementing stories across multiple modules, there's no verification that the modules work together. Each module's tests pass in isolation, but cross-module contracts (API types, shared interfaces, import paths) may be broken.
 
@@ -749,7 +917,7 @@ Else:
 
 **Files:** new `src/stages/integration-verify.ts`, `src/orchestrator.ts` (stage dispatch), `src/types/execution-plan.ts` (integration verify results)
 
-### 20. Module-Aware Story Ordering + Contracts
+### 22. Module-Aware Story Ordering + Contracts
 
 **Problem:** The dependency scheduler (ENH-02) and wave executor (ENH-03) operate on story-level dependencies only. With multi-repo, stories in a consumer module may depend on stories in a dependency module being completed first.
 
@@ -854,5 +1022,5 @@ Each phase has a formal smoke test gate (see per-phase sections above). The gate
 2. Phase 2: Retry with backoff on simulated failure; `--from` and `--skip-failed` work; JSON status parsing
 3. Phase 3: Cost displayed per stage; baseline check halts on pre-existing failures; manifest generates; BEL sounds at checkpoint; dependency ordering respected
 4. Phase 4: Synthesizer split produces equivalent quality; code-review-report.md and log-analysis.md generated; step files contain enrichment sections from role-reports; execution agents receive role-report context in prompts
-5. Phase 5: Independent stories run in parallel waves; high-complexity stories split into sub-tasks with independent retry
+5. Phase 5: Independent stories run in parallel waves; high-complexity stories split into sub-tasks with independent retry; compliance-reviewer + compliance-fixer ensure plan adherence post-BUILD
 6. Phase 6: Module config parsed from PRD; CWD threaded to spawner and execute stages; module-aware story ordering; integration verification runs after all module stories; single-repo behavior unchanged

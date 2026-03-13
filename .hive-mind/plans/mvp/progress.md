@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 4 — Pipeline Quality (complete) | **Next Action:** Begin Phase 5 | **Updated:** 2026-03-13
+**Phase:** 5 — Execution Power (in progress) | **Next Action:** Commit ENH-17/18, ENH-03 Tier 3 dogfood | **Updated:** 2026-03-13
 
 ---
 
@@ -10,9 +10,9 @@
 
 | Metric | Baseline | Current |
 |--------|----------|---------|
-| Test files | 25 | 42 |
-| Total tests | 95 | 246 |
-| Source files | 38 | 50 |
+| Test files | 25 | 45 |
+| Total tests | 95 | 302 |
+| Source files | 38 | 53 |
 | TypeScript errors | 0 | 0 |
 
 ---
@@ -109,21 +109,23 @@
 
 ## Phase 5: Execution Power
 
-**Prerequisites:** K1, K2, K4, K5 must be resolved before Phase 5 Tier 3 dogfood.
+**Prerequisites:** K1, K2, K4, K5 must be resolved before Phase 5 Tier 3 dogfood. — All resolved (2026-03-13).
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 16 | ENH-03 | Parallel story execution | [ ] | — |
+| 16 | ENH-03 | Parallel story execution | [x] | 2026-03-13 |
 | 17 | FW-01 | Sub-task decomposition | [ ] | — |
+| 18 | ENH-17 | Compliance reviewer agent | [x] | 2026-03-13 (uncommitted) |
+| 19 | ENH-18 | Compliance fixer agent | [x] | 2026-03-13 (uncommitted) |
 
 **Smoke Test Gate:**
-- [ ] Tier 1 (Unit) — pass date: —
+- [x] Tier 1 (Unit) — pass date: 2026-03-13 (302 tests, 45 files)
 - [ ] Tier 2 (Integration) — pass date: —
 - [ ] Tier 3 (Dogfood — MANDATORY) — pass date: —
 
 **Learnings captured:** [ ] → `learnings/phase-5-learnings.md`
 **Knowledge-base synced:** [ ] → `C:\Users\ziyil\coding_projects\.hive-mind\knowledge-base` + `memory.md`
-**Committed:** [ ] → —
+**Committed:** [~] → ENH-03: `0a66d3a` (2026-03-13) | ENH-17/18 + gap fixes: uncommitted
 
 ---
 
@@ -131,9 +133,9 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 18 | ENH-11 | Multi-repo module config + CWD threading | [ ] | — |
-| 19 | FW-14 | Integration verification stage | [ ] | — |
-| 20 | — | Module-aware story ordering + contracts | [ ] | — |
+| 20 | ENH-11 | Multi-repo module config + CWD threading | [ ] | — |
+| 21 | FW-14 | Integration verification stage | [ ] | — |
+| 22 | — | Module-aware story ordering + contracts | [ ] | — |
 
 **Smoke Test Gate:**
 - [ ] Tier 1 (Unit) — pass date: —

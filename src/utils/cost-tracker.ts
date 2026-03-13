@@ -23,6 +23,11 @@ export class CostTracker {
     this.budgetUsd = budgetUsd;
   }
 
+  /**
+   * Record cost for an agent invocation.
+   * Safe to call from concurrent stories under Node.js single-threaded event loop —
+   * Array.push is atomic within a single tick, so no mutex is needed.
+   */
   recordAgentCost(
     storyId: string,
     agentType: string,

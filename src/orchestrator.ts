@@ -32,11 +32,14 @@ import { runBuild } from "./stages/execute-build.js";
 import { runVerify, type VerifyResult } from "./stages/execute-verify.js";
 import { runCommit } from "./stages/execute-commit.js";
 import { runLearn } from "./stages/execute-learn.js";
+import { runComplianceCheck } from "./stages/execute-compliance.js";
 import { parseRequiredTooling, detectAllTools } from "./tooling/detect.js";
 import { runToolingSetup } from "./tooling/setup.js";
 import { runReportStage as reportStage } from "./stages/report-stage.js";
 import { runBaselineCheck } from "./stages/baseline-check.js";
 import { updateManifest } from "./manifest/generator.js";
+import { parseImplReport } from "./reports/parser.js";
+import { getReportPath } from "./reports/templates.js";
 
 async function safeUpdateManifest(hiveMindDir: string): Promise<void> {
   try {
@@ -252,6 +255,18 @@ export async function executeOneStory(
     storyId: story.id,
   }));
 
+  // COMPLIANCE check — between BUILD and VERIFY (ENH-17)
+  // Non-fatal (P39): failure → proceed to VERIFY
+  const complianceResult = await runComplianceCheck(story, hiveMindDir, config, costTracker, roleReportsDir);
+  if (!complianceResult.skipped) {
+    appendLogEntry(logPath, createLogEntry("COMPLIANCE_CHECK", {
+      storyId: story.id,
+      passed: complianceResult.passed,
+      missing: complianceResult.result?.missing ?? 0,
+      done: complianceResult.result?.done ?? 0,
+    }));
+  }
+
   // VERIFY sub-pipeline (US-14) — no plan writes (refactored in Step 5)
   console.log(`[${story.id}] VERIFY: Starting...`);
   const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir);
@@ -307,6 +322,32 @@ export async function runExecuteStage(
     // Parallel BUILD+VERIFY (bounded by maxConcurrency)
     const tasks = wave.map((s) => () => executeOneStory(s, hiveMindDir, config, costTracker, roleReportsDir));
     const settled = await runWithConcurrency(tasks, config.maxConcurrency);
+
+    // Post-BUILD conflict detection: warn if actual files modified overlap between wave stories
+    if (wave.length > 1) {
+      const storyFiles = new Map<string, string[]>();
+      for (const s of wave) {
+        const implPath = join(hiveMindDir, getReportPath(s.id, "impl-report.md"));
+        const implContent = readFileSafe(implPath);
+        if (implContent) {
+          const parsed = parseImplReport(implContent);
+          if (parsed.filesCreated.length > 0) {
+            storyFiles.set(s.id, parsed.filesCreated);
+          }
+        }
+      }
+      const allStoryIds = [...storyFiles.keys()];
+      for (let a = 0; a < allStoryIds.length; a++) {
+        for (let b = a + 1; b < allStoryIds.length; b++) {
+          const filesA = new Set(storyFiles.get(allStoryIds[a])!);
+          const filesB = storyFiles.get(allStoryIds[b])!;
+          const overlap = filesB.filter((f) => filesA.has(f));
+          if (overlap.length > 0) {
+            console.warn(`[CONFLICT] Stories ${allStoryIds[a]} and ${allStoryIds[b]} both modified: ${overlap.join(", ")}`);
+          }
+        }
+      }
+    }
 
     // Sequential post-wave: COMMIT → plan update → save
     for (let i = 0; i < settled.length; i++) {

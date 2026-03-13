@@ -212,6 +212,24 @@ describe("execute-verify", () => {
     }
   });
 
+  it("does not write to execution plan (plan writes removed for wave executor)", async () => {
+    setup();
+    try {
+      const planPath = join(testDir, "plans", "execution-plan.json");
+      const { readFileSync } = await import("node:fs");
+      const planBefore = readFileSync(planPath, "utf-8");
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runVerify(makeStory(), testDir, planPath, config);
+      consoleSpy.mockRestore();
+
+      const planAfter = readFileSync(planPath, "utf-8");
+      expect(planAfter).toBe(planBefore);
+    } finally {
+      cleanup();
+    }
+  });
+
   it("post-fix verification logs warning when fix report missing status (K5)", async () => {
     setup();
     try {

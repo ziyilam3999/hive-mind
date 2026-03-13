@@ -5,6 +5,11 @@ import { isoTimestamp } from "../utils/timestamp.js";
 import { ensureDir } from "../utils/file-io.js";
 import { dirname } from "node:path";
 
+/**
+ * Append a log entry to the JSONL log file.
+ * Uses appendFileSync which is safe for concurrent small writes under Node.js
+ * single-threaded event loop — multiple in-flight stories can log without a mutex.
+ */
 export function appendLogEntry(logPath: string, entry: ManagerLogEntry): void {
   ensureDir(dirname(logPath));
   appendFileSync(logPath, JSON.stringify(entry) + "\n");

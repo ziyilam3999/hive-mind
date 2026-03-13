@@ -27,7 +27,9 @@ export type AgentType =
   | "ec-generator"
   | "code-reviewer"
   | "log-summarizer"
-  | "enricher";
+  | "enricher"
+  | "compliance-reviewer"
+  | "compliance-fixer";
 
 export interface AgentConfig {
   type: AgentType;
