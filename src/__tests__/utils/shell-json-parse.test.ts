@@ -61,14 +61,39 @@ describe("spawnClaude JSON parse failure (K2)", () => {
     warnSpy.mockRestore();
   });
 
-  it("does not warn when stdout is valid JSON", async () => {
+  it("parses CLI array format with total_cost_usd (real CLI output)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cliOutput = JSON.stringify([
+      { type: "system", subtype: "init", session_id: "s1", model: "sonnet" },
+      { type: "assistant", message: { content: [{ type: "text", text: "done" }] } },
+      { type: "result", subtype: "success", result: "done", total_cost_usd: 0.05, duration_ms: 3200, session_id: "s1", model: "sonnet" },
+    ]);
+    vi.mocked(spawn).mockReturnValue(createMockChild(cliOutput) as never);
+
+    const result = await spawnClaude({
+      model: "sonnet",
+      prompt: "test",
+      outputFormat: "json",
+    });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(result.json).toBeDefined();
+    expect(result.json!.cost_usd).toBe(0.05);
+    expect(result.json!.result).toBe("done");
+    expect(result.json!.duration_ms).toBe(3200);
+    expect(result.json!.session_id).toBe("s1");
+
+    warnSpy.mockRestore();
+  });
+
+  it("falls back to cost_usd for legacy single-object format", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const validJson = JSON.stringify({
       result: "done",
-      cost_usd: 0.05,
+      cost_usd: 0.03,
       model: "sonnet",
       session_id: "s1",
-      duration_ms: 3200,
+      duration_ms: 1500,
     });
     vi.mocked(spawn).mockReturnValue(createMockChild(validJson) as never);
 
@@ -80,7 +105,7 @@ describe("spawnClaude JSON parse failure (K2)", () => {
 
     expect(warnSpy).not.toHaveBeenCalled();
     expect(result.json).toBeDefined();
-    expect(result.json!.cost_usd).toBe(0.05);
+    expect(result.json!.cost_usd).toBe(0.03);
 
     warnSpy.mockRestore();
   });

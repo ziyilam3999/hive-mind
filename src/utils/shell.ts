@@ -124,10 +124,17 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
       let json: ClaudeJsonResult | undefined;
       if (options.outputFormat === "json") {
         try {
-          const parsed = JSON.parse(stdout) as Record<string, unknown>;
+          const raw = JSON.parse(stdout);
+          // Claude CLI --output-format json returns an array of event objects.
+          // The result object (with cost/duration) is the last element with type "result".
+          const parsed: Record<string, unknown> = Array.isArray(raw)
+            ? (raw.find((o: Record<string, unknown>) => o.type === "result") ?? raw[raw.length - 1] ?? {})
+            : raw;
           json = {
             result: typeof parsed.result === "string" ? parsed.result : stdout,
-            cost_usd: typeof parsed.cost_usd === "number" ? parsed.cost_usd : 0,
+            // Claude CLI uses "total_cost_usd", not "cost_usd"
+            cost_usd: typeof parsed.total_cost_usd === "number" ? parsed.total_cost_usd
+              : typeof parsed.cost_usd === "number" ? parsed.cost_usd : 0,
             model: typeof parsed.model === "string" ? parsed.model : options.model,
             session_id: typeof parsed.session_id === "string" ? parsed.session_id : "",
             duration_ms: typeof parsed.duration_ms === "number" ? parsed.duration_ms : 0,

@@ -71,8 +71,11 @@ export async function runVerify(
     lastConfidence = testResult.confidence;
 
     // Bug 10: Archive test report per-attempt for post-mortem traceability
-    const testArchivePath = join(reportsDir, `test-report-${attempt}.md`);
-    try { copyFileSync(testReportPath, testArchivePath); } catch { /* best-effort */ }
+    // Skip archive on attempt 1 — it would be identical to test-report.md
+    if (attempt > 1) {
+      const testArchivePath = join(reportsDir, `test-report-${attempt}.md`);
+      try { copyFileSync(testReportPath, testArchivePath); } catch { /* best-effort */ }
+    }
 
     const logPath = join(hiveMindDir, "manager-log.jsonl");
     appendLogEntry(logPath, createLogEntry("VERIFY_ATTEMPT", {
@@ -121,8 +124,10 @@ export async function runVerify(
     const evalResult = parseEvalReport(evalContent);
 
     // Bug 10: Archive eval report per-attempt
-    const evalArchivePath = join(reportsDir, `eval-report-${attempt}.md`);
-    try { copyFileSync(evalReportPath, evalArchivePath); } catch { /* best-effort */ }
+    if (attempt > 1) {
+      const evalArchivePath = join(reportsDir, `eval-report-${attempt}.md`);
+      try { copyFileSync(evalReportPath, evalArchivePath); } catch { /* best-effort */ }
+    }
 
     // Bug 12: Log eval parse result for visibility
     appendLogEntry(logPath, createLogEntry("EVAL_ATTEMPT", {
