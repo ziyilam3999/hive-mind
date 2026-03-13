@@ -103,6 +103,11 @@ export async function runVerify(
 
       // E.4 / E.4a+E.4b: Fix AC failures
       await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent, config, roleReportsDir);
+      // K5: Post-fix verification gate
+      if (!verifyFixApplied(hiveMindDir, story.id, attempt)) {
+        console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
+        appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
+      }
       continue; // re-VERIFY from E.3
     }
 
@@ -153,6 +158,11 @@ export async function runVerify(
 
       // E.6 / E.6a+E.6b: Fix EC failures
       await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent, config, roleReportsDir);
+      // K5: Post-fix verification gate
+      if (!verifyFixApplied(hiveMindDir, story.id, attempt)) {
+        console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
+        appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
+      }
       continue; // re-VERIFY from E.3
     }
 
@@ -187,55 +197,40 @@ async function runFixPipeline(
     ? buildRoleReportContents("fixer", story.rolesUsed, roleReportsDir)
     : undefined;
 
-  if (attempt === 1) {
-    // Fast path: fixer only
-    console.log(`E.${failureType === "ac" ? "4" : "6"}: Running fixer (fast path) for ${story.id}...`);
-    const fixReportPath = join(reportsDir, `fix-report-${attempt}.md`);
-    await spawnAgentWithRetry({
-      type: "fixer",
-      model: "sonnet",
-      inputFiles: [stepFilePath, failReportPath, ...priorFixReports],
-      outputFile: fixReportPath,
-      rules: getAgentRules("fixer"),
-      memoryContent,
-      roleReportContents: fixerRoleContents,
-    }, config);
-  } else {
-    // Escalated: diagnostician → fixer
-    console.log(`E.${failureType === "ac" ? "4a" : "6a"}: Running diagnostician for ${story.id} (attempt ${attempt})...`);
-    const diagReportPath = join(reportsDir, `diagnosis-report-${attempt}.md`);
+  // K5: Always run diagnostician → fixer (no fast-path)
+  console.log(`E.${failureType === "ac" ? "4a" : "6a"}: Running diagnostician for ${story.id} (attempt ${attempt})...`);
+  const diagReportPath = join(reportsDir, `diagnosis-report-${attempt}.md`);
 
-    const diagRoleContents = roleReportsDir
-      ? buildRoleReportContents("diagnostician", story.rolesUsed, roleReportsDir)
-      : undefined;
+  const diagRoleContents = roleReportsDir
+    ? buildRoleReportContents("diagnostician", story.rolesUsed, roleReportsDir)
+    : undefined;
 
-    await spawnAgentWithRetry({
-      type: "diagnostician",
-      model: "sonnet",
-      inputFiles: [failReportPath, ...priorFixReports, ...priorDiagReports],
-      outputFile: diagReportPath,
-      rules: getAgentRules("diagnostician"),
-      memoryContent,
-      roleReportContents: diagRoleContents,
-    }, config);
+  await spawnAgentWithRetry({
+    type: "diagnostician",
+    model: "sonnet",
+    inputFiles: [failReportPath, ...priorFixReports, ...priorDiagReports],
+    outputFile: diagReportPath,
+    rules: getAgentRules("diagnostician"),
+    memoryContent,
+    roleReportContents: diagRoleContents,
+  }, config);
 
-    // Verify diagnosis file exists before spawning fixer (P11/F11)
-    if (!fileExists(diagReportPath)) {
-      console.error(`Diagnosis report not found: ${diagReportPath}`);
-    }
-
-    console.log(`E.${failureType === "ac" ? "4b" : "6b"}: Running fixer (escalated) for ${story.id} (attempt ${attempt})...`);
-    const fixReportPath = join(reportsDir, `fix-report-${attempt}.md`);
-    await spawnAgentWithRetry({
-      type: "fixer",
-      model: "sonnet",
-      inputFiles: [stepFilePath, diagReportPath, failReportPath, ...priorFixReports, ...priorDiagReports],
-      outputFile: fixReportPath,
-      rules: getAgentRules("fixer"),
-      memoryContent,
-      roleReportContents: fixerRoleContents,
-    }, config);
+  // Verify diagnosis file exists before spawning fixer (P11/F11)
+  if (!fileExists(diagReportPath)) {
+    console.error(`Diagnosis report not found: ${diagReportPath}`);
   }
+
+  console.log(`E.${failureType === "ac" ? "4b" : "6b"}: Running fixer for ${story.id} (attempt ${attempt})...`);
+  const fixReportPath = join(reportsDir, `fix-report-${attempt}.md`);
+  await spawnAgentWithRetry({
+    type: "fixer",
+    model: "sonnet",
+    inputFiles: [stepFilePath, diagReportPath, failReportPath, ...priorFixReports, ...priorDiagReports],
+    outputFile: fixReportPath,
+    rules: getAgentRules("fixer"),
+    memoryContent,
+    roleReportContents: fixerRoleContents,
+  }, config);
 }
 
 function collectPriorReports(
@@ -252,4 +247,42 @@ function collectPriorReports(
     }
   }
   return paths;
+}
+
+/**
+ * K5: Post-fix verification gate.
+ * Checks that the fixer agent's fix-report indicates PASS and lists changed files.
+ * Returns false if the fix-report is missing, unparseable, or doesn't list file changes.
+ */
+export function verifyFixApplied(
+  hiveMindDir: string,
+  storyId: string,
+  attempt: number,
+): boolean {
+  const fixReportPath = join(hiveMindDir, getReportPath(storyId, `fix-report-${attempt}.md`));
+  const content = readFileSafe(fixReportPath) ?? "";
+
+  if (!content) return false;
+
+  // Parse STATUS block from fix-report
+  const statusMatch = content.match(/<!-- STATUS: ({.*?}) -->/);
+  if (!statusMatch) return false;
+
+  try {
+    const status = JSON.parse(statusMatch[1]);
+    if (status.result !== "PASS") return false;
+  } catch {
+    return false;
+  }
+
+  // Check "Files Changed" section exists and lists real files
+  const filesChangedMatch = content.match(/\*\*Files Changed:\*\*\s*(.+)/);
+  if (!filesChangedMatch) return false;
+
+  const filesStr = filesChangedMatch[1].trim();
+  // "None" is valid for fixes that only change EC commands (no source files)
+  if (filesStr.toLowerCase() === "none") return true;
+
+  // At least one file path listed — basic sanity check
+  return filesStr.length > 0;
 }

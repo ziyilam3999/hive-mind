@@ -103,12 +103,13 @@
 | K2 | JSON parse silent failure in shell.ts | HIGH | Yes | [x] | 2026-03-13 |
 | K3 | Cost tracking blind spots ($0 default) | MEDIUM | No | [x] | 2026-03-13 |
 | K4 | Fixer file targeting — no explicit mapping | MEDIUM | Yes | [x] | 2026-03-13 |
+| K5 | Fixer report-only fix — no post-fix verification gate + always-diagnose | HIGH | Yes | [x] | 2026-03-13 |
 
 ---
 
 ## Phase 5: Execution Power
 
-**Prerequisites:** K1, K2, K4 must be resolved before Phase 5 Tier 3 dogfood.
+**Prerequisites:** K1, K2, K4, K5 must be resolved before Phase 5 Tier 3 dogfood.
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|

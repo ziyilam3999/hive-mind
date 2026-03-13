@@ -141,6 +141,8 @@ describe("execute-verify", () => {
           }
         } else if (config.type === "evaluator") {
           wf(config.outputFile, "## VERDICT: PASS\n");
+        } else if (config.type === "fixer") {
+          wf(config.outputFile, `<!-- STATUS: {"result": "PASS"} -->\n# Fix Report\n**Files Changed:** src/test.ts`);
         } else {
           wf(config.outputFile, `# Mock ${config.type}`);
         }
@@ -148,8 +150,10 @@ describe("execute-verify", () => {
       });
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
+      warnSpy.mockRestore();
 
       // Fixer should have been called with step file as first input
       const fixerCall = spawnCalls.find((c) => c.type === "fixer");
@@ -158,12 +162,15 @@ describe("execute-verify", () => {
       // Step file is the canonical source — not US-99-ecs.md or acceptance-criteria.md
       expect(fixerCall!.inputFiles[0]).not.toContain("-ecs.md");
       expect(fixerCall!.inputFiles[0]).not.toContain("acceptance-criteria");
+      // K5: Diagnostician should have run before fixer
+      const diagCall = spawnCalls.find((c) => c.type === "diagnostician");
+      expect(diagCall).toBeDefined();
     } finally {
       cleanup();
     }
   });
 
-  it("attempt 1 = fast path (no diagnostician)", async () => {
+  it("diagnostician runs on every attempt (K5: no fast-path)", async () => {
     setup();
     try {
       const { spawnAgentWithRetry: mockSpawn } = await import("../../agents/spawner.js");
@@ -182,6 +189,8 @@ describe("execute-verify", () => {
           }
         } else if (config.type === "evaluator") {
           wf(config.outputFile, "## VERDICT: PASS\n");
+        } else if (config.type === "fixer") {
+          wf(config.outputFile, `<!-- STATUS: {"result": "PASS"} -->\n# Fix Report\n**Files Changed:** src/test.ts`);
         } else {
           wf(config.outputFile, `# Mock ${config.type}`);
         }
@@ -189,13 +198,58 @@ describe("execute-verify", () => {
       });
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
+      warnSpy.mockRestore();
 
       expect(result.passed).toBe(true);
-      // On attempt 1, fixer runs but diagnostician does NOT
+      // K5: Diagnostician runs on attempt 1 (no fast-path)
       const diagCalls = spawnCalls.filter((c) => c.type === "diagnostician");
-      expect(diagCalls.length).toBe(0);
+      expect(diagCalls.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("post-fix verification logs warning when fix report missing status (K5)", async () => {
+    setup();
+    try {
+      const { spawnAgentWithRetry: mockSpawn } = await import("../../agents/spawner.js");
+      let testerCallCount = 0;
+      vi.mocked(mockSpawn).mockImplementation(async (config) => {
+        spawnCalls.push({ type: config.type, inputFiles: [...config.inputFiles] });
+        const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+        const { dirname } = await import("node:path");
+        md(dirname(config.outputFile), { recursive: true });
+        if (config.type === "tester-exec") {
+          testerCallCount++;
+          if (testerCallCount === 1) {
+            wf(config.outputFile, "## STATUS: FAIL\n| AC-0 | lint | npx eslint | FAIL | FAIL |");
+          } else {
+            wf(config.outputFile, "## STATUS: PASS\n");
+          }
+        } else if (config.type === "evaluator") {
+          wf(config.outputFile, "## VERDICT: PASS\n");
+        } else if (config.type === "fixer") {
+          // Fixer writes report WITHOUT STATUS block — should trigger warning
+          wf(config.outputFile, `# Fix Report\nApplied some changes.`);
+        } else {
+          wf(config.outputFile, `# Mock ${config.type}`);
+        }
+        return { success: true, outputFile: config.outputFile };
+      });
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+
+      // Should have logged a warning about unverified fix
+      const warnCalls = warnSpy.mock.calls.map((c) => c[0]);
+      expect(warnCalls.some((msg: string) => msg.includes("may not have applied changes"))).toBe(true);
+
+      consoleSpy.mockRestore();
+      warnSpy.mockRestore();
     } finally {
       cleanup();
     }

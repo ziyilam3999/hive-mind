@@ -575,12 +575,14 @@ See [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) for f
 | K2 | — | **JSON parse silent failure** — `shell.ts:136` has empty catch block. If agent stdout isn't valid JSON, error is swallowed silently. Could mask agent failures and produce misleading cost/token data. | HIGH | Yes |
 | K3 | — | **Cost tracking blind spots** — Missing cost data defaults to `$0` with no warning. Pipeline cost totals may undercount. No log entry when cost data is absent. | MEDIUM | No |
 | K4 | — | **Fixer file targeting** — Fixer agent has no explicit mapping of which file to patch. It greps the workspace and patches whatever matches first, which may differ from the file the evaluator reads. Related to K1 but broader. | MEDIUM | Yes |
+| K5 | — | **Fixer report-only fix + no post-fix verification gate** — Fixer agent writes fix-report.md claiming PASS but may not actually edit target files. Workflow trusts fix-reports at face value. Also: attempt-1 fast-path skips diagnostician, causing blind fixes. Caused US-03 to exhaust all retries despite correct diagnosis on attempt 2. | HIGH | Yes |
 
 ### Resolution Strategy
 
 - **K1 + K4** (duplicate ECs + fixer targeting): Establish single source of truth for ECs. The evaluator and fixer must read/write the same canonical file. Remove or symlink the duplicate.
 - **K2** (silent JSON failure): Add error logging in the catch block. Log the raw stdout and the parse error so failures are visible in `manager-log.jsonl`.
 - **K3** (cost blind spots): Add a warning log entry when cost/token data is missing from agent response. Low priority — doesn't affect correctness.
+- **K5** (report-only fix + always-diagnose): (a) Remove attempt-1 fast-path — always run diagnostician → fixer. (b) Add `verifyFixApplied()` post-fix gate in `execute-verify.ts` that checks fix-report STATUS block and "Files Changed" field. Logs `FIX_UNVERIFIED` when fix may not have been applied. (c) Add `APPLY-BEFORE-REPORT` rule to fixer prompt — agent must edit files before writing report.
 
 ---
 
@@ -588,13 +590,13 @@ See [role-report-feedback-loop-plan.md](role-report-feedback-loop-plan.md) for f
 
 ### Prerequisites: Known Issue Fixes
 
-Before starting Phase 5 implementation, resolve **K1, K2, K4** from the Known Issues section above. These are HIGH-severity bugs that will cause Phase 5's mandatory Tier 3 dogfood to hit the same retry failures (K1/K4) or silently lose debugging information (K2).
+Before starting Phase 5 implementation, resolve **K1, K2, K4, K5** from the Known Issues section above. These are HIGH-severity bugs that will cause Phase 5's mandatory Tier 3 dogfood to hit the same retry failures (K1/K4/K5) or silently lose debugging information (K2).
 
 ### 16. ENH-03: Parallel Story Execution
 
 **Problem:** Stories execute one at a time. Independent stories with no mutual dependencies could run in parallel.
 
-**Prerequisites:** ENH-02 (dependency scheduling) must land first — provides the dependency graph. Known issues K1, K2, K4 must be resolved.
+**Prerequisites:** ENH-02 (dependency scheduling) must land first — provides the dependency graph. Known issues K1, K2, K4, K5 must be resolved.
 
 **Fix — Wave-based execution:**
 

@@ -11,7 +11,8 @@ export type LogAction =
   | "BUILD_COMPLETE"
   | "VERIFY_ATTEMPT"
   | "COMMIT_COMPLETE"
-  | "EVAL_ATTEMPT";
+  | "EVAL_ATTEMPT"
+  | "FIX_UNVERIFIED";
 
 export interface ManagerLogEntry {
   timestamp: string;

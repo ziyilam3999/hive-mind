@@ -30,7 +30,7 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "refactorer": "Review + improve code quality, produce refactor-report.md",
   "tester-exec": "Run ACs via shell, produce test-report.md",
   "evaluator": "Run binary ECs via shell, produce eval-report.md",
-  "diagnostician": "Root cause analysis on attempt 2+",
+  "diagnostician": "Root cause analysis before every fix attempt",
   "fixer": "Apply fixes guided by diagnosis or test-report",
   "learner": "Capture what worked/failed in ELI5, produce learning.md",
   "reporter": "Generate consolidated-report.md from all artifacts",
@@ -107,6 +107,7 @@ const AGENT_RULES: Record<string, string[]> = {
     "NO-HACKS: Do not disable tests, weaken assertions, or work around the problem.",
     "STEP-FILE-IS-CANONICAL: The step file (US-XX.md) is the single source of truth for ACs and ECs. If you need to fix an AC or EC command, patch the step file directly. Do NOT patch separate files like US-XX-ecs.md or US-XX-acs.md — the evaluator only reads from the assembled step file.",
     "REPORT-FORMAT: Output must follow fix-report.md template exactly.",
+    "APPLY-BEFORE-REPORT: You MUST use the Edit or Write tool to modify target files BEFORE writing your fix-report. The report documents changes already made, not intended changes. If you claim 'Files Changed: X', file X must actually be different after your edits.",
   ],
   "planner": [
     "SKELETON-ONLY: Produce story skeletons with GOAL, SPEC REFS, INPUT, OUTPUT. Do NOT generate ACs or ECs.",
