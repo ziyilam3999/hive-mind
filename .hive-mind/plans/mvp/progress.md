@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 5 — Execution Power (in progress) | **Next Action:** Commit ENH-17/18, ENH-03 Tier 3 dogfood | **Updated:** 2026-03-13
+**Phase:** 5 — Execution Power (COMPLETE) | **Next Action:** FW-01 Tier 3 dogfood, then Phase 6 | **Updated:** 2026-03-14
 
 ---
 
@@ -10,8 +10,8 @@
 
 | Metric | Baseline | Current |
 |--------|----------|---------|
-| Test files | 25 | 45 |
-| Total tests | 95 | 302 |
+| Test files | 25 | 48 |
+| Total tests | 95 | 329 |
 | Source files | 38 | 53 |
 | TypeScript errors | 0 | 0 |
 
@@ -114,12 +114,12 @@
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
 | 16 | ENH-03 | Parallel story execution | [x] | 2026-03-13 |
-| 17 | FW-01 | Sub-task decomposition | [ ] | — |
+| 17 | FW-01 | Sub-task decomposition | [x] | 2026-03-14 |
 | 18 | ENH-17 | Compliance reviewer agent | [x] | 2026-03-13 |
 | 19 | ENH-18 | Compliance fixer agent | [x] | 2026-03-13 |
 
 **Smoke Test Gate:**
-- [x] Tier 1 (Unit) — pass date: 2026-03-13 (303 tests, 45 files)
+- [x] Tier 1 (Unit) — pass date: 2026-03-14 (329 tests, 48 files)
 - [x] Tier 2 (Integration) — pass date: 2026-03-13
 - [x] Tier 3 (Dogfood — MANDATORY) — pass date: 2026-03-13
 
@@ -134,7 +134,7 @@
 
 **Learnings captured:** [x] → `learnings/phase-5-learnings.md` (2026-03-13)
 **Knowledge-base synced:** [x] → P46, P47, F47, F48 added to knowledge-base (2026-03-13)
-**Committed:** [x] → ENH-03: `0a66d3a` | ENH-17/18: `6d41f7a` | dogfood fixes: `5ae476b`
+**Committed:** [x] → ENH-03: `0a66d3a` | ENH-17/18: `6d41f7a` | dogfood fixes: `5ae476b` | FW-01: `b343b19`
 
 ---
 
