@@ -162,11 +162,10 @@ const AGENT_RULES: Record<string, string[]> = {
     "NO-FUNCTIONAL-REGRESSION: Do not modify existing passing logic. Compliance fixes are additive (comments, tests, new functions). Run npm test after changes to verify no regressions.",
   ],
   "decomposer": [
-    "FILE-BOUNDARY: Split sub-tasks along file boundaries. Each sub-task owns a distinct subset of sourceFiles. No file appears in more than one sub-task.",
+    "FILE-BOUNDARY: When a story has multiple sourceFiles, split sub-tasks along file boundaries. Each sub-task owns a distinct subset. When a story has a single sourceFile, split by logical responsibility — all sub-tasks share that file.",
     "SCOPE-SPLIT: Produce 2-4 sub-tasks. Each must be independently buildable and verifiable.",
     "STRUCTURED-OUTPUT: Output MUST be valid JSON matching: { \"subTasks\": [{ \"id\": \"US-XX.1\", \"title\": \"...\", \"description\": \"...\", \"sourceFiles\": [\"...\"] }] }. No markdown fences.",
-    "SIZE-BOUND: Only decompose if story has 3+ sourceFiles. Stories with fewer files should not be decomposed.",
-    "COMPLETE-COVERAGE: The union of all sub-task sourceFiles must equal the story's sourceFiles. No file left unassigned.",
+    "COMPLETE-COVERAGE: Every sourceFile must appear in at least one sub-task. For multi-file stories, the union of sub-task sourceFiles must equal the story's sourceFiles.",
   ],
   "enricher": [
     "APPEND-ONLY: Add new sections (## Implementation Guidance, ## Security Requirements, ## Edge Cases). NEVER modify existing content.",

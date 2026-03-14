@@ -260,7 +260,6 @@ describe("plan-stage decomposition (FW-01)", () => {
     expect(rules.some((r) => r.includes("FILE-BOUNDARY"))).toBe(true);
     expect(rules.some((r) => r.includes("SCOPE-SPLIT"))).toBe(true);
     expect(rules.some((r) => r.includes("STRUCTURED-OUTPUT"))).toBe(true);
-    expect(rules.some((r) => r.includes("SIZE-BOUND"))).toBe(true);
     expect(rules.some((r) => r.includes("COMPLETE-COVERAGE"))).toBe(true);
   });
 });

@@ -343,8 +343,9 @@ async function decomposeStory(
   memoryContent: string,
   config: HiveMindConfig,
 ): Promise<SubTask[]> {
-  // SIZE-BOUND: Skip decomposition if fewer than 3 source files
-  if (story.sourceFiles.length < 3) return [];
+  // Decompose all high-complexity stories regardless of file count.
+  // Dogfood finding: planner always creates 1-file stories, so the old 3-file gate was dead code.
+  if (story.sourceFiles.length === 0) return [];
 
   const stepFilePath = join(stepsDir, `${story.id}.md`);
   const outputPath = join(stepsDir, `${story.id}-subtasks.json`);

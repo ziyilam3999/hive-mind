@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 5 — Execution Power (COMPLETE) | **Next Action:** FW-01 Tier 3 dogfood, then Phase 6 | **Updated:** 2026-03-14
+**Phase:** 5 — Execution Power (COMPLETE, dogfood validated) | **Next Action:** Phase 6 | **Updated:** 2026-03-14
 
 ---
 
@@ -121,9 +121,9 @@
 **Smoke Test Gate:**
 - [x] Tier 1 (Unit) — pass date: 2026-03-14 (329 tests, 48 files)
 - [x] Tier 2 (Integration) — pass date: 2026-03-13
-- [x] Tier 3 (Dogfood — MANDATORY) — pass date: 2026-03-13
+- [x] Tier 3 (Dogfood — MANDATORY) — pass date: 2026-03-13 (ENH-03), 2026-03-14 (FW-01)
 
-**Tier 3 Dogfood Results (string-utils PRD, 4 stories):**
+**Tier 3 Dogfood Results — ENH-03 (string-utils PRD, 4 stories):**
 - Wave 1: US-01, US-03, US-04 executed in parallel (ENH-03 validated)
 - Wave 2: US-02 waited for US-01 dependency (scheduling validated)
 - 4/4 stories COMPLETED + COMMITTED
@@ -131,6 +131,16 @@
 - Compliance fix loop: US-02 FAIL → fixer fixed 1 item → re-review PASS — ENH-18 validated
 - US-01, US-04 needed 1 verify retry each (fixer applied); US-02, US-03 passed first attempt
 - Bugs found: cost data always $0 (CLI JSON array format, field name mismatch), redundant report archives on first attempt — both fixed in `5ae476b`
+
+**Tier 3 Dogfood Results — FW-01 (quiz-game PRD, 6 stories):**
+- US-06 (high complexity, 1 file) decomposed into 3 sub-tasks: US-06.1, US-06.2, US-06.3
+- Sub-tasks executed sequentially: BUILD→VERIFY per sub-task (timestamps: 11:00→11:11→11:22)
+- All 3 sub-tasks passed on first attempt (independent retry available at sub-task level)
+- US-01–US-05 (low/medium complexity) executed without sub-tasks — unaffected
+- 6/6 stories COMPLETED + COMMITTED
+- Finding: planner always creates 1-file stories, so original SIZE-BOUND (3+ files) was dead code
+- Fix: removed 3-file gate, decompose all high-complexity stories regardless of file count
+- Updated FILE-BOUNDARY rule to support single-file logical splitting
 
 **Learnings captured:** [x] → `learnings/phase-5-learnings.md` (2026-03-13)
 **Knowledge-base synced:** [x] → P46, P47, F47, F48 added to knowledge-base (2026-03-13)

@@ -1,6 +1,6 @@
 # Phase 5: Execution Power — Learnings
 
-**Completed:** 2026-03-13 | **Items:** ENH-03 (Parallel Execution), ENH-17 (Compliance Reviewer), ENH-18 (Compliance Fixer) | **FW-01:** Deferred
+**Completed:** 2026-03-14 | **Items:** ENH-03 (Parallel Execution), ENH-17 (Compliance Reviewer), ENH-18 (Compliance Fixer), FW-01 (Sub-task Decomposition)
 
 ---
 
@@ -69,3 +69,41 @@ If compliance-fixer reports `itemsFixed: 0`, skip re-running the reviewer. The f
 
 - **F47: Assumed JSON shape** — Parsing external tool output by assuming a flat JSON object without testing against real output. The claude CLI returns an array of event objects, not a single result object.
 - **F48: Unconditional per-attempt archiving** — Archiving every attempt's output is only valuable when retries occur. On first-pass success, archives are identical copies that waste disk and clutter report directories.
+
+---
+
+## FW-01: Sub-task Decomposition
+
+### Design Decisions & Rationale
+
+**Decompose all high-complexity stories regardless of file count**
+Original plan specified SIZE-BOUND: 3+ sourceFiles. Dogfood revealed the planner consistently creates 1-file stories (5 PRDs tested, 0 stories with 3+ files). The 3-file gate was dead code. Removed it — `complexity: "high"` is the meaningful gate. Single-file stories are split by logical responsibility (e.g., engine.ts → startQuiz / submitAnswer / endQuiz).
+
+**Sub-task statuses not written to intermediate file**
+The raw `US-XX-subtasks.json` contains only the decomposer output contract (`id, title, description, sourceFiles`). Normalized fields (`status, attempts, maxAttempts`) are added by `decomposeStory()` and written to `execution-plan.json`. The intermediate file is not updated post-normalization — same pattern as other intermediate artifacts (critique files, research reports).
+
+**FILE-BOUNDARY rule updated for single-file reality**
+When a story has multiple files, sub-tasks split along file boundaries (no overlap). When a story has a single file, sub-tasks split by logical responsibility — all sub-tasks share that file. Updated agent rule to reflect both cases.
+
+### FW-01 Dogfood Results
+
+**PRD:** quiz-game (6 stories: types, validator, question-bank, scaler, formatter, engine)
+**Sub-task story:** US-06 (engine.ts, high complexity) → 3 sub-tasks
+**Outcome:** 6/6 COMPLETED + COMMITTED
+
+| Sub-task | Description | Attempts | Result |
+|----------|------------|----------|--------|
+| US-06.1 | QuizEngine skeleton + startQuiz | 1 | PASS |
+| US-06.2 | submitAnswer + getRecommendedDifficulty | 1 | PASS |
+| US-06.3 | endQuiz + QuizResult computation | 1 | PASS |
+
+**Sequential execution verified:** BUILD_COMPLETE timestamps 11:00 → 11:11 → 11:22 (each sub-task starts after prior completes).
+**Low/medium stories unaffected:** US-01–US-05 executed without sub-tasks, all passed attempt 1.
+
+### Patterns to Graduate
+
+- **P48: Dead code gates in multi-agent pipelines** — When one agent's output shapes another agent's input, gate conditions may become unreachable if the upstream agent's behavior changes. Test gates against actual upstream output, not assumed ranges.
+
+### Anti-Patterns Discovered
+
+- **F49: Dual-level enforcement of same rule** — SIZE-BOUND was enforced both as a hard code check (plan-stage.ts) and an agent prompt rule. When the hard check was lowered for testing, the agent still refused to decompose. Rules enforced at multiple levels create hidden coupling and make dogfood testing harder.
