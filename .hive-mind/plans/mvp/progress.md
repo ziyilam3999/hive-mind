@@ -143,8 +143,8 @@
 - Updated FILE-BOUNDARY rule to support single-file logical splitting
 
 **Learnings captured:** [x] → `learnings/phase-5-learnings.md` (2026-03-13)
-**Knowledge-base synced:** [x] → P46, P47, F47, F48 added to knowledge-base (2026-03-13)
-**Committed:** [x] → ENH-03: `0a66d3a` | ENH-17/18: `6d41f7a` | dogfood fixes: `5ae476b` | FW-01: `b343b19`
+**Knowledge-base synced:** [x] → P46, P47, F47, F48 (2026-03-13); P48, F49 (2026-03-14)
+**Committed:** [x] → ENH-03: `0a66d3a` | ENH-17/18: `6d41f7a` | dogfood fixes: `5ae476b` | FW-01: `b343b19` | FW-01 dogfood: `1497107`
 
 ---
 
