@@ -1,5 +1,10 @@
 # Hive Mind
 
+[![CI](https://github.com/ziyilam3999/hive-mind/actions/workflows/ci.yml/badge.svg)](https://github.com/ziyilam3999/hive-mind/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
+![Node](https://img.shields.io/badge/Node.js-18%2B-green)
+
 PRD-driven orchestrator that turns a product requirements document into working code through a multi-stage AI pipeline with human checkpoints.
 
 ```
