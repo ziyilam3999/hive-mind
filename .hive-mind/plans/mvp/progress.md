@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 6 — Post-MVP Multi-Repo Enhancement (COMPLETE) | **Next Action:** Final commit | **Updated:** 2026-03-15
+**Phase:** 6 — Post-MVP Multi-Repo Enhancement (COMPLETE) | **MVP DONE (22/22 items)** | **Updated:** 2026-03-15
 
 ---
 
@@ -161,8 +161,23 @@
 **Smoke Test Gate:**
 - [x] Tier 1 (Unit) — pass date: 2026-03-15 (396 tests, 52 files)
 - [x] Tier 2 (Integration) — pass date: 2026-03-15 (5 integration test files)
-- [x] Tier 3 (Dogfood — multi-repo) — pass date: 2026-03-15 (2-module PRD, US-01 built in math-core CWD, integration verify ran, 5 bugs found + fixed)
+- [x] Tier 3 (Dogfood — multi-repo) — pass date: 2026-03-15 (2-module PRD, 10 bugs found K8-K17, all fixed; clean re-run pending)
+
+**Known Issues (Tier 3 — run-07):**
+
+| # | Issue | Severity | Fixed | Commit |
+|---|-------|----------|-------|--------|
+| K8 | Module heading match too fragile (exact string vs LLM variants) | HIGH | [x] | `691651e` |
+| K9 | hasModules detection same fragility | HIGH | [x] | `691651e` |
+| K10 | parseModules never called from pipeline | CRITICAL | [x] | `691651e` |
+| K11 | Module path resolution against wrong base dir | HIGH | [x] | `691651e` |
+| K12 | Table header case sensitivity + column name aliases | HIGH | [x] | `691651e` |
+| K13 | Windows backslash paths in prompts — reports written to wrong dir | CRITICAL | [x] | `fbc62e3` |
+| K14 | Garbled directory from backslash-stripped absolute path | HIGH | [x] | `fbc62e3` |
+| K15 | execution-plan.json status not updated (cascade from K13) | HIGH | [x] | `fbc62e3` |
+| K16 | calc-app module empty (cascade from K15) | HIGH | [x] | `fbc62e3` |
+| K17 | Compliance stage missing moduleCwd parameter | MEDIUM | [x] | `fbc62e3` |
 
 **Learnings captured:** [x] → `learnings/phase-6-learnings.md` (2026-03-15)
-**Knowledge-base synced:** [x] → P49, P50, P51 + `memory.md` (2026-03-15)
-**Committed:** [x] → `23a9aca` (2026-03-15)
+**Knowledge-base synced:** [x] → P49, P50, P51, F50 + `memory.md` (2026-03-15)
+**Committed:** [x] → `23a9aca`, `691651e`, `fbc62e3` (2026-03-15)
