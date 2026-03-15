@@ -2,3 +2,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 e2e/results/
+
+# Internal AI development files
+CLAUDE.md
+.claude/
+.hive-mind/
