@@ -34,6 +34,7 @@ export async function runVerify(
   costTracker?: CostTracker,
   roleReportsDir?: string,
   subTaskScope?: SubTaskScope,
+  moduleCwd?: string,
 ): Promise<VerifyResult> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -69,6 +70,7 @@ export async function runVerify(
       rules: getAgentRules("tester-exec"),
       memoryContent,
       roleReportContents: testerRoleContents,
+      cwd: moduleCwd,
     }, config);
     costTracker?.recordAgentCost(story.id, "tester-exec", testerResult.costUsd, testerResult.durationMs);
 
@@ -100,7 +102,7 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.4 / E.4a+E.4b: Fix AC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent, config, roleReportsDir);
+      await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent, config, roleReportsDir, moduleCwd);
       // K5: Post-fix verification gate
       if (!verifyFixApplied(hiveMindDir, story.id, attempt)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
@@ -123,6 +125,7 @@ export async function runVerify(
       rules: getAgentRules("evaluator"),
       memoryContent,
       roleReportContents: evalRoleContents,
+      cwd: moduleCwd,
     }, config);
     costTracker?.recordAgentCost(story.id, "evaluator", evalSpawnResult.costUsd, evalSpawnResult.durationMs);
 
@@ -157,7 +160,7 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.6 / E.6a+E.6b: Fix EC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent, config, roleReportsDir);
+      await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent, config, roleReportsDir, moduleCwd);
       // K5: Post-fix verification gate
       if (!verifyFixApplied(hiveMindDir, story.id, attempt)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
@@ -182,6 +185,7 @@ async function runFixPipeline(
   memoryContent: string,
   config: HiveMindConfig,
   roleReportsDir?: string,
+  moduleCwd?: string,
 ): Promise<void> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   const stepFilePath = join(hiveMindDir, story.stepFile);
@@ -213,6 +217,7 @@ async function runFixPipeline(
     rules: getAgentRules("diagnostician"),
     memoryContent,
     roleReportContents: diagRoleContents,
+    cwd: moduleCwd,
   }, config);
 
   // Verify diagnosis file exists before spawning fixer (P11/F11)
@@ -230,6 +235,7 @@ async function runFixPipeline(
     rules: getAgentRules("fixer"),
     memoryContent,
     roleReportContents: fixerRoleContents,
+    cwd: moduleCwd,
   }, config);
 }
 

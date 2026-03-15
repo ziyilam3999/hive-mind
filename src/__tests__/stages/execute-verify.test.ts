@@ -24,6 +24,7 @@ vi.mock("../../agents/spawner.js", () => ({
 }));
 
 import { runVerify } from "../../stages/execute-verify.js";
+import { spawnAgentWithRetry } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
@@ -268,6 +269,40 @@ describe("execute-verify", () => {
 
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("moduleCwd forwarded to agent configs", async () => {
+    setup();
+    vi.mocked(spawnAgentWithRetry).mockClear();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config, undefined, undefined, undefined, "/external/repo");
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const testerCall = calls.find((c) => c[0].type === "tester-exec");
+      const evalCall = calls.find((c) => c[0].type === "evaluator");
+      expect(testerCall![0].cwd).toBe("/external/repo");
+      expect(evalCall![0].cwd).toBe("/external/repo");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("undefined moduleCwd — no cwd in agent config", async () => {
+    setup();
+    vi.mocked(spawnAgentWithRetry).mockClear();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const testerCall = calls.find((c) => c[0].type === "tester-exec");
+      expect(testerCall![0].cwd).toBeUndefined();
     } finally {
       cleanup();
     }

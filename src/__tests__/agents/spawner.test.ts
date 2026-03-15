@@ -133,6 +133,34 @@ describe("spawnAgent", () => {
     expect(result.modelUsed).toBeUndefined();
   });
 
+  it("passes cwd to spawnClaude when set on AgentConfig", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({
+      exitCode: 0, stdout: "", stderr: "",
+      json: { result: "", cost_usd: 0, model: "sonnet", session_id: "", duration_ms: 0, raw: {} },
+    });
+
+    const agentConfig = makeAgentConfig({ cwd: "/external/repo" });
+    await spawnAgent(agentConfig, config);
+
+    const callArgs = mockSpawn.mock.calls[0][0];
+    expect(callArgs.cwd).toBe("/external/repo");
+  });
+
+  it("does not set cwd on spawnClaude when AgentConfig.cwd is undefined", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({
+      exitCode: 0, stdout: "", stderr: "",
+      json: { result: "", cost_usd: 0, model: "sonnet", session_id: "", duration_ms: 0, raw: {} },
+    });
+
+    const agentConfig = makeAgentConfig(); // no cwd
+    await spawnAgent(agentConfig, config);
+
+    const callArgs = mockSpawn.mock.calls[0][0];
+    expect(callArgs.cwd).toBeUndefined();
+  });
+
   it("uses config modelAssignments override", async () => {
     const mockSpawn = vi.mocked(spawnClaude);
     mockSpawn.mockResolvedValue({

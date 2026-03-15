@@ -135,4 +135,52 @@ describe("execute-build", () => {
       cleanup();
     }
   });
+
+  it("moduleCwd forwarded to agent configs", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runBuild(testStory, testDir, config, undefined, undefined, undefined, "/external/repo");
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const implCall = calls.find((c) => c[0].type === "implementer");
+      const refactorCall = calls.find((c) => c[0].type === "refactorer");
+      expect(implCall![0].cwd).toBe("/external/repo");
+      expect(refactorCall![0].cwd).toBe("/external/repo");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("undefined moduleCwd — no cwd in agent config", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runBuild(testStory, testDir, config);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const implCall = calls.find((c) => c[0].type === "implementer");
+      expect(implCall![0].cwd).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("sourceFiles resolved against moduleCwd when present", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runBuild(testStory, testDir, config, undefined, undefined, undefined, "/external/repo");
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const refactorCall = calls.find((c) => c[0].type === "refactorer");
+      // sourceFiles should be joined with moduleCwd, not hiveMindDir
+      expect(refactorCall![0].inputFiles[0]).toBe(join("/external/repo", "src/test.ts"));
+    } finally {
+      cleanup();
+    }
+  });
 });

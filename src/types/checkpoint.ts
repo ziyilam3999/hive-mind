@@ -1,4 +1,4 @@
-export type CheckpointType = "approve-spec" | "approve-plan" | "verify" | "ship";
+export type CheckpointType = "approve-spec" | "approve-plan" | "approve-integration" | "verify" | "ship";
 
 export interface Checkpoint {
   awaiting: CheckpointType;

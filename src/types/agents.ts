@@ -30,7 +30,8 @@ export type AgentType =
   | "enricher"
   | "compliance-reviewer"
   | "compliance-fixer"
-  | "decomposer";
+  | "decomposer"
+  | "integration-verifier";
 
 export interface AgentConfig {
   type: AgentType;
@@ -40,6 +41,7 @@ export interface AgentConfig {
   rules: string[];
   memoryContent: string;
   roleReportContents?: string;
+  cwd?: string;
 }
 
 export interface AgentResult {

@@ -60,6 +60,7 @@ export async function runCommit(
   hiveMindDir: string,
   verifyResult: VerifyResult,
   _config: HiveMindConfig,
+  moduleCwd?: string,
 ): Promise<CommitResult> {
   // Collect modified files
   const implReportPath = join(hiveMindDir, getReportPath(story.id, "impl-report.md"));
@@ -82,18 +83,19 @@ export async function runCommit(
   const commitMessage = buildCommitMessage(story, verifyResult);
 
   // Attempt 1: git add + commit (hooks always run)
-  const addResult = await runShell(`git add ${fileList}`);
+  const shellOpts = moduleCwd ? { cwd: moduleCwd } : undefined;
+  const addResult = await runShell(`git add ${fileList}`, shellOpts);
   if (addResult.exitCode !== 0) {
     return { committed: false, commitHash: null, error: `git add failed: ${addResult.stderr}` };
   }
 
-  let commitResult = await runShell(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`);
+  let commitResult = await runShell(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, shellOpts);
 
   if (commitResult.exitCode !== 0) {
     // Pre-commit hook may have modified files — re-stage and retry once
     console.log("Pre-commit hook may have modified files. Re-staging and retrying...");
-    await runShell(`git add ${fileList}`);
-    commitResult = await runShell(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`);
+    await runShell(`git add ${fileList}`, shellOpts);
+    commitResult = await runShell(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, shellOpts);
 
     if (commitResult.exitCode !== 0) {
       return {

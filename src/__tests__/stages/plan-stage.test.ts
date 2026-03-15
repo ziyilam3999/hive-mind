@@ -123,4 +123,54 @@ describe("plan-stage role independence", () => {
       cleanup();
     }
   });
+
+  it("planner schema includes moduleId when SPEC has ## Modules section", async () => {
+    setup();
+    // Write a SPEC with ## Modules section
+    writeFileSync(
+      join(hmDir, "spec", "SPEC-v1.0.md"),
+      "# SPEC\n\n## Modules\n\n| id | path | role | dependencies |\n|----|------|------|-------------|\n| lib | ./lib | producer | |\n\n## Stories\n",
+    );
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runPlanStage(hmDir, config);
+      consoleSpy.mockRestore();
+      warnSpy.mockRestore();
+
+      // Find the planner spawn call
+      const plannerCall = vi.mocked(spawnAgentWithRetry).mock.calls.find(
+        (c) => c[0].type === "planner",
+      );
+      expect(plannerCall).toBeDefined();
+
+      // Check that the schema rule mentions moduleId
+      const rules = plannerCall![0].rules;
+      const schemaRule = rules.find((r: string) => r.includes("moduleId"));
+      expect(schemaRule).toBeDefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("planner schema omits moduleId for single-repo SPEC", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runPlanStage(hmDir, config);
+      consoleSpy.mockRestore();
+
+      const plannerCall = vi.mocked(spawnAgentWithRetry).mock.calls.find(
+        (c) => c[0].type === "planner",
+      );
+      expect(plannerCall).toBeDefined();
+
+      // Schema should NOT mention moduleId
+      const rules = plannerCall![0].rules;
+      const schemaRule = rules.find((r: string) => r.includes("moduleId"));
+      expect(schemaRule).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
 });

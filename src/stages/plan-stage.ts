@@ -130,6 +130,15 @@ export async function runPlanStage(
   console.log("Running planner...");
   const planJsonPath = join(plansDir, "execution-plan.json");
 
+  // Detect multi-module from SPEC's ## Modules section
+  const hasModules = specContent.includes("## Modules");
+  const moduleIdField = hasModules
+    ? `\n      "moduleId": "<module id from ## Modules table>",`
+    : "";
+  const moduleIdInstruction = hasModules
+    ? "\nMULTI-MODULE: The SPEC declares modules in ## Modules. Assign each story a moduleId matching one of the declared module ids. Stories' sourceFiles are relative to their module's path."
+    : "";
+
   const PLANNER_SCHEMA = `Output ONLY valid JSON (no markdown fences). Required schema:
 {
   "schemaVersion": "2.0.0",
@@ -145,7 +154,7 @@ export async function runPlanStage(
       "complexity": "low",
       "securityRisk": "optional — describe security concerns if any",
       "complexityJustification": "optional — explain complexity rating",
-      "dependencyImpact": "optional — describe cross-story impacts",
+      "dependencyImpact": "optional — describe cross-story impacts",${moduleIdField}
       "rolesUsed": ["analyst"],
       "stepFile": "plans/steps/US-01.md",
       "status": "not-started",
@@ -156,7 +165,7 @@ export async function runPlanStage(
     }
   ]
 }
-CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all fields listed above. Do NOT include stepContent or ACs/ECs — produce skeletons only (GOAL, SPEC REFS, INPUT, OUTPUT).`;
+CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all fields listed above. Do NOT include stepContent or ACs/ECs — produce skeletons only (GOAL, SPEC REFS, INPUT, OUTPUT).${moduleIdInstruction}`;
 
   await spawnAgentWithRetry({
     type: "planner",

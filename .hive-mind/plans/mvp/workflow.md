@@ -54,6 +54,25 @@ Every phase follows this complete cycle:
                        │
                        ▼
 ┌─────────────────────────────────────────────────────────┐
+│  COMPLIANCE GATE                                        │
+│                                                         │
+│  Spawn stateless eval agent:                            │
+│  - Input: phase-{N}-{slug}.md (the plan)                │
+│  - Checks: every item, step, test, and design decision  │
+│            has corresponding implementation              │
+│  - Output: checklist with PASS/FAIL + file:line evidence│
+│                                                         │
+│  On FAIL:                                               │
+│  - Human reviews each gap                               │
+│  - Fix / defer (with rationale) / descope               │
+│  - Spawn fixer agent if needed                          │
+│  - Re-run compliance gate after fixes                   │
+│                                                         │
+│  On PASS: proceed to Smoke Test Gate                    │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────┐
 │  SMOKE TEST GATE                                        │
 │                                                         │
 │  - Tier 1 (Unit): every code change                     │
@@ -172,11 +191,39 @@ Each `learnings/phase-{N}-learnings.md` follows this structure:
 
 ---
 
+## Compliance Gate: Plan-vs-Implementation Eval
+
+**What it checks:** Every item, execution step, test requirement, and key design
+decision in the phase plan has a corresponding implementation in the codebase.
+
+**How it works:**
+1. Extract checklist items (EC-01 through EC-N) from `phase-{N}-{slug}.md`
+2. Spawn a stateless eval agent with the checklist + source code access (READ_ONLY)
+3. Agent produces binary PASS/FAIL per item with file:line evidence
+4. Human reviews any FAIL items
+5. Spawn fixer agent for items that need fixing
+
+**When:** Every phase, after execution, before Smoke Test Gate.
+
+**Cost:** ~$0.50-2.00 per phase (single Sonnet agent, read-only).
+
+**Fixer flow:** Human decides per FAIL item — fix now, defer (with rationale in
+learnings), or descope (plan was wrong). Fixer agent available on demand but not
+automatic — phase-level gaps require human judgment.
+
+**Relationship to ENH-17/18:** ENH-17/18 checks story-level compliance inside
+the pipeline (did the builder agent follow step file instructions?). This gate
+checks phase-level compliance in the development workflow (did we implement
+everything the phase plan specified?). Orthogonal scopes.
+
+---
+
 ## Phase Completion Checklist
 
 Before moving to Phase N+1, verify:
 
 - [ ] All items in phase plan are implemented
+- [ ] Compliance gate passed (plan-vs-implementation eval: 0 unresolved FAIL items)
 - [ ] All Tier 1 + Tier 2 smoke tests pass
 - [ ] Tier 3 (if required for this phase) passes
 - [ ] `learnings/phase-{N}-learnings.md` is filled out

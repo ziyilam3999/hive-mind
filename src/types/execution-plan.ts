@@ -34,6 +34,7 @@ export interface Story {
   complexityJustification?: string;
   dependencyImpact?: string;
   subTasks?: SubTask[];
+  moduleId?: string;
 }
 
 export interface ExecutionPlan {
@@ -41,4 +42,5 @@ export interface ExecutionPlan {
   prdPath: string;
   specPath: string;
   stories: Story[];
+  modules?: import("./module.js").Module[];
 }

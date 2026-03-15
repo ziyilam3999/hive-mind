@@ -44,6 +44,7 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "compliance-reviewer": "Read step file + impl-report + source files, check every instruction has a corresponding implementation, produce compliance-report.md",
   "compliance-fixer": "Read compliance-report MISSING items + step file + source files, implement the missing instructions, produce compliance-fix-report.md",
   "decomposer": "Break high-complexity story into 2-4 focused sub-tasks, splitting by file boundaries, producing structured JSON output",
+  "integration-verifier": "Read SPEC inter-module contracts + impl-reports for both modules in a boundary pair, verify implementations satisfy contracts, produce integration-report.md",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -173,6 +174,13 @@ const AGENT_RULES: Record<string, string[]> = {
     "CONCISE: Keep each added section to 3-5 key points.",
     "PRESERVE-STRUCTURE: Existing step file sections must remain intact and unmodified.",
     "VALIDATE: After enrichment, verify all original sections are still present.",
+  ],
+  "integration-verifier": [
+    "CONTRACT-CHECK: For each contract in ## Inter-Module Contracts, verify producer exports match consumer imports.",
+    "EVIDENCE-BASED: Read actual source files and impl-reports. Do not rely on assumptions about what was implemented.",
+    "BOUNDARY-FOCUS: Only verify the specific producer→consumer boundary you were assigned. Do not check other module pairs.",
+    "STRUCTURED-REPORT: Output must include: boundary (producer→consumer), PASS/FAIL per contract, plain-language summary of mismatches.",
+    "NO-CONTRACTS-WARNING: If the SPEC has no ## Inter-Module Contracts section, report WARNING 'No contracts defined — cannot verify'.",
   ],
 };
 

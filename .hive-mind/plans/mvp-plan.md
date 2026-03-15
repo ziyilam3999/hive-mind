@@ -147,10 +147,22 @@ Phase 6 adds new modules (`integration-verify.ts`) and extends existing files th
 | **Tier 2 (Integration)** | Real file I/O + state transitions, mocked Claude CLI | Free | Phase boundary gate |
 | **Tier 3 (Live/Dogfood)** | Actual `claude --print` calls, real pipeline run | ~$5-60 | Phase boundary (selective) |
 
+**Compliance Gate** (orthogonal to tiers — plan adherence, not functional correctness):
+Stateless agent verifies every plan item has corresponding implementation.
+Runs after execution, before Tier 1/2. ~$0.50-2.00 per phase. See workflow.md.
+
 ### Smoke Test / Dogfood Interaction Flow
 
 ```
 Phase N implementation complete
+        │
+        ▼
+  Compliance Gate: plan-vs-implementation eval
+        │
+        ▼
+  All items accounted for?  ──NO──► Fix gaps, re-run gate
+        │
+       YES
         │
         ▼
   Tier 1 + Tier 2 smoke tests pass?  ──NO──► Fix issues, re-test

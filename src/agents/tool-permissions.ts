@@ -57,6 +57,9 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
 
   // Phase 5 — decomposer (FW-01)
   "decomposer": OUTPUT_TOOLS,
+
+  // Phase 6 — integration verification (multi-repo)
+  "integration-verifier": OUTPUT_TOOLS,
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {

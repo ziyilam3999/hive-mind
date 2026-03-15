@@ -53,6 +53,8 @@ export function getCheckpointMessage(type: CheckpointType): string {
       return "Review SPEC-v1.0.md and ELI5 summary. Run: hive-mind approve OR hive-mind reject --feedback '...'";
     case "approve-plan":
       return "Review execution plan, step files, and acceptance criteria. Run: hive-mind approve OR hive-mind reject --feedback '...'";
+    case "approve-integration":
+      return "Review integration verification results. Run: hive-mind approve OR hive-mind reject --feedback '...'";
     case "verify":
       return "Review consolidated report and retrospective. Run: hive-mind approve OR hive-mind reject --feedback '...'";
     case "ship":

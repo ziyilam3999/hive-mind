@@ -21,6 +21,7 @@ export async function spawnAgent(
     outputFormat: "json",
     allowedTools,
     timeout: hiveMindConfig.agentTimeout,
+    cwd: config.cwd,
   });
 
   if (result.exitCode !== 0) {

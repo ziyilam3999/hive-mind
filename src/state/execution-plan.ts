@@ -1,6 +1,8 @@
 import type { ExecutionPlan, Story, StoryStatus, SubTask, SubTaskStatus } from "../types/execution-plan.js";
+import type { Module } from "../types/module.js";
 import { readFileSafe, writeFileAtomic } from "../utils/file-io.js";
 import { HiveMindError } from "../utils/errors.js";
+import { join } from "node:path";
 
 const VALID_TRANSITIONS: Record<string, StoryStatus[]> = {
   "not-started": ["in-progress", "skipped"],
@@ -9,7 +11,7 @@ const VALID_TRANSITIONS: Record<string, StoryStatus[]> = {
   "failed": ["skipped"],
 };
 
-export function loadExecutionPlan(planPath: string): ExecutionPlan {
+export function loadExecutionPlan(planPath: string, hasModulesSection = false): ExecutionPlan {
   const content = readFileSafe(planPath);
   if (content === null) {
     throw new Error(`Execution plan not found: ${planPath}`);
@@ -23,11 +25,46 @@ export function loadExecutionPlan(planPath: string): ExecutionPlan {
   if (!validateExecutionPlan(parsed)) {
     throw new Error(`Execution plan failed validation: ${planPath}`);
   }
-  return parsed;
+  return autoUpgradeModuleFields(parsed, hasModulesSection);
 }
 
 export function saveExecutionPlan(planPath: string, plan: ExecutionPlan): void {
   writeFileAtomic(planPath, JSON.stringify(plan, null, 2) + "\n");
+}
+
+/**
+ * Auto-upgrade plans missing module fields.
+ * Adds `modules: []` and `moduleId: "default"` on stories when missing.
+ * Log level depends on context: debug for single-repo (intentional), warn for genuine misconfiguration.
+ */
+export function autoUpgradeModuleFields(plan: ExecutionPlan, hasModulesSection = false): ExecutionPlan {
+  const needsModules = !plan.modules;
+  const storiesMissingModuleId = plan.stories.filter((s) => !s.moduleId);
+  const needsStoryUpgrade = storiesMissingModuleId.length > 0;
+
+  if (!needsModules && !needsStoryUpgrade) return plan;
+
+  if (hasModulesSection && needsStoryUpgrade) {
+    console.warn(`[hive-mind] Plan has modules section but ${storiesMissingModuleId.length} stories lack moduleId — auto-setting to "default"`);
+  } else if (needsModules || needsStoryUpgrade) {
+    // Single-repo plan — intentional absence, debug-level
+    console.debug(`[hive-mind] Auto-upgrading plan: adding module fields (single-repo default)`);
+  }
+
+  return {
+    ...plan,
+    modules: plan.modules ?? [],
+    stories: plan.stories.map((s) =>
+      s.moduleId ? s : { ...s, moduleId: "default" },
+    ),
+  };
+}
+
+/** Resolve moduleCwd for a story from the plan's modules array */
+export function getModuleCwd(plan: ExecutionPlan, moduleId?: string): string | undefined {
+  if (!moduleId || moduleId === "default") return undefined;
+  const mod = plan.modules?.find((m) => m.id === moduleId);
+  return mod?.path;
 }
 
 export function validateExecutionPlan(plan: unknown): plan is ExecutionPlan {
@@ -37,6 +74,21 @@ export function validateExecutionPlan(plan: unknown): plan is ExecutionPlan {
   if (typeof p.prdPath !== "string") return false;
   if (typeof p.specPath !== "string") return false;
   if (!Array.isArray(p.stories)) return false;
+
+  // Validate optional modules array
+  if (p.modules !== undefined) {
+    if (!Array.isArray(p.modules)) return false;
+    for (const m of p.modules) {
+      if (typeof m !== "object" || m === null) return false;
+      const mod = m as Record<string, unknown>;
+      if (typeof mod.id !== "string") return false;
+      if (typeof mod.path !== "string") return false;
+      if (typeof mod.role !== "string") return false;
+      if (!["producer", "consumer", "standalone"].includes(mod.role)) return false;
+      if (!Array.isArray(mod.dependencies)) return false;
+    }
+  }
+
   for (const s of p.stories) {
     if (typeof s !== "object" || s === null) return false;
     const story = s as Record<string, unknown>;
@@ -50,6 +102,8 @@ export function validateExecutionPlan(plan: unknown): plan is ExecutionPlan {
     if (!Array.isArray(story.dependencies)) return false;
     if (!Array.isArray(story.sourceFiles)) return false;
     if (!Array.isArray(story.specSections)) return false;
+    // moduleId is optional — validate type if present
+    if (story.moduleId !== undefined && typeof story.moduleId !== "string") return false;
   }
   return true;
 }
@@ -123,15 +177,111 @@ export function getNextStory(plan: ExecutionPlan): Story | undefined {
   });
 }
 
-/** Returns all stories whose dependencies are satisfied and are ready to execute */
+/** Returns all stories whose dependencies are satisfied and are ready to execute.
+ * For multi-module plans, also checks module dependency satisfaction:
+ * a story is only ready if all stories in its module's dependency modules are done.
+ */
 export function getReadyStories(plan: ExecutionPlan): Story[] {
   return plan.stories.filter((s) => {
     if (s.status !== "not-started") return false;
-    return s.dependencies.every((depId) => {
+
+    // Check inter-story dependencies
+    const storyDepsOk = s.dependencies.every((depId) => {
       const dep = plan.stories.find((st) => st.id === depId);
       return dep?.status === "passed";
     });
+    if (!storyDepsOk) return false;
+
+    // Check module dependency satisfaction (multi-repo)
+    if (s.moduleId && plan.modules && plan.modules.length > 0) {
+      const mod = plan.modules.find((m) => m.id === s.moduleId);
+      if (mod && mod.dependencies.length > 0) {
+        for (const depModId of mod.dependencies) {
+          const depModStories = plan.stories.filter((st) => st.moduleId === depModId);
+          if (depModStories.length === 0) {
+            // Zero-stories-in-module: vacuously satisfied, log warning once
+            console.warn(`[hive-mind] Module "${depModId}" has no stories assigned — dependency is vacuously satisfied`);
+            continue;
+          }
+          const allDone = depModStories.every((st) => st.status === "passed");
+          if (!allDone) return false;
+        }
+      }
+    }
+
+    return true;
   });
+}
+
+/**
+ * Reusable topological sort using Kahn's algorithm.
+ * Returns sorted order on success. Throws with full cycle path on cycle detection.
+ */
+export function topologicalSort(
+  nodes: string[],
+  getDeps: (id: string) => string[],
+  label: string = "node",
+): string[] {
+  const inDegree = new Map<string, number>();
+  const adjacency = new Map<string, string[]>();
+
+  for (const id of nodes) {
+    const deps = getDeps(id);
+    inDegree.set(id, deps.length);
+    for (const depId of deps) {
+      const edges = adjacency.get(depId) ?? [];
+      edges.push(id);
+      adjacency.set(depId, edges);
+    }
+  }
+
+  const queue: string[] = [];
+  for (const [id, degree] of inDegree) {
+    if (degree === 0) queue.push(id);
+  }
+
+  const sorted: string[] = [];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    sorted.push(current);
+    for (const neighbor of adjacency.get(current) ?? []) {
+      const newDegree = inDegree.get(neighbor)! - 1;
+      inDegree.set(neighbor, newDegree);
+      if (newDegree === 0) queue.push(neighbor);
+    }
+  }
+
+  if (sorted.length < nodes.length) {
+    // Find cycle path for diagnostic message
+    const cycleNodes = nodes.filter((id) => inDegree.get(id)! > 0);
+    const cyclePath = traceCycle(cycleNodes, getDeps);
+    throw new HiveMindError(
+      `Circular dependency: ${cyclePath.join(" -> ")}`,
+    );
+  }
+
+  return sorted;
+}
+
+/** Trace a cycle path through the dependency graph for error messages */
+function traceCycle(cycleNodes: string[], getDeps: (id: string) => string[]): string[] {
+  const nodeSet = new Set(cycleNodes);
+  const start = cycleNodes[0];
+  const visited = new Set<string>();
+  const path: string[] = [start];
+  let current = start;
+
+  while (true) {
+    visited.add(current);
+    const deps = getDeps(current).filter((d) => nodeSet.has(d));
+    const next = deps.find((d) => d === start) ?? deps.find((d) => !visited.has(d));
+    if (!next) break;
+    path.push(next);
+    if (next === start) break;
+    current = next;
+  }
+
+  return path;
 }
 
 /** Validate dependency graph: detect circular deps and missing dep IDs */
@@ -149,42 +299,29 @@ export function validateDependencies(plan: ExecutionPlan): void {
     }
   }
 
-  // Detect circular dependencies via iterative topological sort
-  const inDegree = new Map<string, number>();
-  const adjacency = new Map<string, string[]>();
+  // Detect circular story dependencies
+  topologicalSort(
+    plan.stories.map((s) => s.id),
+    (id) => plan.stories.find((s) => s.id === id)?.dependencies ?? [],
+    "story",
+  );
 
-  for (const story of plan.stories) {
-    inDegree.set(story.id, story.dependencies.length);
-    for (const depId of story.dependencies) {
-      const edges = adjacency.get(depId) ?? [];
-      edges.push(story.id);
-      adjacency.set(depId, edges);
+  // Detect circular module dependencies (if modules exist)
+  if (plan.modules && plan.modules.length > 0) {
+    const moduleIds = new Set(plan.modules.map((m) => m.id));
+    for (const mod of plan.modules) {
+      for (const depId of mod.dependencies) {
+        if (!moduleIds.has(depId)) {
+          throw new HiveMindError(
+            `Module "${mod.id}" depends on unknown module: "${depId}"`,
+          );
+        }
+      }
     }
-  }
-
-  // Start with nodes that have no dependencies
-  const queue: string[] = [];
-  for (const [id, degree] of inDegree) {
-    if (degree === 0) queue.push(id);
-  }
-
-  let processed = 0;
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    processed++;
-    for (const neighbor of adjacency.get(current) ?? []) {
-      const newDegree = inDegree.get(neighbor)! - 1;
-      inDegree.set(neighbor, newDegree);
-      if (newDegree === 0) queue.push(neighbor);
-    }
-  }
-
-  if (processed < plan.stories.length) {
-    const cycleNodes = plan.stories
-      .filter((s) => inDegree.get(s.id)! > 0)
-      .map((s) => s.id);
-    throw new HiveMindError(
-      `Circular dependency detected among stories: ${cycleNodes.join(", ")}`,
+    topologicalSort(
+      plan.modules.map((m) => m.id),
+      (id) => plan.modules!.find((m) => m.id === id)?.dependencies ?? [],
+      "module",
     );
   }
 }
@@ -210,16 +347,28 @@ export function resetCrashedStories(plan: ExecutionPlan): ExecutionPlan {
  * overlapping sourceFiles. Iterates in plan order; if a candidate's sourceFiles
  * overlap with any already-selected story, defer it to the next wave.
  * Worst case (all files overlap) degrades to sequential — same as current behavior.
+ *
+ * When `plan` is provided, resolves sourceFiles to absolute paths using each
+ * story's moduleCwd before comparison. This prevents false positives where
+ * stories in different modules have the same relative path (e.g., "src/index.ts").
  */
-export function filterNonOverlapping(stories: Story[]): Story[] {
+export function filterNonOverlapping(stories: Story[], plan?: ExecutionPlan): Story[] {
   const selected: Story[] = [];
   const usedFiles = new Set<string>();
 
+  const resolveFiles = (story: Story): string[] => {
+    if (!plan) return story.sourceFiles;
+    const cwd = getModuleCwd(plan, story.moduleId);
+    if (!cwd) return story.sourceFiles;
+    return story.sourceFiles.map((f) => join(cwd, f));
+  };
+
   for (const story of stories) {
-    const hasOverlap = story.sourceFiles.some((f) => usedFiles.has(f));
+    const resolved = resolveFiles(story);
+    const hasOverlap = resolved.some((f) => usedFiles.has(f));
     if (!hasOverlap) {
       selected.push(story);
-      for (const f of story.sourceFiles) usedFiles.add(f);
+      for (const f of resolved) usedFiles.add(f);
     }
   }
 

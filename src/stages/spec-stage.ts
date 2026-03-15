@@ -72,12 +72,21 @@ export async function runSpecStage(
   if (fileExists(guidelinesPath)) {
     drafterInputFiles.push(guidelinesPath);
   }
+
+  // Add MULTI-MODULE rule when PRD declares modules
+  const drafterRules = [...getAgentRules("spec-drafter")];
+  if (prdContent.includes("## Modules")) {
+    drafterRules.push(
+      "MULTI-MODULE: The PRD declares multiple modules. Include a ## Inter-Module Contracts section in the SPEC defining the API boundaries between modules (exports, imports, data formats). This section is used by the integration verifier after execution.",
+    );
+  }
+
   await spawnStep({
     type: "spec-drafter",
     model: "opus",
     inputFiles: drafterInputFiles,
     outputFile: join(specDir, "SPEC-draft.md"),
-    rules: getAgentRules("spec-drafter"),
+    rules: drafterRules,
     memoryContent: feedback
       ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
       : memoryContent,

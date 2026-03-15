@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** 5 — Execution Power (COMPLETE, dogfood validated) | **Next Action:** Phase 6 | **Updated:** 2026-03-14
+**Phase:** 6 — Post-MVP Multi-Repo Enhancement (compliance gate passed) | **Next Action:** Smoke Test Gate | **Updated:** 2026-03-15
 
 ---
 
@@ -10,9 +10,9 @@
 
 | Metric | Baseline | Current |
 |--------|----------|---------|
-| Test files | 25 | 48 |
-| Total tests | 95 | 329 |
-| Source files | 38 | 53 |
+| Test files | 25 | 52 |
+| Total tests | 95 | 396 |
+| Source files | 38 | 56 |
 | TypeScript errors | 0 | 0 |
 
 ---
@@ -152,13 +152,15 @@
 
 | # | ID | Item | Status | Completed |
 |---|---|------|--------|-----------|
-| 20 | ENH-11 | Multi-repo module config + CWD threading | [ ] | — |
-| 21 | FW-14 | Integration verification stage | [ ] | — |
-| 22 | — | Module-aware story ordering + contracts | [ ] | — |
+| 20 | ENH-11 | Multi-repo module config + CWD threading | [x] | 2026-03-15 |
+| 21 | FW-14 | Integration verification stage | [x] | 2026-03-15 |
+| 22 | — | Module-aware story ordering + contracts | [x] | 2026-03-15 |
+
+**Compliance gate:** [x] — pass date: 2026-03-15 (80/80 items PASS)
 
 **Smoke Test Gate:**
-- [ ] Tier 1 (Unit) — pass date: —
-- [ ] Tier 2 (Integration) — pass date: —
+- [x] Tier 1 (Unit) — pass date: 2026-03-15 (396 tests, 52 files)
+- [x] Tier 2 (Integration) — pass date: 2026-03-15 (5 integration test files)
 - [ ] Tier 3 (Dogfood — recommended) — pass date: —
 
 **Learnings captured:** [ ] → `learnings/phase-6-learnings.md`

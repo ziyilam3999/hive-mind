@@ -20,6 +20,7 @@ export async function runBuild(
   costTracker?: CostTracker,
   roleReportsDir?: string,
   subTaskScope?: SubTaskScope,
+  moduleCwd?: string,
 ): Promise<{ implReportPath: string; refactorReportPath: string }> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -49,6 +50,7 @@ export async function runBuild(
     rules: getAgentRules("implementer"),
     memoryContent,
     roleReportContents: implRoleContents,
+    cwd: moduleCwd,
   }, config);
   costTracker?.recordAgentCost(story.id, "implementer", implResult.costUsd, implResult.durationMs);
 
@@ -57,7 +59,7 @@ export async function runBuild(
   console.log(`E.2: Running refactorer for ${story.id}...`);
 
   const effectiveSourceFiles = subTaskScope ? subTaskScope.sourceFiles : story.sourceFiles;
-  const sourceFiles = effectiveSourceFiles.map((f) => join(hiveMindDir, f));
+  const sourceFiles = effectiveSourceFiles.map((f) => join(moduleCwd ?? hiveMindDir, f));
   const refactorRoleContents = roleReportsDir
     ? buildRoleReportContents("refactorer", story.rolesUsed, roleReportsDir)
     : undefined;
@@ -70,6 +72,7 @@ export async function runBuild(
     rules: getAgentRules("refactorer"),
     memoryContent,
     roleReportContents: refactorRoleContents,
+    cwd: moduleCwd,
   }, config);
   costTracker?.recordAgentCost(story.id, "refactorer", refactorResult.costUsd, refactorResult.durationMs);
 

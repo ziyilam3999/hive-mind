@@ -18,6 +18,7 @@ import {
   getReadyStories,
   resetCrashedStories,
   filterNonOverlapping,
+  getModuleCwd,
 } from "./state/execution-plan.js";
 import { runWithConcurrency } from "./utils/concurrency.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
@@ -40,6 +41,7 @@ import { runBaselineCheck } from "./stages/baseline-check.js";
 import { updateManifest } from "./manifest/generator.js";
 import { parseImplReport } from "./reports/parser.js";
 import { getReportPath } from "./reports/templates.js";
+import { runIntegrateVerify, buildIntegrationCheckpointMessage } from "./stages/integrate-verify.js";
 
 async function safeUpdateManifest(hiveMindDir: string): Promise<void> {
   try {
@@ -168,6 +170,28 @@ export async function resumeFromCheckpoint(
         }
       }
 
+      // Integration verification (Phase 6 — multi-repo only)
+      const planPath2 = join(hiveMindDir, "plans", "execution-plan.json");
+      const plan2 = loadExecutionPlan(planPath2);
+      const integResult = await runIntegrateVerify(plan2, hiveMindDir, config, tracker);
+
+      if (!integResult.skipped) {
+        const integMessage = buildIntegrationCheckpointMessage(integResult);
+        console.log(integMessage);
+
+        writeCheckpoint(hiveMindDir, {
+          awaiting: "approve-integration",
+          message: integMessage,
+          timestamp: isoTimestamp(),
+          feedback: null,
+        });
+
+        console.log("Integration verification complete. Awaiting approval.");
+        console.log(getCheckpointMessage("approve-integration"));
+        notifyCheckpoint(silent);
+        break;
+      }
+
       await runReportStage(hiveMindDir, config);
       await safeUpdateManifest(hiveMindDir);
 
@@ -179,6 +203,24 @@ export async function resumeFromCheckpoint(
       });
 
       console.log("EXECUTE + REPORT stages complete. Awaiting verification.");
+      console.log(getCheckpointMessage("verify"));
+      notifyCheckpoint(silent);
+      break;
+    }
+    case "approve-integration": {
+      deleteCheckpoint(hiveMindDir);
+
+      await runReportStage(hiveMindDir, config);
+      await safeUpdateManifest(hiveMindDir);
+
+      writeCheckpoint(hiveMindDir, {
+        awaiting: "verify",
+        message: getCheckpointMessage("verify"),
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
+
+      console.log("REPORT stage complete. Awaiting verification.");
       console.log(getCheckpointMessage("verify"));
       notifyCheckpoint(silent);
       break;
@@ -246,13 +288,14 @@ export async function executeOneStory(
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
+  moduleCwd?: string,
 ): Promise<StoryExecutionResult> {
   // FW-01: If story has sub-tasks, execute per sub-task
   if (story.subTasks && story.subTasks.length > 0) {
-    return executeStoryWithSubTasks(story, hiveMindDir, config, costTracker, roleReportsDir);
+    return executeStoryWithSubTasks(story, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
   }
 
-  return executeWholeStory(story, hiveMindDir, config, costTracker, roleReportsDir);
+  return executeWholeStory(story, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
 }
 
 /** Original whole-story execution path */
@@ -262,12 +305,13 @@ async function executeWholeStory(
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
+  moduleCwd?: string,
 ): Promise<StoryExecutionResult> {
   const logPath = join(hiveMindDir, "manager-log.jsonl");
 
   // BUILD sub-pipeline (US-13)
   console.log(`[${story.id}] BUILD: Starting...`);
-  await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir);
+  await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir, undefined, moduleCwd);
 
   appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
     storyId: story.id,
@@ -287,7 +331,7 @@ async function executeWholeStory(
 
   // VERIFY sub-pipeline (US-14) — no plan writes (refactored in Step 5)
   console.log(`[${story.id}] VERIFY: Starting...`);
-  const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir);
+  const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir, undefined, moduleCwd);
 
   return {
     storyId: story.id,
@@ -310,6 +354,7 @@ async function executeStoryWithSubTasks(
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
+  moduleCwd?: string,
 ): Promise<StoryExecutionResult> {
   const logPath = join(hiveMindDir, "manager-log.jsonl");
   let totalAttempts = 0;
@@ -329,7 +374,7 @@ async function executeStoryWithSubTasks(
       await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir, {
         sourceFiles: subTask.sourceFiles,
         title: subTask.title,
-      });
+      }, moduleCwd);
 
       appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
         storyId: `${story.id}/${subTask.id}`,
@@ -339,7 +384,7 @@ async function executeStoryWithSubTasks(
       const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir, {
         sourceFiles: subTask.sourceFiles,
         title: subTask.title,
-      });
+      }, moduleCwd);
 
       if (verifyResult.passed) {
         console.log(`[${story.id}/${subTask.id}] PASSED`);
@@ -411,7 +456,7 @@ export async function runExecuteStage(
   // Wave executor: process stories in waves of non-overlapping, dependency-ready stories
   while (true) {
     const ready = getReadyStories(plan);
-    const wave = filterNonOverlapping(ready);
+    const wave = filterNonOverlapping(ready, plan);
     if (wave.length === 0) break;
 
     console.log(`\nWave: executing ${wave.map((s) => s.id).join(", ")}`);
@@ -423,7 +468,10 @@ export async function runExecuteStage(
     saveExecutionPlan(planPath, plan);
 
     // Parallel BUILD+VERIFY (bounded by maxConcurrency)
-    const tasks = wave.map((s) => () => executeOneStory(s, hiveMindDir, config, costTracker, roleReportsDir));
+    const tasks = wave.map((s) => () => {
+      const moduleCwd = getModuleCwd(plan, s.moduleId);
+      return executeOneStory(s, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
+    });
     const settled = await runWithConcurrency(tasks, config.maxConcurrency);
 
     // Post-BUILD conflict detection: warn if actual files modified overlap between wave stories
@@ -476,6 +524,7 @@ export async function runExecuteStage(
         }));
       } else if (result.value.passed) {
         // COMMIT sub-pipeline (US-15) — serialized, no git races
+        const storyModuleCwd = getModuleCwd(plan, story.moduleId);
         console.log(`[${story.id}] COMMIT: Starting...`);
         const commitResult = await runCommit(story, hiveMindDir, {
           passed: true,
@@ -483,7 +532,7 @@ export async function runExecuteStage(
           testReportPath: join(hiveMindDir, `reports/${story.id}/test-report.md`),
           evalReportPath: join(hiveMindDir, `reports/${story.id}/eval-report.md`),
           parserConfidence: "default",
-        }, config);
+        }, config, storyModuleCwd);
         plan = updateStoryStatus(plan, story.id, "passed");
 
         // Track attempts from verify
