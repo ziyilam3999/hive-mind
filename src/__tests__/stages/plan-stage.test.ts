@@ -126,6 +126,8 @@ describe("plan-stage role independence", () => {
 
   it("planner schema includes moduleId when SPEC has ## Modules section", async () => {
     setup();
+    // Create module directory at workspace root (parent of .hive-mind) so resolveAndValidateModules passes
+    mkdirSync(join(testDir, "lib"), { recursive: true });
     // Write a SPEC with ## Modules section
     writeFileSync(
       join(hmDir, "spec", "SPEC-v1.0.md"),

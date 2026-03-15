@@ -6,6 +6,7 @@ import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, writeFileAtomic, ensureDir, fileExists } from "../utils/file-io.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
+import { parseModules, resolveAndValidateModules } from "../utils/module-parser.js";
 
 function extractStepFiles(planJsonPath: string, stepsDir: string): void {
   const content = readFileSafe(planJsonPath);
@@ -130,8 +131,8 @@ export async function runPlanStage(
   console.log("Running planner...");
   const planJsonPath = join(plansDir, "execution-plan.json");
 
-  // Detect multi-module from SPEC's ## Modules section
-  const hasModules = specContent.includes("## Modules");
+  // Detect multi-module from SPEC's module section (handles numbered headings and variants)
+  const hasModules = /^## (?:\d+\.\s*)?Module(?!.*Contract)/m.test(specContent);
   const moduleIdField = hasModules
     ? `\n      "moduleId": "<module id from ## Modules table>",`
     : "";
@@ -196,6 +197,20 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
   const stories = planData.stories;
   if (!Array.isArray(stories) || stories.length === 0) {
     throw new Error("execution-plan.json contains no stories");
+  }
+
+  // Parse and wire modules from SPEC content
+  const parsedModules = parseModules(specContent);
+  if (parsedModules.length > 0) {
+    // Module paths are relative to workspace root (parent of .hive-mind/).
+    // resolveAndValidateModules uses dirname(basePath) as resolve base,
+    // so pass a file path whose dirname is the workspace root.
+    const workspaceRoot = join(hiveMindDir, "..");
+    const resolvedModules = resolveAndValidateModules(parsedModules, join(workspaceRoot, "dummy"));
+    (planData as Record<string, unknown>).modules = resolvedModules;
+    // Persist modules into execution-plan.json
+    writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
+    console.log(`  Modules parsed: ${resolvedModules.map((m) => m.id).join(", ")}`);
   }
 
   // Write story skeletons for ac/ec generators

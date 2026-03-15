@@ -24,10 +24,13 @@ export function parseModules(content: string, basePath?: string): Module[] {
 
   const modules: Module[] = [];
   for (const row of rows) {
-    const id = row.id?.trim();
-    const path = row.path?.trim();
-    const role = row.role?.trim() as ModuleRole;
-    const depsStr = row.dependencies?.trim() ?? "";
+    // Normalize: LLM may use "Module"/"ID"/"Name" for id, capitalized headers, backtick-wrapped values
+    const id = (row.id ?? row.module ?? row.name ?? "").trim().replace(/^`|`$/g, "");
+    const path = (row.path ?? "").trim().replace(/^`|`$/g, "");
+    const roleRaw = (row.role ?? "").trim().replace(/^`|`$/g, "");
+    // Extract first word as role (LLM may add descriptions like "Producer (shared library)")
+    const role = roleRaw.split(/[\s(]/)[0].toLowerCase() as ModuleRole;
+    const depsStr = (row.dependencies ?? row.depends ?? "").trim().replace(/^`|`$/g, "");
 
     if (!id || !path) {
       throw new Error(`Module table row missing required fields (id, path): ${JSON.stringify(row)}`);
@@ -37,8 +40,8 @@ export function parseModules(content: string, basePath?: string): Module[] {
       throw new Error(`Module "${id}" has invalid role "${role}". Must be one of: ${VALID_ROLES.join(", ")}`);
     }
 
-    const dependencies = depsStr
-      ? depsStr.split(",").map((d) => d.trim()).filter(Boolean)
+    const dependencies = depsStr && depsStr.toLowerCase() !== "none"
+      ? depsStr.split(",").map((d) => d.trim().replace(/^`|`$/g, "")).filter(Boolean)
       : [];
 
     modules.push({ id, path, role, dependencies });
@@ -91,29 +94,43 @@ export function resolveAndValidateModules(modules: Module[], basePath: string): 
 }
 
 function extractModulesSection(content: string): string | null {
-  const idx = content.indexOf("## Modules");
-  if (idx === -1) return null;
+  // Find all ## headings containing "Module" (but not "Inter-Module Contracts")
+  const headingRegex = /^## (?:\d+\.\s*)?Module(?!.*Contract)[^\n]*/gm;
+  let match;
+  while ((match = headingRegex.exec(content)) !== null) {
+    const idx = match.index;
+    const start = content.indexOf("\n", idx);
+    if (start === -1) continue;
 
-  const start = content.indexOf("\n", idx);
-  if (start === -1) return null;
+    const nextSection = content.indexOf("\n## ", start + 1);
+    const section = nextSection === -1
+      ? content.slice(start + 1)
+      : content.slice(start + 1, nextSection);
 
-  const nextSection = content.indexOf("\n## ", start + 1);
-  const section = nextSection === -1
-    ? content.slice(start + 1)
-    : content.slice(start + 1, nextSection);
+    const trimmed = section.trim();
+    if (!trimmed) continue;
 
-  const trimmed = section.trim();
-  return trimmed.length > 0 ? trimmed : null;
+    // Verify this section contains a table with path/role columns (module definition table)
+    // not just any table under a "Module" heading
+    const firstTableHeader = trimmed.match(/^\|[^\n]+\|/m);
+    if (firstTableHeader) {
+      const headerLower = firstTableHeader[0].toLowerCase();
+      if (headerLower.includes("path") && headerLower.includes("role")) {
+        return trimmed;
+      }
+    }
+  }
+  return null;
 }
 
 function parseMarkdownTable(section: string): Record<string, string>[] {
   const lines = section.split("\n").filter((l) => l.trim().startsWith("|"));
   if (lines.length < 2) return []; // need header + separator at minimum
 
-  // Parse header
+  // Parse header — normalize to lowercase for resilience to LLM capitalization
   const headers = lines[0]
     .split("|")
-    .map((h) => h.trim())
+    .map((h) => h.trim().toLowerCase())
     .filter(Boolean);
 
   // Skip separator line (line[1])
