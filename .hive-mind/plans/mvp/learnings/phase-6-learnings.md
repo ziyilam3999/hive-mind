@@ -74,13 +74,39 @@
 **Root cause:** Headers not lowercased. LLM uses `Module` (capitalized) and `Module` (instead of `id`) as the column name. Role values include descriptions like "Producer (shared library)".
 **Fix:** Lowercase all headers, add aliases (module→id, name→id, depends→dependencies), strip backticks, extract first word from role, treat "None" as empty dependencies.
 
+### K13: Reports written to module `.hive-mind/` instead of workspace `.hive-mind/`
+**Symptom:** Reports (impl-report, test-report, diagnosis-report) ended up in `math-core/.hive-mind/reports/US-01/` instead of workspace `.hive-mind/reports/US-01/`. Orchestrator couldn't find them → parser defaulted to FAIL → all 3 verify attempts failed.
+**Root cause:** Agent receives absolute Windows path like `C:\Users\...\hive-mind\reports\US-01\impl-report.md` in its prompt. With CWD set to the module directory, the Claude agent strips backslashes and creates `.hive-mind/reports/` relative to CWD instead of using the absolute path.
+**Fix:** In `buildPrompt()`, convert all Windows backslash paths to forward slashes (`toSlash()`). Claude CLI runs in bash context and handles forward slashes correctly. Backslashes get stripped or misinterpreted.
+**Pattern:** **P41 revisited** — Windows path handling in Claude CLI requires forward slashes. This was known for prompt content (stdin piping, P41) but not for file paths embedded in prompts.
+
+### K14: Garbled directory from absolute Windows path
+**Symptom:** A directory named `C:UsersziyilAppDataLocalTemphm-e2e-fWn4.hive-mindplansrole-reports` created in workspace root — the entire absolute path with backslashes stripped, treated as a single folder name.
+**Root cause:** Same as K13. `roleReportsDir` absolute path embedded in prompt with backslashes → agent strips `\` and creates garbled name.
+**Fix:** Same `toSlash()` fix in `buildPrompt()`.
+
+### K15: execution-plan.json status not updated
+**Symptom:** US-01 shows `status: failed` despite BUILD + COMPLIANCE passing. US-02/03/04 remain `not-started`.
+**Root cause:** Cascading from K13. Orchestrator checks for reports at workspace path, finds nothing, parser returns `confidence: "default"` → FAIL. All 3 attempts fail → story marked failed → dependent stories blocked.
+**Fix:** Resolved by K13 fix — reports will be written to correct absolute paths.
+
+### K16: calc-app module empty
+**Symptom:** No source files in calc-app directory at all.
+**Root cause:** Cascade from K15. US-03/04 (calc-app) depend on US-01/02 (math-core). US-01 failed → US-02 never ran → US-03/04 never scheduled.
+**Fix:** Resolved by K13 fix — once reports land correctly, US-01 will pass verify, unblocking the chain.
+
+### K17: Compliance stage missing `moduleCwd` parameter
+**Symptom:** Compliance resolves `sourceFiles` against `hiveMindDir` instead of `moduleCwd`.
+**Root cause:** `runComplianceCheck()` didn't accept `moduleCwd`. Line 45: `join(hiveMindDir, f)` instead of `join(moduleCwd ?? hiveMindDir, f)`.
+**Fix:** Added `moduleCwd` parameter, threaded from orchestrator. Resolve `sourceFiles` against `moduleCwd ?? hiveMindDir`.
+
 ---
 
 ## Tier 3 Dogfood Results
 
 **PRD:** multi-repo-math (2 modules: math-core producer, calc-app consumer; 4 stories)
 **Modules:** math-core (US-01, US-02), calc-app (US-03, US-04)
-**Outcome:** US-01 BUILD + COMPLIANCE PASS, VERIFY false-failed (parser, not code). Pipeline completed through REPORT.
+**Outcome:** US-01 BUILD + COMPLIANCE PASS, VERIFY false-failed due to K13 (reports in wrong dir). Pipeline completed through REPORT. 10 bugs found total (K8-K17), all fixed.
 
 | Feature | Status | Evidence |
 |---------|--------|----------|

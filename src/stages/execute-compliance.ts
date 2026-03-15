@@ -31,6 +31,7 @@ export async function runComplianceCheck(
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
+  moduleCwd?: string,
 ): Promise<ComplianceCheckResult> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
@@ -42,7 +43,7 @@ export async function runComplianceCheck(
   const memoryPath = join(hiveMindDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
-  const sourceFiles = story.sourceFiles.map((f) => join(hiveMindDir, f));
+  const sourceFiles = story.sourceFiles.map((f) => join(moduleCwd ?? hiveMindDir, f));
 
   const reviewerRoleContents = roleReportsDir
     ? buildRoleReportContents("compliance-reviewer", story.rolesUsed, roleReportsDir)

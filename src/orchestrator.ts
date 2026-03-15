@@ -319,7 +319,7 @@ async function executeWholeStory(
 
   // COMPLIANCE check — between BUILD and VERIFY (ENH-17)
   // Non-fatal (P39): failure → proceed to VERIFY
-  const complianceResult = await runComplianceCheck(story, hiveMindDir, config, costTracker, roleReportsDir);
+  const complianceResult = await runComplianceCheck(story, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
   if (!complianceResult.skipped) {
     appendLogEntry(logPath, createLogEntry("COMPLIANCE_CHECK", {
       storyId: story.id,
@@ -410,7 +410,7 @@ async function executeStoryWithSubTasks(
   }
 
   // All sub-tasks passed — run compliance on the whole story
-  const complianceResult = await runComplianceCheck(story, hiveMindDir, config, costTracker, roleReportsDir);
+  const complianceResult = await runComplianceCheck(story, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
   if (!complianceResult.skipped) {
     appendLogEntry(logPath, createLogEntry("COMPLIANCE_CHECK", {
       storyId: story.id,

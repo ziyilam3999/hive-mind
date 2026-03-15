@@ -207,6 +207,10 @@ export function getAgentRules(agentType: AgentType): string[] {
 }
 
 export function buildPrompt(config: AgentConfig): string {
+  // Normalize Windows backslash paths to forward slashes for Claude CLI (bash context).
+  // Without this, agents strip backslashes and create garbled directory names (K13/K14).
+  const toSlash = (p: string): string => p.replace(/\\/g, "/");
+
   const job = AGENT_JOBS[config.type] ?? config.type;
   const rules = config.rules.length > 0 ? config.rules : getAgentRules(config.type);
   const rulesBlock = rules.length > 0
@@ -219,7 +223,7 @@ export function buildPrompt(config: AgentConfig): string {
       (f) => !f.includes("research-report") && !f.includes("justification"),
     );
   }
-  const inputBlock = inputFiles.map((f) => `- ${f}`).join("\n");
+  const inputBlock = inputFiles.map((f) => `- ${toSlash(f)}`).join("\n");
 
   return `## ROLE
 You are the ${config.type} agent. Your job: ${job}.
@@ -231,7 +235,7 @@ ${rulesBlock}
 ${inputBlock}
 
 ## OUTPUT (MANDATORY)
-You MUST use the Write tool to create this file: ${config.outputFile}
+You MUST use the Write tool to create this file: ${toSlash(config.outputFile)}
 This is not optional — if this file does not exist when you finish, you will be marked as FAILED.
 If you also need to create source code files, use the Write tool for those too.
 ${ELI5_AGENTS.has(config.type) ? `
