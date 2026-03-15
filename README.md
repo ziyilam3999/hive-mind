@@ -2,59 +2,73 @@
 
 PRD-driven orchestrator that turns a product requirements document into working code through a multi-stage AI pipeline with human checkpoints.
 
-## Prerequisites
+```
+PRD  -->  SPEC  -->  PLAN  -->  EXECUTE  -->  REPORT
+              [ human approval between each stage ]
+```
+
+## Features
+
+- **PRD-to-code pipeline** — Feed in a product requirements doc, get working code out
+- **Multi-stage AI agents** — Specialized agents for spec generation, planning, execution, and reporting
+- **Human-in-the-loop** — Approve, reject with feedback, or abort at every checkpoint
+- **Session continuity** — Resume interrupted pipelines without losing progress
+- **Learning system** — Agents capture and graduate learnings across runs
+
+## Tech Stack
+
+- **TypeScript** (ESM) — Fully typed, npm-publishable CLI
+- **Claude API** via Claude Code CLI — Powers all AI agents
+- **Vitest** — Comprehensive test suite
+- **Zod** — Runtime config validation
+
+## Quick Start
+
+### Prerequisites
 
 - Node.js >= 18
-- [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli) installed and authenticated
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-cli) installed and authenticated
 
-## Install
+### Install & Run
 
 ```bash
 npm i -g hive-mind
-```
 
-## Usage
-
-### Start a pipeline
-
-```bash
+# Start a pipeline
 hive-mind start --prd ./my-project.md
-```
 
-The pipeline runs through four stages: **SPEC** (generates a technical spec), **PLAN** (creates an execution plan), **EXECUTE** (builds and verifies each story), and **REPORT** (produces a final summary). Human approval is required between stages.
-
-### Check status
-
-```bash
+# Check status
 hive-mind status
-```
 
-### Approve a checkpoint
-
-```bash
+# Approve a checkpoint
 hive-mind approve
-```
 
-### Reject with feedback
-
-```bash
+# Reject with feedback
 hive-mind reject --feedback "The spec is missing error handling requirements"
 ```
 
-### Abort the pipeline
+## How It Works
 
-```bash
-hive-mind abort
-```
-
-## How it works
-
-1. **SPEC** -- An AI agent reads your PRD and generates a detailed technical specification.
-2. **PLAN** -- A planner agent breaks the spec into user stories with an execution order.
-3. **EXECUTE** -- Each story goes through build, verify, commit, and learn sub-stages.
-4. **REPORT** -- A final report summarizes what was built, test results, and learnings.
+1. **SPEC** — An AI agent reads your PRD and generates a detailed technical specification
+2. **PLAN** — A planner agent breaks the spec into user stories with execution order
+3. **EXECUTE** — Each story goes through build, verify, commit, and learn sub-stages
+4. **REPORT** — A final report summarizes what was built, test results, and learnings
 
 Each stage pauses for human review before continuing to the next.
+
+## Project Structure
+
+```
+src/
+  stages/       # Pipeline stage implementations
+  agents/       # Agent spawner, prompts, model mapping
+  state/        # Execution plan, checkpoints, logs
+  config/       # Schema and loader
+  memory/       # Learning system and graduation
+  reports/      # Parser and templates
+  utils/        # File I/O, shell, token counting
+  __tests__/    # Vitest test suite
+```
 
 ## License
 
