@@ -292,6 +292,25 @@ describe("execute-verify", () => {
     }
   });
 
+  it("scratchDir passed to tester-exec and evaluator agent configs (K18)", async () => {
+    setup();
+    vi.mocked(spawnAgentWithRetry).mockClear();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const testerCall = calls.find((c) => c[0].type === "tester-exec");
+      const evalCall = calls.find((c) => c[0].type === "evaluator");
+      // scratchDir should follow .hive-mind/tmp/{storyId} pattern
+      expect(testerCall![0].scratchDir).toContain(join("tmp", "US-99"));
+      expect(evalCall![0].scratchDir).toContain(join("tmp", "US-99"));
+    } finally {
+      cleanup();
+    }
+  });
+
   it("undefined moduleCwd — no cwd in agent config", async () => {
     setup();
     vi.mocked(spawnAgentWithRetry).mockClear();

@@ -42,6 +42,7 @@ export interface AgentConfig {
   memoryContent: string;
   roleReportContents?: string;
   cwd?: string;
+  scratchDir?: string;
 }
 
 export interface AgentResult {

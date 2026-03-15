@@ -13,6 +13,11 @@ const STATUS_AGENTS: Set<AgentType> = new Set([
   "tester-exec", "evaluator", "implementer", "fixer", "compliance-reviewer", "compliance-fixer",
 ]);
 
+/** Agents that may create temporary helper scripts — get scratch directory instruction */
+const SCRATCH_AGENTS: Set<AgentType> = new Set([
+  "tester-exec", "evaluator",
+]);
+
 const AGENT_JOBS: Record<AgentType, string> = {
   "researcher": "Read PRD + codebase + knowledge-base/*, produce research-report.md",
   "justifier": "For each implementation item, justify WHY and HOW in ELI5",
@@ -54,6 +59,7 @@ const AGENT_RULES: Record<string, string[]> = {
     "EXACT-COMMAND: Run the UAT command exactly as written. Do not modify or 'improve' the command.",
     "REPORT-FORMAT: Output must follow test-report.md template exactly.",
     "FAIL-FAST-REPORT: If a command fails, report the actual output. Do not mask errors.",
+    "TEMP-DIR: If you need to create helper scripts or temporary files, write them under the SCRATCH directory shown below. NEVER create .ts/.js files in the project root or CWD.",
   ],
   "implementer": [
     "OUTPUT-CONTRACT: Every export listed in step file OUTPUT section MUST exist in source. Missing = FAIL. [Wrong: skipping an export] [Right: every listed export present]",
@@ -68,6 +74,7 @@ const AGENT_RULES: Record<string, string[]> = {
     "EXACT-COMMAND: Run the verify command exactly as written in the step file.",
     "REPORT-FORMAT: Output must follow eval-report.md template exactly.",
     "ALL-ECS: Run every EC listed. Do not skip any.",
+    "TEMP-DIR: If you need to create helper scripts or temporary files, write them under the SCRATCH directory shown below. NEVER create .ts/.js files in the project root or CWD.",
   ],
   "reporter": [
     "ELI5-SECTION: Every major section must start with a > **ELI5:** blockquote using a plain-language analogy. [Wrong: jumping straight into technical findings] [Right: '> **ELI5:** Think of this report as...']",
@@ -251,6 +258,9 @@ or
 <!-- STATUS: {"result": "FAIL", "details": "brief reason"} -->
 This must be a valid JSON object inside an HTML comment. "result" is "PASS" or "FAIL". "details" is optional.
 This block is parsed mechanically — do NOT omit it, do NOT alter the format.
+` : ""}${SCRATCH_AGENTS.has(config.type) && config.scratchDir ? `## SCRATCH DIRECTORY
+Write any helper scripts or temporary files here: ${toSlash(config.scratchDir)}
+Do NOT create .ts/.js files in the workspace root. The scratch directory already exists.
 ` : ""}${config.roleReportContents ? `## ROLE REPORTS
 The following role-report excerpts are relevant to your task:
 ${config.roleReportContents}

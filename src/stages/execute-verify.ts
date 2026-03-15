@@ -39,6 +39,9 @@ export async function runVerify(
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
 
+  const scratchDir = join(hiveMindDir, "tmp", story.id);
+  ensureDir(scratchDir);
+
   const memoryPath = join(hiveMindDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
@@ -71,6 +74,7 @@ export async function runVerify(
       memoryContent,
       roleReportContents: testerRoleContents,
       cwd: moduleCwd,
+      scratchDir,
     }, config);
     costTracker?.recordAgentCost(story.id, "tester-exec", testerResult.costUsd, testerResult.durationMs);
 
@@ -102,7 +106,7 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.4 / E.4a+E.4b: Fix AC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent, config, roleReportsDir, moduleCwd);
+      await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
       // K5: Post-fix verification gate
       if (!verifyFixApplied(hiveMindDir, story.id, attempt)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
@@ -126,6 +130,7 @@ export async function runVerify(
       memoryContent,
       roleReportContents: evalRoleContents,
       cwd: moduleCwd,
+      scratchDir,
     }, config);
     costTracker?.recordAgentCost(story.id, "evaluator", evalSpawnResult.costUsd, evalSpawnResult.durationMs);
 
@@ -160,7 +165,7 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.6 / E.6a+E.6b: Fix EC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent, config, roleReportsDir, moduleCwd);
+      await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
       // K5: Post-fix verification gate
       if (!verifyFixApplied(hiveMindDir, story.id, attempt)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
@@ -186,6 +191,7 @@ async function runFixPipeline(
   config: HiveMindConfig,
   roleReportsDir?: string,
   moduleCwd?: string,
+  scratchDir?: string,
 ): Promise<void> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   const stepFilePath = join(hiveMindDir, story.stepFile);
@@ -218,6 +224,7 @@ async function runFixPipeline(
     memoryContent,
     roleReportContents: diagRoleContents,
     cwd: moduleCwd,
+    scratchDir,
   }, config);
 
   // Verify diagnosis file exists before spawning fixer (P11/F11)
@@ -236,6 +243,7 @@ async function runFixPipeline(
     memoryContent,
     roleReportContents: fixerRoleContents,
     cwd: moduleCwd,
+    scratchDir,
   }, config);
 }
 

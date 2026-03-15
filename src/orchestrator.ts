@@ -24,6 +24,7 @@ import { runWithConcurrency } from "./utils/concurrency.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
 import { isoTimestamp } from "./utils/timestamp.js";
 import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { HiveMindError } from "./utils/errors.js";
 import { notifyCheckpoint } from "./utils/notify.js";
 import { CostTracker } from "./utils/cost-tracker.js";
@@ -593,6 +594,9 @@ export async function runExecuteStage(
     // Budget enforcement after wave (not per-story)
     costTracker?.enforceBudget();
   }
+
+  // K18: Best-effort cleanup of scratch directories
+  try { rmSync(join(hiveMindDir, "tmp"), { recursive: true, force: true }); } catch { /* best-effort */ }
 
   // Check if all stories failed
   const allFailed = plan.stories.every((s) => s.status === "failed");
