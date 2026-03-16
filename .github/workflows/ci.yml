@@ -23,6 +23,17 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm test
+
+      - name: Validate commit message
+        if: github.event_name == 'push'
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          if echo "$COMMIT_MSG" | grep -qE "^Merge "; then exit 0; fi
+          if ! echo "$COMMIT_MSG" | grep -qE "^(feat|fix|docs|chore|refactor|test|style|perf|ci|build|revert)(\(.+\))?(!)?: .+"; then
+            echo "ERROR: HEAD commit message does not follow Conventional Commits format."
+            echo "  Got: $COMMIT_MSG"
+            exit 1
+          fi
