@@ -7,38 +7,8 @@ import { readFileSafe, writeFileAtomic, ensureDir, fileExists } from "../utils/f
 import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 import { parseModules, resolveAndValidateModules } from "../utils/module-parser.js";
-
-function extractStepFiles(planJsonPath: string, stepsDir: string): void {
-  const content = readFileSafe(planJsonPath);
-  if (!content) return;
-
-  let plan: Record<string, unknown>;
-  try {
-    plan = JSON.parse(content);
-  } catch {
-    console.warn("Warning: execution-plan.json is not valid JSON, skipping step extraction.");
-    return;
-  }
-
-  const stories = plan.stories as Array<Record<string, unknown>> | undefined;
-  if (!Array.isArray(stories)) return;
-
-  for (const story of stories) {
-    if (typeof story.stepContent === "string" && typeof story.stepFile === "string") {
-      const stepPath = join(stepsDir, "..", "..", story.stepFile as string);
-      ensureDir(stepsDir);
-      writeFileAtomic(stepPath, story.stepContent);
-    }
-  }
-
-  // Remove stepContent from the plan file to keep it clean
-  const cleanStories = stories.map((s) => {
-    const { stepContent, ...rest } = s;
-    return rest;
-  });
-  plan.stories = cleanStories;
-  writeFileAtomic(planJsonPath, JSON.stringify(plan, null, 2) + "\n");
-}
+import { loadConstitution } from "../config/loader.js";
+import { getSourceFilePaths } from "../types/execution-plan.js";
 
 const ROLE_KEYWORDS: Record<string, string[]> = {
   security: [
@@ -91,6 +61,8 @@ export async function runPlanStage(
     ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
     : memoryContent;
 
+  const constitutionContent = loadConstitution(hiveMindDir);
+
   // Load SPEC
   const specPath = join(hiveMindDir, "spec", "SPEC-v1.0.md");
   const specContent = readFileSafe(specPath);
@@ -112,6 +84,7 @@ export async function runPlanStage(
       outputFile: join(roleReportsDir, `${role}-report.md`),
       rules: getAgentRules(agentType),
       memoryContent: feedbackMemory,
+      constitutionContent,
     };
   });
 
@@ -151,7 +124,7 @@ export async function runPlanStage(
       "title": "Short title",
       "specSections": ["§3.1"],
       "dependencies": [],
-      "sourceFiles": ["src/file.ts"],
+      "sourceFiles": [{"path": "src/file.ts", "changeType": "ADDED"}],
       "complexity": "low",
       "securityRisk": "optional — describe security concerns if any",
       "complexityJustification": "optional — explain complexity rating",
@@ -166,7 +139,8 @@ export async function runPlanStage(
     }
   ]
 }
-CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all fields listed above. Do NOT include stepContent or ACs/ECs — produce skeletons only (GOAL, SPEC REFS, INPUT, OUTPUT).${moduleIdInstruction}`;
+CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all fields listed above. Do NOT include stepContent or ACs/ECs — produce skeletons only (GOAL, SPEC REFS, INPUT, OUTPUT).
+DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path) and "changeType" ("ADDED" for new files, "MODIFIED" for existing files being changed, "REMOVED" for files being deleted). Do NOT use plain strings.${moduleIdInstruction}`;
 
   await spawnAgentWithRetry({
     type: "planner",
@@ -175,6 +149,7 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
     outputFile: planJsonPath,
     rules: [...getAgentRules("planner"), PLANNER_SCHEMA],
     memoryContent: feedbackMemory,
+    constitutionContent,
   }, config);
 
   if (!fileExists(planJsonPath)) {
@@ -227,6 +202,7 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
     outputFile: join(stepsDir, `${story.id}-acs.md`),
     rules: getAgentRules("ac-generator"),
     memoryContent: feedbackMemory,
+    constitutionContent,
   }));
 
   await spawnAgentsParallel(acConfigs, config);
@@ -240,6 +216,7 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
     outputFile: join(stepsDir, `${story.id}-ecs.md`),
     rules: getAgentRules("ec-generator"),
     memoryContent: feedbackMemory,
+    constitutionContent,
   }));
 
   await spawnAgentsParallel(ecConfigs, config);
@@ -331,6 +308,14 @@ CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all field
 }
 
 export function writeStorySkeleton(stepsDir: string, story: Story): void {
+  const filePaths = getSourceFilePaths(story.sourceFiles);
+  // Format source files with changeType when available
+  const formatSourceFile = (f: string | { path: string; changeType: string }): string => {
+    if (typeof f === "string") return `- ${f}`;
+    return `- ${f.path} (${f.changeType})`;
+  };
+  const sourceFileLines = story.sourceFiles.map(formatSourceFile).join("\n") || "- (none)";
+
   const skeleton = `# ${story.id}: ${story.title}
 
 ## GOAL
@@ -340,10 +325,10 @@ Implement ${story.title} as specified.
 ${story.specSections.map((s) => `- ${s}`).join("\n")}
 
 ## INPUT
-${story.sourceFiles.map((f) => `- ${f}`).join("\n") || "- (none)"}
+${sourceFileLines}
 
 ## OUTPUT
-${story.sourceFiles.map((f) => `- ${f}`).join("\n") || "- (TBD)"}
+${filePaths.map((f) => `- ${f}`).join("\n") || "- (TBD)"}
 
 ## METADATA
 - Complexity: ${story.complexity}
@@ -434,6 +419,13 @@ export function assembleStepFile(
   const acsContent = readFileSafe(acsPath) ?? "*(AC generation failed)*";
   const ecsContent = readFileSafe(ecsPath) ?? "*(EC generation failed)*";
 
+  const filePaths = getSourceFilePaths(story.sourceFiles);
+  const formatSourceFile = (f: string | { path: string; changeType: string }): string => {
+    if (typeof f === "string") return `- ${f}`;
+    return `- ${f.path} (${f.changeType})`;
+  };
+  const sourceFileLines = story.sourceFiles.map(formatSourceFile).join("\n") || "- (none)";
+
   const stepFile = `# ${story.id}: ${story.title}
 
 ## GOAL
@@ -443,10 +435,10 @@ Implement ${story.title} as specified.
 ${story.specSections.map((s) => `- ${s}`).join("\n")}
 
 ## INPUT
-${story.sourceFiles.map((f) => `- ${f}`).join("\n") || "- (none)"}
+${sourceFileLines}
 
 ## OUTPUT
-${story.sourceFiles.map((f) => `- ${f}`).join("\n") || "- (TBD)"}
+${filePaths.map((f) => `- ${f}`).join("\n") || "- (TBD)"}
 
 ## ACCEPTANCE CRITERIA
 ${acsContent}

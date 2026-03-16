@@ -1,4 +1,4 @@
-import { spawnAgentWithRetry, spawnAgentsParallel } from "../agents/spawner.js";
+import { spawnAgentsParallel } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory, writeMemory, checkMemorySize, appendToMemory } from "../memory/memory-manager.js";
 import {
@@ -7,12 +7,14 @@ import {
   appendToKnowledgeBase,
   removeGraduatedEntries,
   logGraduation,
+  findNearDuplicate,
 } from "../memory/graduation.js";
 import { checkEli5Presence } from "../reports/parser.js";
 import { readFileSafe, fileExists } from "../utils/file-io.js";
 import { estimateWordCount } from "../utils/token-count.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { ExecutionPlan } from "../types/execution-plan.js";
+import { getSourceFilePaths } from "../types/execution-plan.js";
 import { join } from "node:path";
 import { readdirSync } from "node:fs";
 
@@ -142,15 +144,25 @@ export async function runReportStage(hiveMindDir: string, config: HiveMindConfig
     const candidates = identifyGraduationCandidates(currentMemory, config);
 
     if (candidates.length > 0) {
+      let graduatedCount = 0;
       for (const candidate of candidates) {
+        // RD-08: Check for near-duplicate before appending
+        const kbFilePath = join(kbDir, candidate.targetFile);
+        const kbContent = readFileSafe(kbFilePath) ?? "";
+        const duplicate = findNearDuplicate(candidate.entry, kbContent);
+        if (duplicate) {
+          console.log(`Skipping near-duplicate: "${candidate.entry.slice(0, 60)}..." ≈ "${duplicate.slice(0, 60)}..."`);
+          continue;
+        }
         const formatted = formatForKnowledgeBase(candidate);
         appendToKnowledgeBase(kbDir, candidate, formatted);
         logGraduation(memoryPath, candidate);
+        graduatedCount++;
       }
 
       const cleanedMemory = removeGraduatedEntries(readMemory(memoryPath), candidates);
       writeMemory(memoryPath, cleanedMemory);
-      console.log(`Graduated ${candidates.length} entries to knowledge-base.`);
+      console.log(`Graduated ${graduatedCount} entries to knowledge-base (${candidates.length - graduatedCount} near-duplicates skipped).`);
     }
   }
 
@@ -256,7 +268,7 @@ export function collectChangedSourceFiles(planPath: string): string[] {
     const plan: ExecutionPlan = JSON.parse(content);
     const uniqueFiles = new Set<string>();
     for (const story of plan.stories) {
-      for (const f of story.sourceFiles) {
+      for (const f of getSourceFilePaths(story.sourceFiles)) {
         uniqueFiles.add(f);
       }
     }

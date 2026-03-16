@@ -31,7 +31,8 @@ export type AgentType =
   | "compliance-reviewer"
   | "compliance-fixer"
   | "decomposer"
-  | "integration-verifier";
+  | "integration-verifier"
+  | "diagnostician-bug";
 
 export interface AgentConfig {
   type: AgentType;
@@ -43,6 +44,7 @@ export interface AgentConfig {
   roleReportContents?: string;
   cwd?: string;
   scratchDir?: string;
+  constitutionContent?: string;
 }
 
 export interface AgentResult {

@@ -1,4 +1,5 @@
 import type { Story } from "../types/execution-plan.js";
+import { getSourceFilePaths } from "../types/execution-plan.js";
 import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules, buildRoleReportContents } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
@@ -43,7 +44,7 @@ export async function runComplianceCheck(
   const memoryPath = join(hiveMindDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
-  const sourceFiles = story.sourceFiles.map((f) => join(moduleCwd ?? hiveMindDir, f));
+  const sourceFiles = getSourceFilePaths(story.sourceFiles).map((f) => join(moduleCwd ?? hiveMindDir, f));
 
   const reviewerRoleContents = roleReportsDir
     ? buildRoleReportContents("compliance-reviewer", story.rolesUsed, roleReportsDir)

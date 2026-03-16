@@ -1,4 +1,5 @@
 import type { Story } from "../types/execution-plan.js";
+import { getSourceFilePaths } from "../types/execution-plan.js";
 import type { VerifyResult } from "./execute-verify.js";
 import { runShell } from "../utils/shell.js";
 import { readFileSafe } from "../utils/file-io.js";
@@ -18,7 +19,7 @@ export function computeModifiedFiles(
   implReportContent: string,
   fixReportContents: string[],
 ): string[] {
-  const files = new Set<string>(story.sourceFiles);
+  const files = new Set<string>(getSourceFilePaths(story.sourceFiles));
 
   // Add files from impl-report
   const implResult = parseImplReport(implReportContent);

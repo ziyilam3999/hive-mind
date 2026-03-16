@@ -1,6 +1,17 @@
 export type StoryStatus = "not-started" | "in-progress" | "passed" | "failed" | "skipped";
 export type Complexity = "low" | "medium" | "high";
 export type RoleName = "analyst" | "reviewer" | "security" | "architect" | "tester-role";
+export type ChangeType = "ADDED" | "MODIFIED" | "REMOVED";
+
+export interface SourceFileEntry {
+  path: string;
+  changeType: ChangeType;
+}
+
+/** Extract file paths from sourceFiles (handles both string[] and SourceFileEntry[] formats) */
+export function getSourceFilePaths(sourceFiles: Array<string | SourceFileEntry>): string[] {
+  return sourceFiles.map((f) => typeof f === "string" ? f : f.path);
+}
 
 export type SubTaskStatus = "not-started" | "in-progress" | "passed" | "failed";
 
@@ -8,7 +19,7 @@ export interface SubTask {
   id: string;
   title: string;
   description: string;
-  sourceFiles: string[];
+  sourceFiles: Array<string | SourceFileEntry>;
   status: SubTaskStatus;
   attempts: number;
   maxAttempts: number;
@@ -19,7 +30,7 @@ export interface Story {
   title: string;
   specSections: string[];
   dependencies: string[];
-  sourceFiles: string[];
+  sourceFiles: Array<string | SourceFileEntry>;
   complexity: Complexity;
   rolesUsed: RoleName[];
   stepFile: string;

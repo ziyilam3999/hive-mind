@@ -101,6 +101,13 @@ function findConfigFile(startDir: string): string | undefined {
   }
 }
 
+export function loadConstitution(hiveMindDir: string): string | undefined {
+  const constitutionPath = join(hiveMindDir, "constitution.md");
+  if (!existsSync(constitutionPath)) return undefined;
+  const constitutionContent = readFileSync(constitutionPath, "utf-8").trim();
+  return constitutionContent || undefined;
+}
+
 export function loadConfig(projectRoot: string): HiveMindConfig {
   const defaults = getDefaultConfig();
   const configPath = findConfigFile(projectRoot);

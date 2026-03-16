@@ -14,7 +14,12 @@ export type LogAction =
   | "EVAL_ATTEMPT"
   | "FIX_UNVERIFIED"
   | "COMPLIANCE_CHECK"
-  | "COMPLIANCE_FIX";
+  | "COMPLIANCE_FIX"
+  | "DIAGNOSE_COMPLETE"
+  | "FIX_COMPLETE"
+  | "VERIFY_COMPLETE"
+  | "BUG_FIX_COMPLETE"
+  | "BUG_FIX_EXHAUSTED";
 
 export interface ManagerLogEntry {
   timestamp: string;
@@ -44,4 +49,7 @@ export interface ManagerLogEntry {
   passed?: boolean;
   missing?: number;
   done?: number;
+  confidence?: string;
+  shouldEscalate?: boolean;
+  attempts?: number;
 }

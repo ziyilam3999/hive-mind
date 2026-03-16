@@ -1,5 +1,6 @@
 import type { Checkpoint } from "./types/checkpoint.js";
-import type { ExecutionPlan, SubTask } from "./types/execution-plan.js";
+import type { ExecutionPlan } from "./types/execution-plan.js";
+import { getSourceFilePaths } from "./types/execution-plan.js";
 import type { HiveMindConfig } from "./config/schema.js";
 import { fileExists, ensureDir, readFileSafe } from "./utils/file-io.js";
 import { createMemoryFromTemplate } from "./memory/memory-manager.js";
@@ -31,7 +32,7 @@ import { CostTracker } from "./utils/cost-tracker.js";
 import { runSpecStage as specStage } from "./stages/spec-stage.js";
 import { runPlanStage as planStage } from "./stages/plan-stage.js";
 import { runBuild } from "./stages/execute-build.js";
-import { runVerify, type VerifyResult } from "./stages/execute-verify.js";
+import { runVerify } from "./stages/execute-verify.js";
 import { runCommit } from "./stages/execute-commit.js";
 import { runLearn } from "./stages/execute-learn.js";
 import { runComplianceCheck } from "./stages/execute-compliance.js";
@@ -43,6 +44,17 @@ import { updateManifest } from "./manifest/generator.js";
 import { parseImplReport } from "./reports/parser.js";
 import { getReportPath } from "./reports/templates.js";
 import { runIntegrateVerify, buildIntegrationCheckpointMessage } from "./stages/integrate-verify.js";
+import {
+  runDiagnose,
+  loadBugFixState,
+  saveBugFixState,
+  writePartialReport,
+  type BugFixState,
+} from "./stages/diagnose-stage.js";
+import { runShell } from "./utils/shell.js";
+import { writeFileAtomic } from "./utils/file-io.js";
+import { spawnAgentWithRetry } from "./agents/spawner.js";
+import { getAgentRules } from "./agents/prompts.js";
 
 async function safeUpdateManifest(hiveMindDir: string): Promise<void> {
   try {
@@ -56,7 +68,7 @@ export async function runPipeline(
   prdPath: string,
   hiveMindDir: string,
   config: HiveMindConfig,
-  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean },
+  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean },
 ): Promise<void> {
   if (!fileExists(prdPath)) {
     throw new HiveMindError(`PRD file not found: ${prdPath}`);
@@ -81,6 +93,25 @@ export async function runPipeline(
   appendLogEntry(logPath0, createLogEntry("SPEC_COMPLETE", {
     artifactCount: specFiles.length,
   }));
+
+  // --stop-after-plan: auto-approve SPEC, run PLAN, print summary, exit
+  if (options?.stopAfterPlan) {
+    await runPlanStage(hiveMindDir, config);
+    await safeUpdateManifest(hiveMindDir);
+
+    const planFilePath = join(hiveMindDir, "plans", "execution-plan.json");
+    if (fileExists(planFilePath)) {
+      const planData = loadExecutionPlan(planFilePath);
+      console.log("\n--- Plan Preview (--stop-after-plan) ---");
+      console.log(`Stories: ${planData.stories.length}`);
+      for (const s of planData.stories) {
+        const fileCount = getSourceFilePaths(s.sourceFiles).length;
+        console.log(`  ${s.id}: ${s.title} (${fileCount} files)`);
+      }
+      console.log("\nPipeline stopped after PLAN. No EXECUTE agents were spawned.");
+    }
+    return;
+  }
 
   writeCheckpoint(hiveMindDir, {
     awaiting: "approve-spec",
@@ -208,6 +239,17 @@ export async function resumeFromCheckpoint(
       notifyCheckpoint(silent);
       break;
     }
+    case "approve-diagnosis": {
+      deleteCheckpoint(hiveMindDir);
+
+      const exitCode = await resumeBugFixPipeline(hiveMindDir, config, { silent });
+      if (exitCode !== 0) {
+        console.error("Bug fix pipeline failed.");
+      } else {
+        console.log("Bug fix pipeline complete.");
+      }
+      break;
+    }
     case "approve-integration": {
       deleteCheckpoint(hiveMindDir);
 
@@ -310,9 +352,27 @@ async function executeWholeStory(
 ): Promise<StoryExecutionResult> {
   const logPath = join(hiveMindDir, "manager-log.jsonl");
 
+  // RD-07: Check for mid-story checkpoint — skip completed sub-stages
+  const checkpointPath = join(hiveMindDir, getReportPath(story.id, "checkpoint.json"));
+  const checkpointContent = readFileSafe(checkpointPath);
+  const completedSubStages = new Set<string>();
+  if (checkpointContent) {
+    try {
+      const cp = JSON.parse(checkpointContent);
+      if (Array.isArray(cp.completedSubStages)) {
+        for (const s of cp.completedSubStages) completedSubStages.add(s);
+        console.log(`[${story.id}] Resuming from checkpoint — skipping: ${[...completedSubStages].join(", ")}`);
+      }
+    } catch { /* ignore corrupt checkpoint */ }
+  }
+
   // BUILD sub-pipeline (US-13)
-  console.log(`[${story.id}] BUILD: Starting...`);
-  await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir, undefined, moduleCwd);
+  if (!completedSubStages.has("BUILD")) {
+    console.log(`[${story.id}] BUILD: Starting...`);
+    await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir, undefined, moduleCwd);
+  } else {
+    console.log(`[${story.id}] BUILD: Skipped (checkpoint)`);
+  }
 
   appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
     storyId: story.id,
@@ -331,14 +391,23 @@ async function executeWholeStory(
   }
 
   // VERIFY sub-pipeline (US-14) — no plan writes (refactored in Step 5)
-  console.log(`[${story.id}] VERIFY: Starting...`);
-  const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir, undefined, moduleCwd);
+  if (!completedSubStages.has("VERIFY")) {
+    console.log(`[${story.id}] VERIFY: Starting...`);
+    const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir, undefined, moduleCwd);
 
+    return {
+      storyId: story.id,
+      passed: verifyResult.passed,
+      attempts: verifyResult.attempts,
+      errorMessage: verifyResult.passed ? undefined : "Verification failed after max attempts",
+    };
+  }
+
+  console.log(`[${story.id}] VERIFY: Skipped (checkpoint)`);
   return {
     storyId: story.id,
-    passed: verifyResult.passed,
-    attempts: verifyResult.attempts,
-    errorMessage: verifyResult.passed ? undefined : "Verification failed after max attempts",
+    passed: true,
+    attempts: 0,
   };
 }
 
@@ -373,7 +442,7 @@ async function executeStoryWithSubTasks(
 
       console.log(`[${story.id}/${subTask.id}] BUILD: Starting (attempt ${attempt})...`);
       await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir, {
-        sourceFiles: subTask.sourceFiles,
+        sourceFiles: getSourceFilePaths(subTask.sourceFiles),
         title: subTask.title,
       }, moduleCwd);
 
@@ -383,7 +452,7 @@ async function executeStoryWithSubTasks(
 
       console.log(`[${story.id}/${subTask.id}] VERIFY: Starting...`);
       const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir, {
-        sourceFiles: subTask.sourceFiles,
+        sourceFiles: getSourceFilePaths(subTask.sourceFiles),
         title: subTask.title,
       }, moduleCwd);
 
@@ -611,4 +680,318 @@ export async function runReportStage(
 ): Promise<void> {
   console.log("Running REPORT stage...");
   await reportStage(hiveMindDir, config);
+}
+
+/**
+ * Bug-fix pipeline: BASELINE → DIAGNOSE → checkpoint → FIX → VERIFY (max 3 attempts)
+ * Returns exit code: 0 = fix verified, 1 = max attempts exceeded
+ */
+export async function runBugFixPipeline(
+  bugReportPath: string,
+  hiveMindDir: string,
+  config: HiveMindConfig,
+  options?: { silent?: boolean; skipBaseline?: boolean },
+): Promise<number> {
+  const bugFixDir = join(hiveMindDir, "reports", "bug-fix");
+  ensureDir(hiveMindDir);
+  ensureDir(join(hiveMindDir, "reports"));
+  ensureDir(bugFixDir);
+
+  const logPath = join(hiveMindDir, "manager-log.jsonl");
+  const maxAttempts = 3;
+
+  // Read bug report
+  const bugContent = readFileSafe(bugReportPath);
+  if (!bugContent) {
+    throw new HiveMindError(`Bug report not found: ${bugReportPath}`);
+  }
+
+  // BASELINE capture
+  if (!options?.skipBaseline) {
+    console.log("BASELINE: Capturing pre-fix test results...");
+    const baselineResult = await runShell(config.baselineTestCommand, { timeout: config.shellTimeout });
+    const totalMatch = baselineResult.stdout.match(/Tests?\s+(\d+)/i);
+    const passMatch = baselineResult.stdout.match(/(\d+)\s+pass/i);
+    const failMatch = baselineResult.stdout.match(/(\d+)\s+fail/i);
+
+    // Parse failing test names (vitest/jest format)
+    const failingNames: string[] = [];
+    const failNameRegex = /[✗×✘]\s+(.+)/g;
+    let match;
+    while ((match = failNameRegex.exec(baselineResult.stdout)) !== null) {
+      failingNames.push(match[1].trim());
+    }
+
+    const baseline = {
+      capturedAt: isoTimestamp(),
+      totalTests: totalMatch ? parseInt(totalMatch[1]) : 0,
+      passed: passMatch ? parseInt(passMatch[1]) : 0,
+      failed: failMatch ? parseInt(failMatch[1]) : 0,
+      failingTestNames: failingNames,
+    };
+
+    writeFileAtomic(join(bugFixDir, "baseline.json"), JSON.stringify(baseline, null, 2) + "\n");
+    console.log(`BASELINE: ${baseline.totalTests} tests (${baseline.passed} pass, ${baseline.failed} fail)`);
+  } else {
+    console.log("BASELINE: Skipped (--skip-baseline)");
+  }
+
+  // Initialize or load bug-fix state
+  let state: BugFixState = loadBugFixState(bugFixDir) ?? {
+    attemptNumber: 1,
+    checkpointFired: false,
+    startedAt: isoTimestamp(),
+  };
+  saveBugFixState(bugFixDir, state);
+
+  const attempts: Array<{ diagnosisPath: string; verifyReason: string }> = [];
+
+  // Fix loop: DIAGNOSE → checkpoint → FIX → VERIFY (max 3 attempts)
+  for (let attempt = state.attemptNumber; attempt <= maxAttempts; attempt++) {
+    state.attemptNumber = attempt;
+    saveBugFixState(bugFixDir, state);
+
+    // DIAGNOSE
+    const diagResult = await runDiagnose(bugReportPath, hiveMindDir, config, attempt);
+
+    if (!diagResult.success) {
+      console.error(`DIAGNOSE failed on attempt ${attempt}`);
+      attempts.push({ diagnosisPath: diagResult.reportPath, verifyReason: "Diagnosis failed" });
+      continue;
+    }
+
+    appendLogEntry(logPath, createLogEntry("DIAGNOSE_COMPLETE", {
+      attempt,
+      confidence: diagResult.confidence,
+      shouldEscalate: diagResult.shouldEscalate,
+    }));
+
+    // Human checkpoint (first pass only)
+    if (!state.checkpointFired) {
+      state.checkpointFired = true;
+      saveBugFixState(bugFixDir, state);
+
+      writeCheckpoint(hiveMindDir, {
+        awaiting: "approve-diagnosis",
+        message: getCheckpointMessage("approve-diagnosis"),
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
+
+      console.log("DIAGNOSE complete. Awaiting approval.");
+      console.log(getCheckpointMessage("approve-diagnosis"));
+      notifyCheckpoint(options?.silent ?? false);
+      return 0; // Pipeline pauses here — resumed via approve command
+    }
+
+    // FIX stage — spawn fixer agent
+    console.log(`FIX: Running fixer (attempt ${attempt})...`);
+    const fixReportPath = join(bugFixDir, `fix-report-attempt-${attempt}.md`);
+
+    const toSlash = (p: string): string => p.replace(/\\/g, "/");
+    await spawnAgentWithRetry({
+      type: "fixer",
+      model: "sonnet",
+      inputFiles: [toSlash(diagResult.reportPath), toSlash(bugReportPath)],
+      outputFile: toSlash(fixReportPath),
+      rules: getAgentRules("fixer"),
+      memoryContent: readFileSafe(join(hiveMindDir, "memory.md")) ?? "",
+    }, config);
+
+    appendLogEntry(logPath, createLogEntry("FIX_COMPLETE", { attempt }));
+
+    // VERIFY — run test suite and check for regressions
+    console.log(`VERIFY: Running tests (attempt ${attempt})...`);
+    const verifyResult = await runShell(config.baselineTestCommand, { timeout: config.shellTimeout });
+
+    // Check for regressions against baseline
+    const baselineContent = readFileSafe(join(bugFixDir, "baseline.json"));
+    let verifyPassed = verifyResult.exitCode === 0;
+    let verifyReason = verifyPassed ? "PASS" : "Tests failed";
+
+    if (baselineContent && verifyResult.exitCode !== 0) {
+      try {
+        const baseline = JSON.parse(baselineContent);
+        const preExistingFails = new Set(baseline.failingTestNames ?? []);
+        // Check if all failures are pre-existing
+        const failNameRegex = /[✗×✘]\s+(.+)/g;
+        let match;
+        const newFailures: string[] = [];
+        while ((match = failNameRegex.exec(verifyResult.stdout)) !== null) {
+          const name = match[1].trim();
+          if (!preExistingFails.has(name)) {
+            newFailures.push(name);
+          }
+        }
+        if (newFailures.length === 0) {
+          verifyPassed = true;
+          verifyReason = "PASS (only pre-existing failures)";
+        } else {
+          verifyReason = `New regressions: ${newFailures.slice(0, 3).join(", ")}`;
+        }
+      } catch {
+        verifyReason = "Tests failed (baseline parse error)";
+      }
+    }
+
+    appendLogEntry(logPath, createLogEntry("VERIFY_COMPLETE", {
+      attempt,
+      passed: verifyPassed,
+      reason: verifyReason,
+    }));
+
+    if (verifyPassed) {
+      console.log(`VERIFY: PASS (attempt ${attempt})`);
+
+      // COMMIT
+      console.log("COMMIT: Committing fix...");
+      const commitResult = await runShell(
+        `git add -A && git commit -m "fix: bug fix applied by hive-mind bug pipeline"`,
+        { timeout: config.shellTimeout },
+      );
+
+      if (commitResult.exitCode === 0) {
+        console.log("Bug fix committed successfully.");
+        appendLogEntry(logPath, createLogEntry("BUG_FIX_COMPLETE", { attempt }));
+      } else {
+        console.warn(`Commit failed: ${commitResult.stderr}`);
+      }
+
+      return 0;
+    }
+
+    console.warn(`VERIFY: FAIL (attempt ${attempt}) — ${verifyReason}`);
+    attempts.push({ diagnosisPath: diagResult.reportPath, verifyReason });
+  }
+
+  // Max attempts exceeded
+  writePartialReport(bugFixDir, "Bug Fix", attempts);
+  console.error("Max fix attempts reached — review partial-report.md and fix manually");
+  appendLogEntry(logPath, createLogEntry("BUG_FIX_EXHAUSTED", { attempts: maxAttempts }));
+  return 1;
+}
+
+/**
+ * Resume bug-fix pipeline after diagnosis approval.
+ * Continues from FIX stage.
+ */
+export async function resumeBugFixPipeline(
+  hiveMindDir: string,
+  config: HiveMindConfig,
+  _options?: { silent?: boolean },
+): Promise<number> {
+  const bugFixDir = join(hiveMindDir, "reports", "bug-fix");
+  const state = loadBugFixState(bugFixDir);
+  if (!state) {
+    throw new HiveMindError("No bug-fix state found. Run 'hive-mind bug --report <path>' first.");
+  }
+
+  // Find the bug report path from state directory
+  const bugReportPaths = [
+    join(hiveMindDir, "..", "bug-report.md"),
+    join(hiveMindDir, "bug-report.md"),
+  ];
+  let bugReportPath: string | undefined;
+  for (const p of bugReportPaths) {
+    if (fileExists(p)) {
+      bugReportPath = p;
+      break;
+    }
+  }
+
+  const logPath = join(hiveMindDir, "manager-log.jsonl");
+  const maxAttempts = 3;
+  const attempts: Array<{ diagnosisPath: string; verifyReason: string }> = [];
+
+  const toSlash = (p: string): string => p.replace(/\\/g, "/");
+
+  for (let attempt = state.attemptNumber; attempt <= maxAttempts; attempt++) {
+    state.attemptNumber = attempt;
+    saveBugFixState(bugFixDir, state);
+
+    const currentDiagPath = join(bugFixDir, `diagnosis-report-attempt-${attempt}.md`);
+
+    // On first resume, diagnosis is already done (from before checkpoint)
+    // On subsequent attempts, run diagnosis again
+    if (attempt > state.attemptNumber || !fileExists(currentDiagPath)) {
+      if (bugReportPath) {
+        await runDiagnose(bugReportPath, hiveMindDir, config, attempt);
+      }
+    }
+
+    // FIX stage
+    console.log(`FIX: Running fixer (attempt ${attempt})...`);
+    const fixReportPath = join(bugFixDir, `fix-report-attempt-${attempt}.md`);
+
+    const fixInputFiles = [toSlash(currentDiagPath)];
+    if (bugReportPath) fixInputFiles.push(toSlash(bugReportPath));
+
+    await spawnAgentWithRetry({
+      type: "fixer",
+      model: "sonnet",
+      inputFiles: fixInputFiles,
+      outputFile: toSlash(fixReportPath),
+      rules: getAgentRules("fixer"),
+      memoryContent: readFileSafe(join(hiveMindDir, "memory.md")) ?? "",
+    }, config);
+
+    appendLogEntry(logPath, createLogEntry("FIX_COMPLETE", { attempt }));
+
+    // VERIFY
+    console.log(`VERIFY: Running tests (attempt ${attempt})...`);
+    const verifyResult = await runShell(config.baselineTestCommand, { timeout: config.shellTimeout });
+
+    const baselineContent = readFileSafe(join(bugFixDir, "baseline.json"));
+    let verifyPassed = verifyResult.exitCode === 0;
+    let verifyReason = verifyPassed ? "PASS" : "Tests failed";
+
+    if (baselineContent && verifyResult.exitCode !== 0) {
+      try {
+        const baseline = JSON.parse(baselineContent);
+        const preExistingFails = new Set(baseline.failingTestNames ?? []);
+        const failNameRegex = /[✗×✘]\s+(.+)/g;
+        let match;
+        const newFailures: string[] = [];
+        while ((match = failNameRegex.exec(verifyResult.stdout)) !== null) {
+          const name = match[1].trim();
+          if (!preExistingFails.has(name)) {
+            newFailures.push(name);
+          }
+        }
+        if (newFailures.length === 0) {
+          verifyPassed = true;
+          verifyReason = "PASS (only pre-existing failures)";
+        } else {
+          verifyReason = `New regressions: ${newFailures.slice(0, 3).join(", ")}`;
+        }
+      } catch {
+        verifyReason = "Tests failed (baseline parse error)";
+      }
+    }
+
+    appendLogEntry(logPath, createLogEntry("VERIFY_COMPLETE", {
+      attempt,
+      passed: verifyPassed,
+      reason: verifyReason,
+    }));
+
+    if (verifyPassed) {
+      console.log(`VERIFY: PASS (attempt ${attempt})`);
+      const commitResult = await runShell(
+        `git add -A && git commit -m "fix: bug fix applied by hive-mind bug pipeline"`,
+        { timeout: config.shellTimeout },
+      );
+      if (commitResult.exitCode === 0) {
+        console.log("Bug fix committed successfully.");
+      }
+      return 0;
+    }
+
+    console.warn(`VERIFY: FAIL (attempt ${attempt}) — ${verifyReason}`);
+    attempts.push({ diagnosisPath: currentDiagPath, verifyReason });
+  }
+
+  writePartialReport(bugFixDir, "Bug Fix", attempts);
+  console.error("Max fix attempts reached — review partial-report.md and fix manually");
+  return 1;
 }

@@ -52,6 +52,7 @@ export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
   "compliance-fixer": "sonnet",
   "decomposer": "sonnet",
   "integration-verifier": "opus",
+  "diagnostician-bug": "opus",
 };
 
 export const DEFAULT_CONFIG: HiveMindConfig = {

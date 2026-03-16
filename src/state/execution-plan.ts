@@ -1,5 +1,5 @@
 import type { ExecutionPlan, Story, StoryStatus, SubTask, SubTaskStatus } from "../types/execution-plan.js";
-import type { Module } from "../types/module.js";
+import { getSourceFilePaths } from "../types/execution-plan.js";
 import { readFileSafe, writeFileAtomic } from "../utils/file-io.js";
 import { HiveMindError } from "../utils/errors.js";
 import { join } from "node:path";
@@ -220,7 +220,7 @@ export function getReadyStories(plan: ExecutionPlan): Story[] {
 export function topologicalSort(
   nodes: string[],
   getDeps: (id: string) => string[],
-  label: string = "node",
+  _label: string = "node",
 ): string[] {
   const inDegree = new Map<string, number>();
   const adjacency = new Map<string, string[]>();
@@ -357,10 +357,11 @@ export function filterNonOverlapping(stories: Story[], plan?: ExecutionPlan): St
   const usedFiles = new Set<string>();
 
   const resolveFiles = (story: Story): string[] => {
-    if (!plan) return story.sourceFiles;
+    const paths = getSourceFilePaths(story.sourceFiles);
+    if (!plan) return paths;
     const cwd = getModuleCwd(plan, story.moduleId);
-    if (!cwd) return story.sourceFiles;
-    return story.sourceFiles.map((f) => join(cwd, f));
+    if (!cwd) return paths;
+    return paths.map((f) => join(cwd, f));
   };
 
   for (const story of stories) {

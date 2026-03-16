@@ -60,6 +60,9 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
 
   // Phase 6 — integration verification (multi-repo)
   "integration-verifier": OUTPUT_TOOLS,
+
+  // Bug-fix pipeline — diagnostician needs Write to produce diagnosis report (P42/F43)
+  "diagnostician-bug": [...READ_ONLY_TOOLS, "Write"],
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {

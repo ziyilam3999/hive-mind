@@ -1,4 +1,8 @@
 import type { Story } from "../types/execution-plan.js";
+import { getSourceFilePaths } from "../types/execution-plan.js";
+import type { StoryCheckpoint } from "../types/checkpoint.js";
+import { writeFileAtomic } from "../utils/file-io.js";
+import { isoTimestamp } from "../utils/timestamp.js";
 import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules, buildRoleReportContents } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
@@ -59,7 +63,7 @@ export async function runBuild(
   console.log(`E.2: Running refactorer for ${story.id}...`);
 
   const effectiveSourceFiles = subTaskScope ? subTaskScope.sourceFiles : story.sourceFiles;
-  const sourceFiles = effectiveSourceFiles.map((f) => join(moduleCwd ?? hiveMindDir, f));
+  const sourceFiles = getSourceFilePaths(effectiveSourceFiles).map((f) => join(moduleCwd ?? hiveMindDir, f));
   const refactorRoleContents = roleReportsDir
     ? buildRoleReportContents("refactorer", story.rolesUsed, roleReportsDir)
     : undefined;
@@ -75,6 +79,16 @@ export async function runBuild(
     cwd: moduleCwd,
   }, config);
   costTracker?.recordAgentCost(story.id, "refactorer", refactorResult.costUsd, refactorResult.durationMs);
+
+  // RD-07: Write mid-story checkpoint after BUILD completes (flush to disk before next sub-stage)
+  const checkpoint: StoryCheckpoint = {
+    storyId: story.id,
+    lastCompletedSubStage: "BUILD",
+    completedSubStages: ["BUILD"],
+    timestamp: isoTimestamp(),
+  };
+  const checkpointPath = join(hiveMindDir, getReportPath(story.id, "checkpoint.json"));
+  writeFileAtomic(checkpointPath, JSON.stringify(checkpoint, null, 2) + "\n");
 
   return { implReportPath, refactorReportPath };
 }

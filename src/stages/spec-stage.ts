@@ -6,6 +6,9 @@ import { readFileSafe, ensureDir, fileExists } from "../utils/file-io.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
+import { loadConstitution } from "../config/loader.js";
+import { checkTruncation } from "../utils/truncation-monitor.js";
+import { estimateTokens } from "../utils/token-count.js";
 
 const SPEC_STEPS = [
   "research-report.md",
@@ -39,6 +42,7 @@ export async function runSpecStage(
   const kbFiles = collectKnowledgeBaseFiles(kbDir);
 
   const guidelinesPath = join(hiveMindDir, "document-guidelines.md");
+  const constitutionContent = loadConstitution(hiveMindDir);
 
   // S.1: Researcher
   console.log("S.1: Running researcher...");
@@ -49,7 +53,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "research-report.md"),
     rules: getAgentRules("researcher"),
     memoryContent,
-  }, config);
+  }, config, constitutionContent);
 
   const researchReport = join(specDir, "research-report.md");
 
@@ -62,7 +66,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "justification.md"),
     rules: getAgentRules("justifier"),
     memoryContent,
-  }, config);
+  }, config, constitutionContent);
 
   const justification = join(specDir, "justification.md");
 
@@ -90,7 +94,7 @@ export async function runSpecStage(
     memoryContent: feedback
       ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
       : memoryContent,
-  }, config);
+  }, config, constitutionContent);
 
   const specDraft = join(specDir, "SPEC-draft.md");
 
@@ -103,7 +107,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "critique-1.md"),
     rules: getAgentRules("critic"),
     memoryContent,
-  }, config);
+  }, config, constitutionContent);
 
   const critique1 = join(specDir, "critique-1.md");
 
@@ -116,7 +120,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "SPEC-v0.2.md"),
     rules: getAgentRules("spec-corrector"),
     memoryContent,
-  }, config);
+  }, config, constitutionContent);
 
   const specV02 = join(specDir, "SPEC-v0.2.md");
 
@@ -129,7 +133,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "critique-2.md"),
     rules: getAgentRules("critic"),
     memoryContent,
-  }, config);
+  }, config, constitutionContent);
 
   const critique2 = join(specDir, "critique-2.md");
 
@@ -142,13 +146,16 @@ export async function runSpecStage(
     outputFile: join(specDir, "SPEC-v1.0.md"),
     rules: getAgentRules("spec-corrector"),
     memoryContent,
-  }, config);
+  }, config, constitutionContent);
 
   console.log("SPEC stage complete. 7 artifacts produced.");
 }
 
-async function spawnStep(agentConfig: AgentConfig, hiveMindConfig: HiveMindConfig): Promise<void> {
-  const result = await spawnAgentWithRetry(agentConfig, hiveMindConfig);
+const MODEL_MAX_TOKENS = 200_000; // Conservative estimate for structured output
+
+async function spawnStep(agentConfig: AgentConfig, hiveMindConfig: HiveMindConfig, constitutionContent?: string): Promise<void> {
+  const config = constitutionContent ? { ...agentConfig, constitutionContent } : agentConfig;
+  const result = await spawnAgentWithRetry(config, hiveMindConfig);
   if (!result.success) {
     // Empty critique is acceptable — log warning but proceed
     if (agentConfig.type === "critic") {
@@ -156,6 +163,18 @@ async function spawnStep(agentConfig: AgentConfig, hiveMindConfig: HiveMindConfi
       return;
     }
     throw new Error(`Agent ${agentConfig.type} failed: ${result.error}`);
+  }
+
+  // ENH-05: Truncation monitoring after each agent output
+  const output = readFileSafe(agentConfig.outputFile);
+  if (output) {
+    const tokens = estimateTokens(output);
+    const truncationStatus = checkTruncation(output, tokens, MODEL_MAX_TOKENS);
+    if (truncationStatus === "halt") {
+      throw new Error(`SPEC output may be truncated — verify output completeness before continuing. (${agentConfig.type}, ${tokens} tokens)`);
+    } else if (truncationStatus === "warn") {
+      console.warn(`Warning: ${agentConfig.type} output is approaching token limit (${tokens} tokens / ${MODEL_MAX_TOKENS} max)`);
+    }
   }
 }
 

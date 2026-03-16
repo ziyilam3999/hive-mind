@@ -55,6 +55,8 @@ export function getCheckpointMessage(type: CheckpointType): string {
       return "Review execution plan, step files, and acceptance criteria. Run: hive-mind approve OR hive-mind reject --feedback '...'";
     case "approve-integration":
       return "Review integration verification results. Run: hive-mind approve OR hive-mind reject --feedback '...'";
+    case "approve-diagnosis":
+      return "Review diagnosis report. Run: hive-mind approve (continue with fix) OR hive-mind reject --feedback '...'";
     case "verify":
       return "Review consolidated report and retrospective. Run: hive-mind approve OR hive-mind reject --feedback '...'";
     case "ship":

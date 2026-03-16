@@ -18,6 +18,11 @@ const SCRATCH_AGENTS: Set<AgentType> = new Set([
   "tester-exec", "evaluator",
 ]);
 
+/** Agents that produce raw JSON output — do NOT add sentinel (breaks JSON parsing) */
+const JSON_OUTPUT_AGENTS: Set<AgentType> = new Set([
+  "planner", "decomposer",
+]);
+
 const AGENT_JOBS: Record<AgentType, string> = {
   "researcher": "Read PRD + codebase + knowledge-base/*, produce research-report.md",
   "justifier": "For each implementation item, justify WHY and HOW in ELI5",
@@ -50,6 +55,7 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "compliance-fixer": "Read compliance-report MISSING items + step file + source files, implement the missing instructions, produce compliance-fix-report.md",
   "decomposer": "Break high-complexity story into 2-4 focused sub-tasks, splitting by file boundaries, producing structured JSON output",
   "integration-verifier": "Read SPEC inter-module contracts + impl-reports for both modules in a boundary pair, verify implementations satisfy contracts, produce integration-report.md",
+  "diagnostician-bug": "Read bug report + codebase, perform root cause analysis, produce diagnosis-report-attempt-N.md with Root Cause, Affected Files, Recommended Fix, and Confidence sections",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -67,6 +73,7 @@ const AGENT_RULES: Record<string, string[]> = {
     "NO-STUBS: Every function must have a real implementation, not a stub or TODO.",
     "TYPE-SAFE: All code must pass tsc --noEmit with strict mode. No 'any' types unless absolutely necessary.",
     "FILE-SCOPE: Only create/modify files listed in the step file sourceFiles.",
+    "CHANGE-TYPE: Each source file has a changeType: ADDED = create new file from scratch. MODIFIED = edit existing file (read it first, preserve existing code). REMOVED = delete this file. Use the appropriate strategy for each.",
   ],
   "evaluator": [
     "NO-JUDGMENT: Run pre-generated EC commands via shell. Report PASS/FAIL. Do NOT make subjective assessments. [Wrong: 'The code looks well-structured'] [Right: 'Ran command, got PASS']",
@@ -109,7 +116,7 @@ const AGENT_RULES: Record<string, string[]> = {
     "SYNTHESIS: Combine all per-story learnings into consolidated, deduplicated entries.",
     "EVIDENCE: Cite specific story IDs and outcomes for each learning.",
     "HONEST: Report failures and surprises, not just successes.",
-    "ACTIONABLE: Each entry must be a concrete, reusable instruction.",
+    "FEEDBACK-LOOP: For each learning, classify as KEEP (working well), CHANGE (needs improvement), ADD (missing capability), or DROP (unnecessary overhead). This ensures balanced retrospectives — not just what went wrong.",
   ],
   "fixer": [
     "FULL-RE-UAT: After applying fixes, VERIFY re-runs from E.3 (tester). Compilation-only verification is NEVER sufficient. [Wrong: 'tsc passes so the fix works'] [Right: 'Applied fix, awaiting full re-test from E.3']",
@@ -132,7 +139,7 @@ const AGENT_RULES: Record<string, string[]> = {
     "TESTABLE: Each AC must be verifiable via a concrete shell command or assertion.",
     "COMPLETE: Cover all functional requirements from the story skeleton's SPEC REFS.",
     "NO-OVERLAP: Do not duplicate ACs across stories. Each AC belongs to exactly one story.",
-    "FORMAT: Output as numbered markdown list with UAT command for each AC.",
+    "EARS-FORMAT: Use WHEN/THEN format for each AC. Example: 'WHEN the user calls POST /api/items with a valid payload THEN the response status is 201 and the item is persisted.' Include a UAT command after each AC.",
   ],
   "ec-generator": [
     "BINARY: Every EC must produce exactly PASS or FAIL when run via shell.",
@@ -188,6 +195,13 @@ const AGENT_RULES: Record<string, string[]> = {
     "BOUNDARY-FOCUS: Only verify the specific producer→consumer boundary you were assigned. Do not check other module pairs.",
     "STRUCTURED-REPORT: Output must include: boundary (producer→consumer), PASS/FAIL per contract, plain-language summary of mismatches.",
     "NO-CONTRACTS-WARNING: If the SPEC has no ## Inter-Module Contracts section, report WARNING 'No contracts defined — cannot verify'.",
+  ],
+  "diagnostician-bug": [
+    "ROOT-CAUSE: Identify the actual root cause using Glob, Grep, and Read to search the codebase. Reference specific file:line locations.",
+    "MANDATORY-SECTIONS: Your output MUST contain these section keywords (any heading level accepted): Root Cause, Affected Files, Recommended Fix, Confidence. Missing any section = FAIL.",
+    "AFFECTED-FILES: List each affected file with line numbers. Format: `path/to/file.ts:42-67 — description`.",
+    "CONFIDENCE: Rate as HIGH (single clear root cause), MEDIUM (most likely cause), or LOW (multiple possible causes).",
+    "ESCALATION: If Confidence is LOW and Affected Files spans >5 distinct files across >2 top-level dirs under src/, add an ## Escalation Recommendation section with ESCALATE_TO_PIPELINE.",
   ],
 };
 
@@ -261,9 +275,15 @@ This block is parsed mechanically — do NOT omit it, do NOT alter the format.
 ` : ""}${SCRATCH_AGENTS.has(config.type) && config.scratchDir ? `## SCRATCH DIRECTORY
 Write any helper scripts or temporary files here: ${toSlash(config.scratchDir)}
 Do NOT create .ts/.js files in the workspace root. The scratch directory already exists.
+` : ""}${config.constitutionContent ? `## PROJECT CONSTITUTION
+The following project conventions and standards apply to all work:
+${config.constitutionContent}
 ` : ""}${config.roleReportContents ? `## ROLE REPORTS
 The following role-report excerpts are relevant to your task:
 ${config.roleReportContents}
+` : ""}${!JSON_OUTPUT_AGENTS.has(config.type) ? `## OUTPUT SENTINEL
+End your output file with the exact string \`<!-- HM-END -->\` as the very last line (after all content). This sentinel is checked mechanically to detect truncation.
+
 ` : ""}## MEMORY
 ${config.memoryContent}`;
 }

@@ -12,6 +12,9 @@ import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import { join } from "node:path";
 import { copyFileSync } from "node:fs";
+import type { StoryCheckpoint } from "../types/checkpoint.js";
+import { writeFileAtomic } from "../utils/file-io.js";
+import { isoTimestamp } from "../utils/timestamp.js";
 
 export interface VerifyResult {
   passed: boolean;
@@ -174,7 +177,15 @@ export async function runVerify(
       continue; // re-VERIFY from E.3
     }
 
-    // Both passed
+    // Both passed — write VERIFY checkpoint (RD-07)
+    const verifyCheckpoint: StoryCheckpoint = {
+      storyId: story.id,
+      lastCompletedSubStage: "VERIFY",
+      completedSubStages: ["BUILD", "VERIFY"],
+      timestamp: isoTimestamp(),
+    };
+    writeFileAtomic(join(hiveMindDir, getReportPath(story.id, "checkpoint.json")), JSON.stringify(verifyCheckpoint, null, 2) + "\n");
+
     return { passed: true, attempts: attempt, testReportPath, evalReportPath, parserConfidence: lastConfidence };
   }
 
