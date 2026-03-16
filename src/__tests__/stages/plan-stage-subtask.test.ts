@@ -1,6 +1,4 @@
 import { describe, it, expect, vi } from "vitest";
-import type { Story } from "../../types/execution-plan.js";
-
 // Track spawned agent types
 const spawnedTypes: string[] = [];
 
@@ -38,10 +36,9 @@ vi.mock("../../agents/spawner.js", () => ({
 }));
 
 import { runPlanStage } from "../../stages/plan-stage.js";
-import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
-import { getToolsForAgent } from "../../agents/tool-permissions.js";
 import { getAgentRules } from "../../agents/prompts.js";
 
 const config = getDefaultConfig();

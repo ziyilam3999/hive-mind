@@ -172,7 +172,7 @@ export function parseComplianceReport(markdown: string): ComplianceResult {
   let parsed: { result?: string; done?: number; missing?: number; uncertain?: number };
   try {
     parsed = JSON.parse(statusMatch[1]);
-  } catch (err) {
+  } catch {
     console.warn(`[parseComplianceReport] Malformed JSON in STATUS block: ${statusMatch[1]}`);
     return defaultResult;
   }

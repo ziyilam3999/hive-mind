@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { parseModules, resolveAndValidateModules } from "../../utils/module-parser.js";
 import { mkdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";

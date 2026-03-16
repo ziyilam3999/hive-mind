@@ -3,7 +3,7 @@ import { parseArgs } from "../index.js";
 import { HiveMindError } from "../utils/errors.js";
 import { getNextStory, updateStoryStatus, loadExecutionPlan, saveExecutionPlan } from "../state/execution-plan.js";
 import type { ExecutionPlan } from "../types/execution-plan.js";
-import { writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 

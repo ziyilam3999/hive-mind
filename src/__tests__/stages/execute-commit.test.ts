@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { computeModifiedFiles, buildCommitMessage, runCommit } from "../../stages/execute-commit.js";
 import type { Story } from "../../types/execution-plan.js";
 import type { VerifyResult } from "../../stages/execute-verify.js";

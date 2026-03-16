@@ -91,6 +91,58 @@ export function appendToKnowledgeBase(
   appendFileSync(filePath, formatted + "\n");
 }
 
+/**
+ * RD-08: Find near-duplicate entries in knowledge base content using Jaccard similarity.
+ * Returns the matching entry text if a near-duplicate is found, null otherwise.
+ */
+export function findNearDuplicate(
+  candidateText: string,
+  kbContent: string,
+  threshold = 0.5,
+): string | null {
+  const candidateWords = tokenize(candidateText);
+  if (candidateWords.size === 0) return null;
+
+  // Extract WHAT entries from KB content
+  const lines = kbContent.split("\n");
+  for (const line of lines) {
+    const whatMatch = line.match(/^-\s*WHAT:\s*(.+)/i);
+    if (!whatMatch) continue;
+
+    const entryWords = tokenize(whatMatch[1]);
+    if (entryWords.size === 0) continue;
+
+    // Jaccard similarity: |intersection| / |union|
+    let intersection = 0;
+    for (const w of candidateWords) {
+      if (entryWords.has(w)) intersection++;
+    }
+    const union = new Set([...candidateWords, ...entryWords]).size;
+    const similarity = union > 0 ? intersection / union : 0;
+
+    if (similarity >= threshold) {
+      return whatMatch[1].trim();
+    }
+  }
+
+  return null;
+}
+
+/** Simple tokenizer with naive suffix stripping for fuzzy matching */
+function tokenize(text: string): Set<string> {
+  const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been",
+    "to", "of", "in", "for", "on", "with", "at", "by", "from", "it", "this", "that",
+    "and", "or", "but", "not", "should", "would", "could", "can", "will", "do", "does"]);
+  return new Set(
+    text.toLowerCase()
+      .replace(/[^\w\s]/g, "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter(w => !STOP_WORDS.has(w))
+      .map(w => w.replace(/(tion|sion|ing|ed|ly|er|est|ment|ness|ity|ies|ous|ive|able|ible|ful|less|ize|ise|ated|ating)$/, "")),
+  );
+}
+
 export function removeGraduatedEntries(
   memoryContent: string,
   candidates: GraduationCandidate[],

@@ -15,7 +15,7 @@ const VALID_ROLES: ModuleRole[] = ["producer", "consumer", "standalone"];
  * | shared-lib | ../shared-lib | producer | |
  * | web-app | ../web-app | consumer | shared-lib |
  */
-export function parseModules(content: string, basePath?: string): Module[] {
+export function parseModules(content: string, _basePath?: string): Module[] {
   const modulesSection = extractModulesSection(content);
   if (!modulesSection) return [];
 

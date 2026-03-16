@@ -8,7 +8,6 @@ import {
   validateDependencies,
   topologicalSort,
 } from "../../state/execution-plan.js";
-import { HiveMindError } from "../../utils/errors.js";
 import type { ExecutionPlan, Story } from "../../types/execution-plan.js";
 import type { Module } from "../../types/module.js";
 

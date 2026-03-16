@@ -1,5 +1,85 @@
 import { runShell } from "../utils/shell.js";
 import type { HiveMindConfig } from "../config/schema.js";
+import { spawn } from "node:child_process";
+
+/** ENH-04: Tool category determines halt vs warn behavior on missing */
+export type ToolCategory = "build" | "test" | "lint" | "optional";
+
+export const REQUIRED_TOOLS: Record<string, ToolCategory> = {
+  "tsc": "build",
+  "go": "build",
+  "dart": "build",
+  "jest": "test",
+  "vitest": "test",
+  "pytest": "test",
+  "flutter": "test",
+};
+
+export const OPTIONAL_TOOLS: Record<string, ToolCategory> = {
+  "eslint": "lint",
+  "prettier": "lint",
+  "ruff": "lint",
+  "docker": "optional",
+  "jq": "optional",
+};
+
+/**
+ * ENH-04: Detect whether a tool is installed.
+ * - Windows: uses `where <name>` (reliable PATH check; shell: true masks ENOENT)
+ * - Other platforms: spawns `<name> --version` and catches ENOENT
+ */
+export async function detectToolBySpawn(name: string, timeout = 3000): Promise<"present" | "missing"> {
+  return new Promise((resolve) => {
+    try {
+      if (process.platform === "win32") {
+        // On Windows, 'where' reliably checks PATH. Using shell: true with
+        // the tool directly would mask ENOENT (cmd.exe swallows it).
+        const child = spawn("where", [name], { timeout, stdio: "ignore" });
+        child.on("close", (code) => resolve(code === 0 ? "present" : "missing"));
+        child.on("error", () => resolve("missing"));
+      } else {
+        const child = spawn(name, ["--version"], { timeout, stdio: "ignore" });
+        child.on("error", (err: NodeJS.ErrnoException) => {
+          resolve(err.code === "ENOENT" ? "missing" : "present");
+        });
+        child.on("close", () => resolve("present"));
+      }
+    } catch {
+      resolve("missing");
+    }
+  });
+}
+
+/**
+ * ENH-04: Check required vs optional tools and halt/warn accordingly.
+ * Returns true if all required tools are present.
+ */
+export async function checkToolDependencies(
+  tools: string[],
+  timeout = 3000,
+): Promise<{ allRequiredPresent: boolean; results: Map<string, { status: "present" | "missing"; category: ToolCategory }> }> {
+  const results = new Map<string, { status: "present" | "missing"; category: ToolCategory }>();
+  let allRequiredPresent = true;
+
+  for (const tool of tools) {
+    const category = REQUIRED_TOOLS[tool] ?? OPTIONAL_TOOLS[tool] ?? "optional";
+    const status = await detectToolBySpawn(tool, timeout);
+    results.set(tool, { status, category });
+
+    if (status === "missing") {
+      if (category === "build" || category === "test") {
+        console.error(`HALT: Required ${category} tool "${tool}" not found on PATH`);
+        allRequiredPresent = false;
+      } else if (category === "lint") {
+        console.warn(`WARN: Linter/formatter "${tool}" not found — ACs using this tool will report N/A (tool not installed)`);
+      } else {
+        console.warn(`WARN: Optional tool "${tool}" not found — continuing`);
+      }
+    }
+  }
+
+  return { allRequiredPresent, results };
+}
 
 export interface ToolingRequirement {
   tool: string;
