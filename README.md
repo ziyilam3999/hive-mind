@@ -7,6 +7,8 @@
 
 PRD-driven orchestrator that turns a product requirements document into working code through a multi-stage AI pipeline with human checkpoints.
 
+> **Design iteration 3** — ground-up redesign following two earlier prototypes. Semver tracks the public release lifecycle starting at `v0.1.0`.
+
 ```
 PRD  -->  SPEC  -->  PLAN  -->  EXECUTE  -->  REPORT
               [ human approval between each stage ]
