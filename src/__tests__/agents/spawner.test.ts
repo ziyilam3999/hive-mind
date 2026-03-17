@@ -339,7 +339,7 @@ describe("getToolsForAgent", () => {
 
   it("returns tools for every agent type", () => {
     const allTypes = [
-      "researcher", "justifier", "spec-drafter", "critic", "spec-corrector",
+      "researcher", "spec-drafter", "critic", "spec-corrector",
       "tooling-setup", "analyst", "reviewer", "security", "architect",
       "tester-role", "synthesizer", "implementer", "refactorer", "tester-exec",
       "evaluator", "diagnostician", "fixer", "learner", "reporter", "retrospective",

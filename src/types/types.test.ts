@@ -42,9 +42,9 @@ describe("types", () => {
     expect(actions).toHaveLength(7);
   });
 
-  it("AgentType accepts all 21 values", () => {
+  it("AgentType accepts all 20 values", () => {
     const agents: AgentType[] = [
-      "researcher", "justifier", "spec-drafter", "critic", "spec-corrector",
+      "researcher", "spec-drafter", "critic", "spec-corrector",
       "tooling-setup",
       "analyst", "reviewer", "security", "architect", "tester-role",
       "synthesizer",
@@ -52,6 +52,6 @@ describe("types", () => {
       "diagnostician", "fixer", "learner",
       "reporter", "retrospective",
     ];
-    expect(agents).toHaveLength(21);
+    expect(agents).toHaveLength(20);
   });
 });

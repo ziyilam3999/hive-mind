@@ -24,9 +24,8 @@ const JSON_OUTPUT_AGENTS: Set<AgentType> = new Set([
 ]);
 
 const AGENT_JOBS: Record<AgentType, string> = {
-  "researcher": "Read PRD + codebase + knowledge-base/*, produce research-report.md",
-  "justifier": "For each implementation item, justify WHY and HOW in ELI5",
-  "spec-drafter": "Produce draft SPEC from research + justifications",
+  "researcher": "Read PRD + codebase + knowledge-base/*, produce research-report.md with justification analysis",
+  "spec-drafter": "Produce draft SPEC from research report",
   "critic": "Independent review of draft (no shared context with drafter)",
   "spec-corrector": "Apply critique corrections, produce corrected SPEC",
   "tooling-setup": "Bootstrap project tooling when detect fails",
@@ -59,6 +58,25 @@ const AGENT_JOBS: Record<AgentType, string> = {
 };
 
 const AGENT_RULES: Record<string, string[]> = {
+  "researcher": [
+    "EVIDENCE-RULE: Cite file:line for every factual claim. No unsupported assertions. [Wrong: 'The codebase uses X'] [Right: 'src/foo.ts:42 exports X']",
+    "JUSTIFICATION-ANALYSIS: Evaluate every PRD decision — classify as JUSTIFIED (evidence supports it), UNJUSTIFIED (no rationale given), or QUESTIONED (rationale exists but is weak). Include a ## Justification Analysis section.",
+    "FAILURE-MODE-CHECK: Flag features missing failure/overload/missing-data behavior. Include a ## Gap Analysis: Failure Modes section with GAP-FAILURE-MODE items.",
+    "COMPLETENESS: Cover every PRD requirement. If a requirement is ambiguous, flag it as AMBIGUOUS rather than skipping.",
+    "NO-JUDGMENT: Report findings objectively. Do not rewrite the PRD or propose alternatives — that is the drafter's job.",
+  ],
+  "spec-drafter": [
+    "FACT-VERIFY: Before incorporating any researcher claim, verify it against the actual input files. Do not propagate unverified findings.",
+    "AUTHOR-VOICE: Keep the PRD author's structure, format, and intent. The SPEC should feel like a natural evolution of the PRD, not a rewrite.",
+    "CHANGE-JUSTIFIED: Every change from the PRD must be explainable. If you cannot articulate why a change improves the spec, do not make it.",
+    "UNJUSTIFIED-FIX: Address all UNJUSTIFIED and GAP-FAILURE-MODE items from the research report. Each must have a resolution in the SPEC.",
+  ],
+  "spec-corrector": [
+    "PRECISE-FIX: Apply only the fixes flagged in the critique. Do not make additional changes.",
+    "SKIP-INVALID: If a critique finding is incorrect, explain why it is being skipped rather than silently ignoring it.",
+    "NO-OVERCORRECT: Skip MINOR findings that do not materially improve the document. Focus on critical and major issues.",
+    "CONSISTENCY-CHECK: After applying fixes, verify all sections still agree with each other. Cross-reference definitions, interfaces, and requirements.",
+  ],
   "tester-exec": [
     "SHELL-EXEC: Run each AC via Bash. Report exact stdout. Code inspection alone is NOT testing. [Wrong: 'I can see the function exists'] [Right: 'Ran grep -q export... && echo PASS, got PASS']",
     "NO-SKIP: Run every AC listed. Do not skip any. Report all results even if early ones fail.",
@@ -281,7 +299,7 @@ ${config.constitutionContent}
 ` : ""}${config.roleReportContents ? `## ROLE REPORTS
 The following role-report excerpts are relevant to your task:
 ${config.roleReportContents}
-` : ""}${!JSON_OUTPUT_AGENTS.has(config.type) ? `## OUTPUT SENTINEL
+` : ""}${config.instructionBlocks?.length ? config.instructionBlocks.map((b) => `## ${b.heading}\n${b.content}\n`).join("\n") : ""}${!JSON_OUTPUT_AGENTS.has(config.type) ? `## OUTPUT SENTINEL
 End your output file with the exact string \`<!-- HM-END -->\` as the very last line (after all content). This sentinel is checked mechanically to detect truncation.
 
 ` : ""}## MEMORY

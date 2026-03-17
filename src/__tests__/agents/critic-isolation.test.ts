@@ -9,7 +9,6 @@ describe("critic agent isolation", () => {
       model: "sonnet",
       inputFiles: [
         "spec/research-report.md",
-        "spec/justification.md",
         "spec/SPEC-draft.md",
       ],
       outputFile: "spec/critique-1.md",

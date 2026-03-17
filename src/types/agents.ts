@@ -2,7 +2,6 @@ export type ModelTier = "opus" | "sonnet" | "haiku";
 
 export type AgentType =
   | "researcher"
-  | "justifier"
   | "spec-drafter"
   | "critic"
   | "spec-corrector"
@@ -40,6 +39,7 @@ export interface AgentConfig {
   inputFiles: string[];
   outputFile: string;
   rules: string[];
+  instructionBlocks?: Array<{ heading: string; content: string }>;
   memoryContent: string;
   roleReportContents?: string;
   cwd?: string;

@@ -8,7 +8,6 @@ const SHELL_ONLY_TOOLS = [...READ_ONLY_TOOLS, "Bash", "Write"];
 const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
   // SPEC stage — read + write output file
   "researcher": OUTPUT_TOOLS,
-  "justifier": OUTPUT_TOOLS,
   "spec-drafter": OUTPUT_TOOLS,
   "critic": OUTPUT_TOOLS,
   "spec-corrector": OUTPUT_TOOLS,

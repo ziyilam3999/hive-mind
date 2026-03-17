@@ -2,7 +2,6 @@ import type { AgentType, ModelTier } from "../types/agents.js";
 
 export const AGENT_MODEL_MAP: Record<AgentType, ModelTier> = {
   "researcher": "opus",
-  "justifier": "opus",
   "spec-drafter": "opus",
   "critic": "sonnet",
   "spec-corrector": "opus",

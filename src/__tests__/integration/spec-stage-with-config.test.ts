@@ -68,8 +68,8 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
       expect(existsSync(join(specDir, step))).toBe(true);
     }
 
-    // 7 sequential spawns via spawnAgentWithRetry
-    expect(spawnCalls.length).toBe(7);
+    // 6 sequential spawns via spawnAgentWithRetry
+    expect(spawnCalls.length).toBe(6);
   });
 
   it("config roundtrip: write config file → load → spawn with correct model", async () => {
@@ -124,8 +124,8 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     await runSpecStage(prdPath, hmDir, config);
     consoleSpy.mockRestore();
 
-    // All 7 steps completed despite agents returning metadata
-    expect(spawnCalls.length).toBe(7);
+    // All 6 steps completed despite agents returning metadata
+    expect(spawnCalls.length).toBe(6);
 
     // Verify metadata was included in mock returns (the mock always includes it)
     // The key thing is that the SPEC stage didn't crash
@@ -144,7 +144,6 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     const types = spawnCalls.map((c) => c.config.type);
     expect(types).toEqual([
       "researcher",
-      "justifier",
       "spec-drafter",
       "critic",
       "spec-corrector",

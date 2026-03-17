@@ -35,7 +35,7 @@ describe("spec-stage", () => {
     rmSync(testDir, { recursive: true, force: true });
   }
 
-  it("runSpecStage produces 7 output files", async () => {
+  it("runSpecStage produces 6 output files", async () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -58,7 +58,7 @@ describe("spec-stage", () => {
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
-      // S.4 is the 4th call (index 3), S.6 is the 6th call (index 5)
+      // S.3 is the 3rd call (index 2), S.5 is the 5th call (index 4)
       const criticCalls = calls.filter((c) => c[0].type === "critic");
 
       expect(criticCalls.length).toBe(2);
@@ -77,14 +77,14 @@ describe("spec-stage", () => {
     }
   });
 
-  it("exactly 7 steps in pipeline", async () => {
+  it("exactly 6 steps in pipeline", async () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       await runSpecStage(prdPath, hmDir, config);
       consoleSpy.mockRestore();
 
-      expect(vi.mocked(spawnAgentWithRetry).mock.calls.length).toBe(7);
+      expect(vi.mocked(spawnAgentWithRetry).mock.calls.length).toBe(6);
     } finally {
       cleanup();
     }

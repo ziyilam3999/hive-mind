@@ -22,7 +22,6 @@ export interface HiveMindConfig {
 
 export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
   "researcher": "opus",
-  "justifier": "opus",
   "spec-drafter": "opus",
   "critic": "sonnet",
   "spec-corrector": "opus",
