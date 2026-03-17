@@ -1,3 +1,7 @@
+<div align="center">
+<img src="assets/logo-mono.png" alt="Hive Mind Logo" width="400">
+</div>
+
 # Hive Mind
 
 [![CI](https://github.com/ziyilam3999/hive-mind/actions/workflows/ci.yml/badge.svg)](https://github.com/ziyilam3999/hive-mind/actions/workflows/ci.yml)
