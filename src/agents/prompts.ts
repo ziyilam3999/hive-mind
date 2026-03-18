@@ -56,6 +56,7 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "integration-verifier": "Read SPEC inter-module contracts + impl-reports for both modules in a boundary pair, verify implementations satisfy contracts, produce integration-report.md",
   "diagnostician-bug": "Read bug report + codebase, perform root cause analysis, produce diagnosis-report-attempt-N.md with Root Cause, Affected Files, Recommended Fix, and Confidence sections",
   "workspace-cleanup": "Identify and relocate stray files created by prior agents outside the scratch directory",
+  "normalizer": "Read input document (any format: plan, design doc, rough notes, existing PRD), produce a structured normalized-prd.md",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -227,6 +228,16 @@ const AGENT_RULES: Record<string, string[]> = {
     "RELOCATE: Move stray files into the scratch directory using `mv`. Do not delete them.",
     "REPORT: List every relocated file in your output report. If no stray files found, report 'clean'.",
     "SAFE: Never touch files inside src/, node_modules/, .git/, or the .hive-mind-* directories.",
+  ],
+  "normalizer": [
+    "EXTRACT-REQUIREMENTS: Identify all requirements and number them REQ-01, REQ-02, etc. Group by phase/module if the source document has phases.",
+    "PRESERVE-DECISIONS: Any explicit architecture, technology, or design decisions in the source must appear in a 'Fixed Architecture Decisions (DO NOT re-derive)' section as constraints.",
+    "STRUCTURE: Output must have these sections in order: Problem Statement, Fixed Architecture Decisions, Requirements, Success Criteria, Out of Scope, Constraints, Additional Context.",
+    "NO-INVENTION: Do not add requirements, features, or decisions not present in the source document. You are reformatting, not designing.",
+    "PRESERVE-DETAIL: Include ALL file paths, interface definitions, config values, code examples from the source. The normalized PRD must be a superset of the source's information.",
+    "REFERENCE-SECTIONS: If the source has numbered sections, reference them in requirements (e.g., 'per Section 15').",
+    "COMPLETENESS-CHECK: After structuring, verify every concrete detail from the source (file paths, interface names, config values, code examples) appears in the structured sections. If any detail cannot be categorized into the above sections, add it to the 'Additional Context' section.",
+    "SUCCESS-CRITERIA: Extract or derive testable success criteria from the source. Each criterion must be verifiable (not vague).",
   ],
 };
 

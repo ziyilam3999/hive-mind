@@ -84,6 +84,18 @@ describe("validateConfig", () => {
     expect(result.errors[0]).toContain("critic");
   });
 
+  it("rejects non-boolean skipNormalize", () => {
+    const result = validateConfig({ skipNormalize: "yes" });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("skipNormalize");
+    expect(result.errors[0]).toContain("boolean");
+  });
+
+  it("accepts boolean skipNormalize", () => {
+    const result = validateConfig({ skipNormalize: true });
+    expect(result.valid).toBe(true);
+  });
+
   it("accepts valid partial config", () => {
     const result = validateConfig({
       agentTimeout: 300_000,
@@ -147,6 +159,20 @@ describe("loadConfig", () => {
   it("throws on malformed JSON", () => {
     writeFileSync(join(tmpDir, ".hivemindrc.json"), "not json{");
     expect(() => loadConfig(tmpDir)).toThrow("Failed to parse");
+  });
+
+  it("loads skipNormalize from config file", () => {
+    writeFileSync(
+      join(tmpDir, ".hivemindrc.json"),
+      JSON.stringify({ skipNormalize: true }),
+    );
+    const config = loadConfig(tmpDir);
+    expect(config.skipNormalize).toBe(true);
+  });
+
+  it("defaults skipNormalize to false", () => {
+    const config = loadConfig(tmpDir);
+    expect(config.skipNormalize).toBe(false);
   });
 
   it("accepts full valid config", () => {

@@ -88,7 +88,6 @@ function resetMock() {
 
 describe("wave executor", () => {
   const testDir = join(process.cwd(), ".test-wave-exec");
-  const hiveMindDir = testDir;
   const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
   const planPath = join(testDir, "plans", "execution-plan.json");
 

@@ -49,6 +49,8 @@ export function persistFeedback(
 
 export function getCheckpointMessage(type: CheckpointType): string {
   switch (type) {
+    case "approve-normalize":
+      return "Normalized PRD ready. Review .hive-mind/normalize/normalized-prd.md and run 'hive-mind approve' to proceed to SPEC, or 'hive-mind reject --feedback \"...\"' to re-normalize.";
     case "approve-spec":
       return "Review SPEC-v1.0.md and ELI5 summary. Run: hive-mind approve OR hive-mind reject --feedback '...'";
     case "approve-plan":

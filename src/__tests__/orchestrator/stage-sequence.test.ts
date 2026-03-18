@@ -33,7 +33,7 @@ describe("orchestrator stage sequence", () => {
     try {
       const hmDir = join(testDir, ".hive-mind");
       const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
-      await runPipeline(prdPath, dirs, config);
+      await runPipeline(prdPath, dirs, config, { skipNormalize: true });
     } catch {
       // process.exit throws
     }
