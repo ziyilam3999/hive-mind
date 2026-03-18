@@ -50,11 +50,20 @@ const SELF_REVIEW_BLOCK = {
 5. If you find gaps, fix them before writing the output file. Do NOT leave known gaps for the next agent.`,
 };
 
+const GREENFIELD_CONTEXT_BLOCK = {
+  heading: "GREENFIELD PROJECT",
+  content: `This is a greenfield project with NO existing code.
+- Don't assume any files or packages exist.
+- Include a "Project Scaffolding" section in the SPEC.
+- Explicitly specify all tech choices (agents can't infer from existing code).`,
+};
+
 export async function runSpecStage(
   prdPath: string,
   dirs: PipelineDirs,
   config: HiveMindConfig,
   feedback?: string,
+  greenfield?: boolean,
 ): Promise<void> {
   const specDir = join(dirs.workingDir, "spec");
   ensureDir(specDir);
@@ -76,13 +85,15 @@ export async function runSpecStage(
 
   // S.1: Researcher (with justification analysis — replaces former S.2 justifier)
   console.log("S.1: Running researcher...");
+  const researcherBlocks = [ENVIRONMENT_CONTEXT_BLOCK, DEPLOYMENT_CONTEXT_BLOCK];
+  if (greenfield) researcherBlocks.push(GREENFIELD_CONTEXT_BLOCK);
   await spawnStep({
     type: "researcher",
     model: "opus",
     inputFiles: [prdPath, ...kbFiles],
     outputFile: join(specDir, "research-report.md"),
     rules: getAgentRules("researcher"),
-    instructionBlocks: [ENVIRONMENT_CONTEXT_BLOCK, DEPLOYMENT_CONTEXT_BLOCK],
+    instructionBlocks: researcherBlocks,
     memoryContent,
   }, config, constitutionContent);
 
@@ -103,13 +114,15 @@ export async function runSpecStage(
     );
   }
 
+  const drafterBlocks = [SELF_REVIEW_BLOCK];
+  if (greenfield) drafterBlocks.push(GREENFIELD_CONTEXT_BLOCK);
   await spawnStep({
     type: "spec-drafter",
     model: "opus",
     inputFiles: drafterInputFiles,
     outputFile: join(specDir, "SPEC-draft.md"),
     rules: drafterRules,
-    instructionBlocks: [SELF_REVIEW_BLOCK],
+    instructionBlocks: drafterBlocks,
     memoryContent: feedback
       ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
       : memoryContent,

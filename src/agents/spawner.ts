@@ -22,9 +22,13 @@ export async function spawnAgent(
     allowedTools,
     timeout: hiveMindConfig.agentTimeout,
     cwd: config.cwd,
+    outputFile: config.outputFile,
   });
 
-  if (result.exitCode !== 0) {
+  const outputExists = fileExists(config.outputFile);
+
+  // Fail only if exit code is bad AND no output file
+  if (result.exitCode !== 0 && !outputExists) {
     return {
       success: false,
       outputFile: config.outputFile,
@@ -36,9 +40,6 @@ export async function spawnAgent(
     };
   }
 
-  // Agent must create output file via Write tool (no fallback — raw stdout is session JSON)
-  const outputExists = fileExists(config.outputFile);
-  // No debug logging — strict output contract (RD-12)
   return {
     success: outputExists,
     outputFile: config.outputFile,

@@ -58,7 +58,7 @@ describe("orchestrator checkpoint write", () => {
     const hmDir = join(testDir, ".hive-mind");
     const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
 
-    await runPipeline(prdPath, dirs, config);
+    await runPipeline(prdPath, dirs, config, { skipNormalize: true });
 
     const cpPath = join(hmDir, ".checkpoint");
     expect(existsSync(cpPath)).toBe(true);
@@ -78,6 +78,8 @@ describe("orchestrator checkpoint write", () => {
     // Create the SPEC file that plan-stage needs
     mkdirSync(join(testDir, "spec"), { recursive: true });
     writeFileSync(join(testDir, "spec", "SPEC-v1.0.md"), "# SPEC\n## Requirements\nBuild something");
+    // getPipelineStartData now reads manager-log.jsonl
+    writeFileSync(join(testDir, "manager-log.jsonl"), JSON.stringify({ timestamp: "2026-03-06T00:00:00Z", cycle: 0, storyId: null, action: "PIPELINE_START", reason: null, prdPath: "./PRD.md", stopAfterPlan: false }) + "\n");
     const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
     await resumeFromCheckpoint(

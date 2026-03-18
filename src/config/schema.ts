@@ -20,6 +20,7 @@ export interface HiveMindConfig {
   modelAssignments: Record<string, ModelTier>;
   workingDir?: string;
   knowledgeDir?: string;
+  skipNormalize: boolean;
   labDir?: string;
 }
 
@@ -56,6 +57,7 @@ export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
   "integration-verifier": "opus",
   "diagnostician-bug": "opus",
   "workspace-cleanup": "haiku",
+  "normalizer": "sonnet",
 };
 
 export const DEFAULT_CONFIG: HiveMindConfig = {
@@ -75,5 +77,6 @@ export const DEFAULT_CONFIG: HiveMindConfig = {
   reportExcerptLength: 200,
   baselineBuildCommand: "npm run build",
   baselineTestCommand: "npm test",
+  skipNormalize: false,
   modelAssignments: { ...DEFAULT_MODEL_ASSIGNMENTS },
 };

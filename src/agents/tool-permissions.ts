@@ -65,6 +65,9 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
 
   // Post-verify workspace cleanup (needs shell for mv + file listing)
   "workspace-cleanup": SHELL_ONLY_TOOLS,
+
+  // Normalize stage — read input + write output
+  "normalizer": OUTPUT_TOOLS,
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {
