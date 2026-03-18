@@ -96,4 +96,35 @@ describe("orchestrator checkpoint write", () => {
     consoleSpy.mockRestore();
     rmSync(testDir, { recursive: true, force: true });
   });
+
+  it("resumeFromCheckpoint at approve-spec with stopAfterPlan does NOT write approve-plan", async () => {
+    const { resumeFromCheckpoint } = await import("../../orchestrator.js");
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const testDir = join(process.cwd(), ".test-orch-cp-stop-plan");
+    mkdirSync(testDir, { recursive: true });
+    // Create the SPEC file that plan-stage needs
+    mkdirSync(join(testDir, "spec"), { recursive: true });
+    writeFileSync(join(testDir, "spec", "SPEC-v1.0.md"), "# SPEC\n## Requirements\nBuild something");
+    // Set stopAfterPlan: true in manager-log
+    writeFileSync(join(testDir, "manager-log.jsonl"), JSON.stringify({ timestamp: "2026-03-06T00:00:00Z", cycle: 0, storyId: null, action: "PIPELINE_START", reason: null, prdPath: "./PRD.md", stopAfterPlan: true, budget: 5 }) + "\n");
+    const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
+
+    await resumeFromCheckpoint(
+      { awaiting: "approve-spec", message: "test", timestamp: "2026-03-06T00:00:00Z", feedback: null },
+      dirs,
+      config,
+    );
+
+    // Should NOT have written an approve-plan checkpoint
+    const cpPath = join(testDir, ".checkpoint");
+    expect(existsSync(cpPath)).toBe(false);
+
+    // Should have printed the plan preview
+    const logCalls = consoleSpy.mock.calls.map((c) => c[0]);
+    expect(logCalls.some((msg: string) => typeof msg === "string" && msg.includes("--stop-after-plan"))).toBe(true);
+
+    consoleSpy.mockRestore();
+    rmSync(testDir, { recursive: true, force: true });
+  });
 });

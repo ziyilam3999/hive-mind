@@ -308,7 +308,8 @@ export async function resumeFromCheckpoint(
         }
       }
 
-      await runPlanStage(dirs, config, feedback, startDataSpec.greenfield);
+      const specTracker = new CostTracker(startDataSpec.budget);
+      await runPlanStage(dirs, config, feedback, startDataSpec.greenfield, specTracker);
       await safeUpdateManifest(dirs.workingDir);
 
       const planLogPath = join(dirs.workingDir, "manager-log.jsonl");
@@ -323,6 +324,24 @@ export async function resumeFromCheckpoint(
         } catch {
           console.warn("Warning: execution-plan.json is not valid JSON, skipping PLAN_COMPLETE log.");
         }
+      }
+
+      // Honor stopAfterPlan from persisted start data
+      if (startDataSpec.stopAfterPlan) {
+        if (fileExists(planFilePath)) {
+          const planData = loadExecutionPlan(planFilePath);
+          console.log("\n--- Plan Preview (--stop-after-plan) ---");
+          console.log(`Stories: ${planData.stories.length}`);
+          for (const s of planData.stories) {
+            const fileCount = getSourceFilePaths(s.sourceFiles).length;
+            console.log(`  ${s.id}: ${s.title} (${fileCount} files)`);
+          }
+          console.log("\nPipeline stopped after PLAN. No EXECUTE agents were spawned.");
+        }
+
+        printTimingSummary(specTracker);
+        writeTimingReport(specTracker, dirs.workingDir);
+        break;
       }
 
       writeCheckpoint(dirs.workingDir, {
