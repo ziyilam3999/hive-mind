@@ -12,7 +12,7 @@ import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { join } from "node:path";
-import { copyFileSync } from "node:fs";
+import { copyFileSync, readdirSync } from "node:fs";
 import type { StoryCheckpoint } from "../types/checkpoint.js";
 import { writeFileAtomic } from "../utils/file-io.js";
 import { isoTimestamp } from "../utils/timestamp.js";
@@ -51,6 +51,14 @@ export async function runVerify(
 
   const stepFilePath = join(dirs.workingDir, story.stepFile);
   const maxAttempts = story.maxAttempts;
+
+  const projectRoot = moduleCwd ?? process.cwd();
+  let preExecFiles: Set<string>;
+  try {
+    preExecFiles = new Set(readdirSync(projectRoot));
+  } catch {
+    preExecFiles = new Set(); // non-existent dir — skip cleanup later
+  }
 
   let attempt = 0;
   let lastConfidence: "structured" | "matched" | "default" = "default";
@@ -162,6 +170,7 @@ export async function runVerify(
     // should not force unnecessary fix cycles.
     if (evalResult.verdict === "FAIL" && evalResult.confidence === "default" && (testResult.confidence === "matched" || testResult.confidence === "structured")) {
       console.warn(`Warning: Eval parser returned default confidence for ${story.id} (attempt ${attempt}). Test passed with matched confidence — treating as PASS.`);
+      await runWorkspaceCleanup(projectRoot, preExecFiles, dirs, story.id, scratchDir, config);
       return { passed: true, attempts: attempt, testReportPath, evalReportPath, parserConfidence: lastConfidence };
     }
 
@@ -187,10 +196,12 @@ export async function runVerify(
     };
     writeFileAtomic(join(dirs.workingDir, getReportPath(story.id, "checkpoint.json")), JSON.stringify(verifyCheckpoint, null, 2) + "\n");
 
+    await runWorkspaceCleanup(projectRoot, preExecFiles, dirs, story.id, scratchDir, config);
     return { passed: true, attempts: attempt, testReportPath, evalReportPath, parserConfidence: lastConfidence };
   }
 
   // Exhausted attempts
+  await runWorkspaceCleanup(projectRoot, preExecFiles, dirs, story.id, scratchDir, config);
   return { passed: false, attempts: attempt, testReportPath, evalReportPath, parserConfidence: lastConfidence };
 }
 
@@ -311,4 +322,46 @@ export function verifyFixApplied(
 
   // At least one file path listed — basic sanity check
   return filesStr.length > 0;
+}
+
+async function runWorkspaceCleanup(
+  projectRoot: string,
+  preExecFiles: Set<string>,
+  dirs: PipelineDirs,
+  storyId: string,
+  scratchDir: string,
+  config: HiveMindConfig,
+): Promise<void> {
+  let currentFiles: string[];
+  try {
+    currentFiles = readdirSync(projectRoot);
+  } catch {
+    return; // best-effort
+  }
+
+  const newFiles = currentFiles.filter(f => !preExecFiles.has(f));
+  if (newFiles.length === 0) return;
+
+  const cleanupReportPath = join(dirs.workingDir, getReportPath(storyId, "cleanup-report.md"));
+
+  console.log(`Cleanup: ${newFiles.length} new file(s) detected in project root. Running workspace-cleanup agent...`);
+
+  try {
+    await spawnAgentWithRetry({
+      type: "workspace-cleanup",
+      model: "haiku",
+      inputFiles: [],
+      outputFile: cleanupReportPath,
+      rules: getAgentRules("workspace-cleanup"),
+      memoryContent: "",
+      instructionBlocks: [{
+        heading: "FILE SNAPSHOT",
+        content: `Pre-execution files (DO NOT TOUCH): ${[...preExecFiles].join(", ")}\n\nNew files to evaluate: ${newFiles.join(", ")}\n\nRelocate destination: ${scratchDir}`,
+      }],
+      cwd: projectRoot,
+      scratchDir,
+    }, config);
+  } catch {
+    console.warn("Warning: Workspace cleanup agent failed (non-blocking).");
+  }
 }

@@ -31,7 +31,8 @@ export type AgentType =
   | "compliance-fixer"
   | "decomposer"
   | "integration-verifier"
-  | "diagnostician-bug";
+  | "diagnostician-bug"
+  | "workspace-cleanup";
 
 export interface AgentConfig {
   type: AgentType;

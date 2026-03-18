@@ -55,6 +55,7 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "decomposer": "Break high-complexity story into 2-4 focused sub-tasks, splitting by file boundaries, producing structured JSON output",
   "integration-verifier": "Read SPEC inter-module contracts + impl-reports for both modules in a boundary pair, verify implementations satisfy contracts, produce integration-report.md",
   "diagnostician-bug": "Read bug report + codebase, perform root cause analysis, produce diagnosis-report-attempt-N.md with Root Cause, Affected Files, Recommended Fix, and Confidence sections",
+  "workspace-cleanup": "Identify and relocate stray files created by prior agents outside the scratch directory",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -220,6 +221,12 @@ const AGENT_RULES: Record<string, string[]> = {
     "AFFECTED-FILES: List each affected file with line numbers. Format: `path/to/file.ts:42-67 — description`.",
     "CONFIDENCE: Rate as HIGH (single clear root cause), MEDIUM (most likely cause), or LOW (multiple possible causes).",
     "ESCALATION: If Confidence is LOW and Affected Files spans >5 distinct files across >2 top-level dirs under src/, add an ## Escalation Recommendation section with ESCALATE_TO_PIPELINE.",
+  ],
+  "workspace-cleanup": [
+    "DIFF-ONLY: Compare the current project root file listing against the pre-execution snapshot. Only files that are NEW (not in snapshot) are candidates for relocation.",
+    "RELOCATE: Move stray files into the scratch directory using `mv`. Do not delete them.",
+    "REPORT: List every relocated file in your output report. If no stray files found, report 'clean'.",
+    "SAFE: Never touch files inside src/, node_modules/, .git/, or the .hive-mind-* directories.",
   ],
 };
 

@@ -62,6 +62,9 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
 
   // Bug-fix pipeline — diagnostician needs Write to produce diagnosis report (P42/F43)
   "diagnostician-bug": [...READ_ONLY_TOOLS, "Write"],
+
+  // Post-verify workspace cleanup (needs shell for mv + file listing)
+  "workspace-cleanup": SHELL_ONLY_TOOLS,
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {

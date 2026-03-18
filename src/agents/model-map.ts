@@ -32,6 +32,7 @@ export const AGENT_MODEL_MAP: Record<AgentType, ModelTier> = {
   "decomposer": "sonnet",
   "integration-verifier": "opus",
   "diagnostician-bug": "opus",
+  "workspace-cleanup": "haiku",
 };
 
 export function getModelForAgent(agentType: AgentType): ModelTier {

@@ -55,6 +55,7 @@ export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
   "decomposer": "sonnet",
   "integration-verifier": "opus",
   "diagnostician-bug": "opus",
+  "workspace-cleanup": "haiku",
 };
 
 export const DEFAULT_CONFIG: HiveMindConfig = {

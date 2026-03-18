@@ -186,12 +186,11 @@ export async function resumeFromCheckpoint(
       break;
     }
     case "approve-plan": {
-      deleteCheckpoint(dirs.workingDir);
-
-      // Baseline check — verify codebase compiles and tests pass before burning agent tokens
+      // Baseline check FIRST — checkpoint preserved on failure so user can re-approve
       if (!options?.skipBaseline) {
         await runBaselineCheck(config);
       }
+      deleteCheckpoint(dirs.workingDir);
 
       const tracker = new CostTracker();
       await runExecuteStage(dirs, config, tracker);
