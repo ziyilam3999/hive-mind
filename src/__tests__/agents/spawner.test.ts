@@ -75,6 +75,7 @@ describe("spawnAgent", () => {
     expect(callArgs.outputFormat).toBe("json");
     expect(callArgs.allowedTools).toEqual(["Read", "Glob", "Grep", "Write"]);
     expect(callArgs.timeout).toBe(config.agentTimeout);
+    expect(callArgs.outputFile).toBe("/tmp/output.md");
   });
 
   it("passes allowedTools from getToolsForAgent", async () => {
@@ -161,6 +162,22 @@ describe("spawnAgent", () => {
     expect(callArgs.cwd).toBeUndefined();
   });
 
+  it("treats non-zero exit as success when output file exists", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({
+      exitCode: 1,
+      stdout: "",
+      stderr: "killed",
+      json: { result: "", cost_usd: 0.02, model: "sonnet", session_id: "s2", duration_ms: 1000, raw: {} },
+    });
+    vi.mocked(fileExists).mockReturnValue(true);
+
+    const result = await spawnAgent(makeAgentConfig(), config);
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result.costUsd).toBe(0.02);
+  });
+
   it("uses config modelAssignments override", async () => {
     const mockSpawn = vi.mocked(spawnClaude);
     mockSpawn.mockResolvedValue({
@@ -203,6 +220,9 @@ describe("spawnAgentWithRetry", () => {
         exitCode: 0, stdout: "ok", stderr: "",
         json: { result: "ok", cost_usd: 0, model: "sonnet", session_id: "", duration_ms: 0, raw: {} },
       });
+
+    // First attempt fails (exit 1 + no file), second succeeds
+    vi.mocked(fileExists).mockReturnValueOnce(false).mockReturnValue(true);
 
     const result = await spawnAgentWithRetry(makeAgentConfig(), config);
     expect(result.success).toBe(true);

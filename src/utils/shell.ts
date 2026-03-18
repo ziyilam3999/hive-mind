@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 
 export interface ShellResult {
   stdout: string;
@@ -50,6 +51,8 @@ export interface ClaudeSpawnOptions {
   cwd?: string;
   timeout?: number;
   onData?: (chunk: string) => void;
+  outputFile?: string;
+  outputPollIntervalMs?: number;
 }
 
 export interface ClaudeJsonResult {
@@ -66,6 +69,7 @@ export interface ClaudeSpawnResult {
   stderr: string;
   stdout: string;
   json?: ClaudeJsonResult;
+  killedByOutputDetection?: boolean;
 }
 
 export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnResult> {
@@ -113,13 +117,30 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
     child.stderr!.on("data", (d: Buffer) => { stderr += d; });
 
     const timeout = options.timeout ?? 600_000;
+    let killedByOutputDetection = false;
+
     const timer = setTimeout(() => {
+      clearInterval(pollTimer);
       child.kill("SIGTERM");
       resolve({ exitCode: 1, stderr: stderr + "\n[spawnClaude] Timed out", stdout });
     }, timeout);
 
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
+    if (options.outputFile) {
+      const interval = options.outputPollIntervalMs ?? 5000;
+      pollTimer = setInterval(() => {
+        if (existsSync(options.outputFile!)) {
+          killedByOutputDetection = true;
+          child.kill("SIGTERM");
+        }
+      }, interval);
+    }
+
     child.on("close", (code) => {
       clearTimeout(timer);
+      clearInterval(pollTimer);
+
+      const exitCode = killedByOutputDetection ? 0 : (code ?? 1);
 
       let json: ClaudeJsonResult | undefined;
       if (options.outputFormat === "json") {
@@ -146,7 +167,7 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
         }
       }
 
-      resolve({ exitCode: code ?? 1, stderr, stdout, json });
+      resolve({ exitCode, stderr, stdout, json, killedByOutputDetection });
     });
   });
 }

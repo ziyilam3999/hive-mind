@@ -54,7 +54,8 @@ describe("Integration: retry with backoff", () => {
     const mockSpawn = vi.mocked(spawnClaude);
     let spawnCallCount = 0;
 
-    // Attempts 1-2 fail (exit code 1), attempt 3 succeeds
+    // Attempts 1-2 fail (exit code 1, no output file), attempt 3 succeeds
+    let fileExistsCallCount = 0;
     mockSpawn.mockImplementation(async () => {
       spawnCallCount++;
       if (spawnCallCount <= 2) {
@@ -66,8 +67,11 @@ describe("Integration: retry with backoff", () => {
       };
     });
 
-    // fileExists returns true always (output file exists after successful spawn)
-    vi.mocked(fileExists).mockReturnValue(true);
+    // fileExists returns false for failed attempts, true for successful one
+    vi.mocked(fileExists).mockImplementation(() => {
+      fileExistsCallCount++;
+      return fileExistsCallCount >= 3;
+    });
 
     const customConfig = { ...config, maxRetries: 2 };
     const result = await spawnAgentWithRetry(makeAgentConfig(), customConfig);
