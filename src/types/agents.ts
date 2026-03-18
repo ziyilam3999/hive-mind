@@ -57,4 +57,5 @@ export interface AgentResult {
   modelUsed?: string;
   sessionId?: string;
   durationMs?: number;
+  killedByOutputDetection?: boolean;
 }

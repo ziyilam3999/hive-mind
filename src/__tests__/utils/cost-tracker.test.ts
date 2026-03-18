@@ -85,6 +85,63 @@ describe("CostTracker", () => {
     expect(() => tracker.enforceBudget()).not.toThrow();
   });
 
+  describe("getTimingSummary", () => {
+    it("returns correct fastest/median/slowest", () => {
+      const tracker = new CostTracker();
+      tracker.recordAgentCost("SPEC", "critic", 0.01, 5000);
+      tracker.recordAgentCost("SPEC", "researcher", 0.03, 10000);
+      tracker.recordAgentCost("PLAN", "planner", 0.05, 12000);
+      tracker.recordAgentCost("SPEC", "spec-drafter", 0.04, 15000);
+      tracker.recordAgentCost("SPEC", "spec-corrector", 0.02, 20000);
+
+      const timing = tracker.getTimingSummary();
+      expect(timing.agentCount).toBe(5);
+      expect(timing.fastest).toEqual({ agentType: "critic", storyId: "SPEC", durationMs: 5000 });
+      // Math.floor(5/2) = 2 → index 2 in sorted array → planner at 12000
+      expect(timing.median).toEqual({ agentType: "planner", storyId: "PLAN", durationMs: 12000 });
+      expect(timing.slowest).toEqual({ agentType: "spec-corrector", storyId: "SPEC", durationMs: 20000 });
+      expect(timing.totalDurationMs).toBe(62000);
+    });
+
+    it("filters out entries with durationMs === 0", () => {
+      const tracker = new CostTracker();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      tracker.recordAgentCost("SPEC", "researcher", 0.03, 10000);
+      tracker.recordAgentCost("SPEC", "critic", undefined, 0);
+
+      const timing = tracker.getTimingSummary();
+      expect(timing.agentCount).toBe(1);
+      expect(timing.fastest!.agentType).toBe("researcher");
+      warnSpy.mockRestore();
+    });
+
+    it("returns nulls when no entries have positive duration", () => {
+      const tracker = new CostTracker();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      tracker.recordAgentCost("SPEC", "researcher", undefined, 0);
+      tracker.recordAgentCost("SPEC", "critic", undefined, 0);
+
+      const timing = tracker.getTimingSummary();
+      expect(timing.agentCount).toBe(0);
+      expect(timing.fastest).toBeNull();
+      expect(timing.median).toBeNull();
+      expect(timing.slowest).toBeNull();
+      expect(timing.totalDurationMs).toBe(0);
+      warnSpy.mockRestore();
+    });
+
+    it("handles single entry", () => {
+      const tracker = new CostTracker();
+      tracker.recordAgentCost("PLAN", "planner", 0.10, 8000);
+
+      const timing = tracker.getTimingSummary();
+      expect(timing.agentCount).toBe(1);
+      expect(timing.fastest).toEqual({ agentType: "planner", storyId: "PLAN", durationMs: 8000 });
+      expect(timing.median).toEqual({ agentType: "planner", storyId: "PLAN", durationMs: 8000 });
+      expect(timing.slowest).toEqual({ agentType: "planner", storyId: "PLAN", durationMs: 8000 });
+    });
+  });
+
   it("getSummary returns correct structure", () => {
     const tracker = new CostTracker();
     tracker.recordAgentCost("US-01", "implementer", 0.05, 5000);
