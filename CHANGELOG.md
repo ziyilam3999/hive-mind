@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/ziyilam3999/hive-mind/compare/v0.5.0...v0.5.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* honor stopAfterPlan on approve-spec resume and wire cost tracking ([05db9b6](https://github.com/ziyilam3999/hive-mind/commit/05db9b67fb38493eb38bbfca3000e8fb172f9810))
+
 ## [0.5.0](https://github.com/ziyilam3999/hive-mind/compare/v0.4.0...v0.5.0) (2026-03-18)
 
 
