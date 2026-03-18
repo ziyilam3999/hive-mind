@@ -10,7 +10,7 @@ import { HiveMindError } from "./utils/errors.js";
 import { join } from "node:path";
 
 export type ParsedCommand =
-  | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean }
+  | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean }
   | { command: "bug"; reportPath: string; silent?: boolean; skipBaseline?: boolean }
   | { command: "approve"; silent?: boolean; skipBaseline?: boolean }
   | { command: "reject"; feedback: string; silent?: boolean }
@@ -56,7 +56,9 @@ export function parseArgs(argv: string[]): ParsedCommand {
       }
       const skipBaseline = args.includes("--skip-baseline");
       const stopAfterPlan = args.includes("--stop-after-plan");
-      return { command: "start", prdPath: args[prdIdx + 1], silent, budget, skipBaseline, stopAfterPlan };
+      const skipNormalize = args.includes("--skip-normalize");
+      const greenfield = args.includes("--greenfield");
+      return { command: "start", prdPath: args[prdIdx + 1], silent, budget, skipBaseline, stopAfterPlan, skipNormalize, greenfield };
     }
     case "bug": {
       const reportIdx = args.indexOf("--report");
@@ -119,7 +121,7 @@ export async function main(): Promise<void> {
       if (claudeCheck.exitCode !== 0) {
         throw new HiveMindError("claude CLI not found on PATH");
       }
-      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan });
+      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan, skipNormalize: parsed.skipNormalize, greenfield: parsed.greenfield });
       break;
     }
     case "bug": {
@@ -244,6 +246,8 @@ Options:
   --skip-baseline        Skip pre-execution test baseline capture
   --budget <dollars>     Set cost budget limit (start only)
   --stop-after-plan      Run SPEC + PLAN only, then exit (start only)
+  --skip-normalize       Skip normalize stage (start only)
+  --greenfield           New project with no existing code (start only)
   --from <storyId>       Resume from specific story (resume only)
   --skip-failed          Skip failed stories on resume (resume only)
 

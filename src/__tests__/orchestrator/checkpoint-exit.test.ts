@@ -39,7 +39,7 @@ describe("orchestrator checkpoint exit", () => {
     const hmDir = join(testDir, ".hive-mind");
     const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
 
-    await runPipeline(prdPath, dirs, config);
+    await runPipeline(prdPath, dirs, config, { skipNormalize: true });
 
     const calls = consoleSpy.mock.calls.map((c) => c[0]);
     // Should have SPEC but NOT PLAN
@@ -82,6 +82,8 @@ describe("orchestrator checkpoint exit", () => {
     mkdirSync(testDir, { recursive: true });
     const checkpointPath = join(testDir, ".checkpoint");
     writeFileSync(checkpointPath, JSON.stringify({ awaiting: "approve-plan" }));
+    // getPipelineStartData now reads manager-log.jsonl
+    writeFileSync(join(testDir, "manager-log.jsonl"), JSON.stringify({ timestamp: "2026-03-06T00:00:00Z", cycle: 0, storyId: null, action: "PIPELINE_START", reason: null, prdPath: "./PRD.md", stopAfterPlan: false }) + "\n");
     const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
     // Make baseline throw

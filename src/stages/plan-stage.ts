@@ -44,10 +44,19 @@ export function scanForRoleKeywords(specContent: string): string[] {
   return roles;
 }
 
+const GREENFIELD_PLAN_BLOCK = {
+  heading: "GREENFIELD PROJECT",
+  content: `This is a greenfield project with NO existing code.
+- Don't assume any files, packages, or configuration exist.
+- The FIRST story MUST create package.json, tsconfig.json, .gitignore, and boilerplate.
+- ALL other stories MUST depend on it.`,
+};
+
 export async function runPlanStage(
   dirs: PipelineDirs,
   config: HiveMindConfig,
   feedback?: string,
+  greenfield?: boolean,
 ): Promise<void> {
   const plansDir = join(dirs.workingDir, "plans");
   const roleReportsDir = join(plansDir, "role-reports");
@@ -143,12 +152,16 @@ export async function runPlanStage(
 CRITICAL: schemaVersion MUST be exactly "2.0.0". Every story MUST have all fields listed above. Do NOT include stepContent or ACs/ECs — produce skeletons only (GOAL, SPEC REFS, INPUT, OUTPUT).
 DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path) and "changeType" ("ADDED" for new files, "MODIFIED" for existing files being changed, "REMOVED" for files being deleted). Do NOT use plain strings.${moduleIdInstruction}`;
 
+  const plannerRules = [...getAgentRules("planner"), PLANNER_SCHEMA];
+  if (greenfield) {
+    plannerRules.push(`${GREENFIELD_PLAN_BLOCK.heading}: ${GREENFIELD_PLAN_BLOCK.content}`);
+  }
   await spawnAgentWithRetry({
     type: "planner",
     model: "opus",
     inputFiles: [specPath, ...roleReportPaths],
     outputFile: planJsonPath,
-    rules: [...getAgentRules("planner"), PLANNER_SCHEMA],
+    rules: plannerRules,
     memoryContent: feedbackMemory,
     constitutionContent,
   }, config);

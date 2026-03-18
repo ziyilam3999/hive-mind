@@ -26,7 +26,7 @@ import { runWithConcurrency } from "./utils/concurrency.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
 import { isoTimestamp } from "./utils/timestamp.js";
 import { join } from "node:path";
-import { rmSync } from "node:fs";
+import { rmSync, readdirSync } from "node:fs";
 import { HiveMindError } from "./utils/errors.js";
 import { notifyCheckpoint } from "./utils/notify.js";
 import { CostTracker } from "./utils/cost-tracker.js";
@@ -41,6 +41,7 @@ import { parseRequiredTooling, detectAllTools } from "./tooling/detect.js";
 import { runToolingSetup } from "./tooling/setup.js";
 import { runReportStage as reportStage } from "./stages/report-stage.js";
 import { runBaselineCheck } from "./stages/baseline-check.js";
+import { runNormalizeStage } from "./stages/normalize-stage.js";
 import { updateManifest } from "./manifest/generator.js";
 import { parseImplReport } from "./reports/parser.js";
 import { getReportPath } from "./reports/templates.js";
@@ -69,7 +70,7 @@ export async function runPipeline(
   prdPath: string,
   dirs: PipelineDirs,
   config: HiveMindConfig,
-  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean },
+  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean },
 ): Promise<void> {
   if (!fileExists(prdPath)) {
     throw new HiveMindError(`PRD file not found: ${prdPath}`);
@@ -86,19 +87,55 @@ export async function runPipeline(
     createMemoryFromTemplate(memoryPath);
   }
 
-  await runSpecStage(prdPath, dirs, config);
+  // Log original PRD path and flags for rejection-loop recovery
+  const logPath0 = join(dirs.workingDir, "manager-log.jsonl");
+  appendLogEntry(logPath0, createLogEntry("PIPELINE_START", { prdPath, stopAfterPlan: options?.stopAfterPlan ?? false, budget: options?.budget, greenfield: options?.greenfield }));
+
+  const skipNormalize = options?.skipNormalize ?? config.skipNormalize;
+
+  if (!skipNormalize) {
+    console.log("Running NORMALIZE stage...");
+    await runNormalizeStage(prdPath, dirs, config);
+    console.log("NORMALIZE stage complete. Awaiting approval.");
+
+    writeCheckpoint(dirs.workingDir, {
+      awaiting: "approve-normalize",
+      message: getCheckpointMessage("approve-normalize"),
+      timestamp: isoTimestamp(),
+      feedback: null,
+    });
+
+    console.log(getCheckpointMessage("approve-normalize"));
+    notifyCheckpoint(options?.silent ?? false);
+    return;
+  }
+
+  // skipNormalize — proceed directly to SPEC with original PRD
+  await runSpecThenCheckpoint(prdPath, dirs, config, options?.silent ?? false, options?.stopAfterPlan, options?.greenfield);
+}
+
+async function runSpecThenCheckpoint(
+  prdPath: string,
+  dirs: PipelineDirs,
+  config: HiveMindConfig,
+  silent: boolean,
+  stopAfterPlan?: boolean,
+  greenfield?: boolean,
+): Promise<void> {
+  console.log("Running SPEC stage...");
+  await specStage(prdPath, dirs, config, undefined, greenfield);
   await safeUpdateManifest(dirs.workingDir);
 
-  const logPath0 = join(dirs.workingDir, "manager-log.jsonl");
+  const specLogPath = join(dirs.workingDir, "manager-log.jsonl");
   const specDir = join(dirs.workingDir, "spec");
-  const specFiles = fileExists(specDir) ? (await import("node:fs")).readdirSync(specDir).filter((f: string) => f.endsWith(".md")) : [];
-  appendLogEntry(logPath0, createLogEntry("SPEC_COMPLETE", {
+  const specFiles = fileExists(specDir) ? readdirSync(specDir).filter((f: string) => f.endsWith(".md")) : [];
+  appendLogEntry(specLogPath, createLogEntry("SPEC_COMPLETE", {
     artifactCount: specFiles.length,
   }));
 
   // --stop-after-plan: auto-approve SPEC, run PLAN, print summary, exit
-  if (options?.stopAfterPlan) {
-    await runPlanStage(dirs, config);
+  if (stopAfterPlan) {
+    await runPlanStage(dirs, config, undefined, greenfield);
     await safeUpdateManifest(dirs.workingDir);
 
     const planFilePath = join(dirs.workingDir, "plans", "execution-plan.json");
@@ -124,21 +161,90 @@ export async function runPipeline(
 
   console.log("SPEC stage complete. Awaiting approval.");
   console.log(getCheckpointMessage("approve-spec"));
-  notifyCheckpoint(options?.silent ?? false);
+  notifyCheckpoint(silent);
+}
+
+function getPipelineStartData(workingDir: string): { prdPath: string; stopAfterPlan: boolean; budget?: number; greenfield?: boolean } {
+  const logPath = join(workingDir, "manager-log.jsonl");
+  const logContent = readFileSafe(logPath);
+  if (!logContent) {
+    throw new HiveMindError("manager-log.jsonl not found — cannot determine original PRD path");
+  }
+
+  // Parse JSONL: find the LAST PIPELINE_START entry (last-wins for append-only log)
+  const lines = logContent.trim().split("\n");
+  let lastData: { prdPath: string; stopAfterPlan: boolean; budget?: number; greenfield?: boolean } | undefined;
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line);
+      if (entry.action === "PIPELINE_START" && entry.prdPath) {
+        lastData = {
+          prdPath: entry.prdPath,
+          stopAfterPlan: entry.stopAfterPlan ?? false,
+          budget: entry.budget,
+          greenfield: entry.greenfield,
+        };
+      }
+    } catch {
+      continue; // skip malformed lines
+    }
+  }
+
+  if (!lastData) {
+    throw new HiveMindError("PIPELINE_START entry not found in manager-log.jsonl — cannot determine original PRD path for re-normalization");
+  }
+
+  return lastData;
 }
 
 export async function resumeFromCheckpoint(
   checkpoint: Checkpoint,
   dirs: PipelineDirs,
   config: HiveMindConfig,
-  options?: { silent?: boolean; skipBaseline?: boolean },
+  options?: { silent?: boolean; skipBaseline?: boolean; stopAfterPlan?: boolean },
 ): Promise<void> {
   const silent = options?.silent ?? false;
   const feedback = checkpoint.feedback ?? undefined;
 
   switch (checkpoint.awaiting) {
+    case "approve-normalize": {
+      deleteCheckpoint(dirs.workingDir);
+
+      const normalizedPrd = join(dirs.workingDir, "normalize", "normalized-prd.md");
+      const normalizedContent = readFileSafe(normalizedPrd);
+      if (normalizedContent === null) {
+        throw new HiveMindError("normalized-prd.md not found — re-run normalize stage");
+      }
+      if (normalizedContent.trim() === "") {
+        throw new HiveMindError("normalized-prd.md is empty — re-run normalize stage");
+      }
+
+      const startData = getPipelineStartData(dirs.workingDir);
+
+      if (feedback) {
+        console.log(`Re-running NORMALIZE with feedback...`);
+        await runNormalizeStage(startData.prdPath, dirs, config, feedback);
+
+        writeCheckpoint(dirs.workingDir, {
+          awaiting: "approve-normalize",
+          message: getCheckpointMessage("approve-normalize"),
+          timestamp: isoTimestamp(),
+          feedback: null,
+        });
+
+        console.log("NORMALIZE stage updated. Review again.");
+        console.log(getCheckpointMessage("approve-normalize"));
+        notifyCheckpoint(silent);
+        break;
+      }
+
+      // Approved — proceed to SPEC with normalized PRD
+      await runSpecThenCheckpoint(normalizedPrd, dirs, config, silent, startData.stopAfterPlan, startData.greenfield);
+      break;
+    }
     case "approve-spec": {
       deleteCheckpoint(dirs.workingDir);
+      const startDataSpec = getPipelineStartData(dirs.workingDir);
 
       // Tooling detect/setup (US-11)
       const specPath = join(dirs.workingDir, "spec", "SPEC-v1.0.md");
@@ -156,7 +262,7 @@ export async function resumeFromCheckpoint(
         }
       }
 
-      await runPlanStage(dirs, config, feedback);
+      await runPlanStage(dirs, config, feedback, startDataSpec.greenfield);
       await safeUpdateManifest(dirs.workingDir);
 
       const planLogPath = join(dirs.workingDir, "manager-log.jsonl");
@@ -186,13 +292,16 @@ export async function resumeFromCheckpoint(
       break;
     }
     case "approve-plan": {
+      const startDataPlan = getPipelineStartData(dirs.workingDir);
+
       // Baseline check FIRST — checkpoint preserved on failure so user can re-approve
-      if (!options?.skipBaseline) {
+      // Greenfield projects skip baseline automatically (no existing code to check)
+      if (!options?.skipBaseline && !startDataPlan.greenfield) {
         await runBaselineCheck(config);
       }
       deleteCheckpoint(dirs.workingDir);
 
-      const tracker = new CostTracker();
+      const tracker = new CostTracker(startDataPlan.budget);
       await runExecuteStage(dirs, config, tracker);
 
       const summary = tracker.getSummary();
@@ -297,18 +406,20 @@ export async function runSpecStage(
   dirs: PipelineDirs,
   config: HiveMindConfig,
   feedback?: string,
+  greenfield?: boolean,
 ): Promise<void> {
   console.log("Running SPEC stage...");
-  await specStage(prdPath, dirs, config, feedback);
+  await specStage(prdPath, dirs, config, feedback, greenfield);
 }
 
 export async function runPlanStage(
   dirs: PipelineDirs,
   config: HiveMindConfig,
   feedback?: string,
+  greenfield?: boolean,
 ): Promise<void> {
   console.log("Running PLAN stage...");
-  await planStage(dirs, config, feedback);
+  await planStage(dirs, config, feedback, greenfield);
 }
 
 export interface StoryExecutionResult {

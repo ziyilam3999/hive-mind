@@ -19,7 +19,8 @@ export type LogAction =
   | "FIX_COMPLETE"
   | "VERIFY_COMPLETE"
   | "BUG_FIX_COMPLETE"
-  | "BUG_FIX_EXHAUSTED";
+  | "BUG_FIX_EXHAUSTED"
+  | "PIPELINE_START";
 
 export interface ManagerLogEntry {
   timestamp: string;
@@ -52,4 +53,8 @@ export interface ManagerLogEntry {
   confidence?: string;
   shouldEscalate?: boolean;
   attempts?: number;
+  prdPath?: string;
+  stopAfterPlan?: boolean;
+  budget?: number;
+  greenfield?: boolean;
 }
