@@ -13,25 +13,26 @@ import { checkEli5Presence } from "../reports/parser.js";
 import { readFileSafe, fileExists } from "../utils/file-io.js";
 import { estimateWordCount } from "../utils/token-count.js";
 import type { HiveMindConfig } from "../config/schema.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import type { ExecutionPlan } from "../types/execution-plan.js";
 import { getSourceFilePaths } from "../types/execution-plan.js";
 import { join } from "node:path";
 import { readdirSync } from "node:fs";
 
-export async function runReportStage(hiveMindDir: string, config: HiveMindConfig): Promise<void> {
-  const reportsDir = join(hiveMindDir, "reports");
-  const memoryPath = join(hiveMindDir, "memory.md");
+export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig): Promise<void> {
+  const reportsDir = join(dirs.workingDir, "reports");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
-  const kbDir = join(hiveMindDir, "knowledge-base");
+  const kbDir = join(dirs.knowledgeDir, "knowledge-base");
 
   // Batch 1: code-reviewer + log-summarizer (produce inputs for reporter)
   console.log("Running code-reviewer + log-summarizer in parallel...");
   const reportFiles = collectAllReportFiles(reportsDir);
-  const planPath = join(hiveMindDir, "plans", "execution-plan.json");
+  const planPath = join(dirs.workingDir, "plans", "execution-plan.json");
 
-  const codeReviewReportPath = join(hiveMindDir, "code-review-report.md");
-  const logAnalysisPath = join(hiveMindDir, "log-analysis.md");
-  const managerLogPath = join(hiveMindDir, "manager-log.jsonl");
+  const codeReviewReportPath = join(dirs.workingDir, "code-review-report.md");
+  const logAnalysisPath = join(dirs.workingDir, "log-analysis.md");
+  const managerLogPath = join(dirs.workingDir, "manager-log.jsonl");
 
   const implAndRefactorReports = collectImplAndRefactorReports(reportsDir);
   const changedSourceFiles = collectChangedSourceFiles(planPath);
@@ -75,8 +76,8 @@ export async function runReportStage(hiveMindDir: string, config: HiveMindConfig
   const learningFiles = collectLearningFiles(reportsDir);
   const kbFiles = collectKnowledgeBaseFiles(kbDir);
 
-  const consolidatedPath = join(hiveMindDir, "consolidated-report.md");
-  const retrospectivePath = join(hiveMindDir, "retrospective.md");
+  const consolidatedPath = join(dirs.workingDir, "consolidated-report.md");
+  const retrospectivePath = join(dirs.workingDir, "retrospective.md");
 
   await spawnAgentsParallel([
     {

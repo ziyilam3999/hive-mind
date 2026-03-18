@@ -3,9 +3,11 @@
 import { readFileSafe, fileExists } from "./utils/file-io.js";
 import { runShell } from "./utils/shell.js";
 import type { Checkpoint } from "./types/checkpoint.js";
+import type { PipelineDirs } from "./types/pipeline-dirs.js";
 import { runPipeline, resumeFromCheckpoint, runBugFixPipeline } from "./orchestrator.js";
-import { loadConfig } from "./config/loader.js";
+import { loadConfig, resolvePipelineDirs } from "./config/loader.js";
 import { HiveMindError } from "./utils/errors.js";
+import { join } from "node:path";
 
 export type ParsedCommand =
   | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean }
@@ -95,6 +97,7 @@ export function parseArgs(argv: string[]): ParsedCommand {
 export async function main(): Promise<void> {
   const parsed = parseArgs(process.argv);
   const config = loadConfig(process.cwd());
+  const dirs = resolvePipelineDirs(config, process.cwd());
 
   switch (parsed.command) {
     case "help": {
@@ -116,7 +119,7 @@ export async function main(): Promise<void> {
       if (claudeCheck.exitCode !== 0) {
         throw new HiveMindError("claude CLI not found on PATH");
       }
-      await runPipeline(parsed.prdPath, ".hive-mind", config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan });
+      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan });
       break;
     }
     case "bug": {
@@ -128,7 +131,7 @@ export async function main(): Promise<void> {
       if (claudeCheckBug.exitCode !== 0) {
         throw new HiveMindError("claude CLI not found on PATH");
       }
-      const exitCode = await runBugFixPipeline(parsed.reportPath, ".hive-mind", config, {
+      const exitCode = await runBugFixPipeline(parsed.reportPath, dirs, config, {
         silent: parsed.silent,
         skipBaseline: parsed.skipBaseline,
       });
@@ -138,24 +141,24 @@ export async function main(): Promise<void> {
       break;
     }
     case "approve": {
-      const checkpoint = readCheckpointFile();
+      const checkpoint = readCheckpointFile(dirs);
       if (!checkpoint) {
         throw new HiveMindError("No active checkpoint");
       }
-      await resumeFromCheckpoint(checkpoint, ".hive-mind", config, { silent: parsed.silent, skipBaseline: parsed.skipBaseline });
+      await resumeFromCheckpoint(checkpoint, dirs, config, { silent: parsed.silent, skipBaseline: parsed.skipBaseline });
       break;
     }
     case "reject": {
-      const checkpoint = readCheckpointFile();
+      const checkpoint = readCheckpointFile(dirs);
       if (!checkpoint) {
         throw new HiveMindError("No active checkpoint");
       }
       checkpoint.feedback = parsed.feedback;
-      await resumeFromCheckpoint(checkpoint, ".hive-mind", config, { silent: parsed.silent });
+      await resumeFromCheckpoint(checkpoint, dirs, config, { silent: parsed.silent });
       break;
     }
     case "status": {
-      const checkpoint = readCheckpointFile();
+      const checkpoint = readCheckpointFile(dirs);
       if (!checkpoint) {
         console.log("Status: no active pipeline");
       } else {
@@ -166,7 +169,7 @@ export async function main(): Promise<void> {
       break;
     }
     case "abort": {
-      const cpPath = ".hive-mind/.checkpoint";
+      const cpPath = join(dirs.workingDir, ".checkpoint");
       if (fileExists(cpPath)) {
         const { unlinkSync } = await import("node:fs");
         unlinkSync(cpPath);
@@ -176,12 +179,12 @@ export async function main(): Promise<void> {
     }
     case "manifest": {
       const { updateManifest } = await import("./manifest/generator.js");
-      await updateManifest(".hive-mind");
-      console.log("Manifest updated: .hive-mind/MANIFEST.md");
+      await updateManifest(dirs.workingDir);
+      console.log(`Manifest updated: ${dirs.workingDir}/MANIFEST.md`);
       break;
     }
     case "resume": {
-      const planPath = ".hive-mind/plans/execution-plan.json";
+      const planPath = join(dirs.workingDir, "plans/execution-plan.json");
       if (!fileExists(planPath)) {
         throw new HiveMindError("No execution plan found. Run 'start' and 'approve' first.");
       }
@@ -214,8 +217,8 @@ export async function main(): Promise<void> {
       }
 
       const { runExecuteStage, runReportStage } = await import("./orchestrator.js");
-      await runExecuteStage(".hive-mind", config);
-      await runReportStage(".hive-mind", config);
+      await runExecuteStage(dirs, config);
+      await runReportStage(dirs, config);
       break;
     }
   }
@@ -232,7 +235,7 @@ Commands:
   resume                 Resume execution from saved plan
   status                 Show current pipeline status
   abort                  Cancel active pipeline
-  manifest               Update .hive-mind/MANIFEST.md
+  manifest               Update MANIFEST.md in working directory
   help                   Show this help message
   version                Show version number
 
@@ -244,13 +247,18 @@ Options:
   --from <storyId>       Resume from specific story (resume only)
   --skip-failed          Skip failed stories on resume (resume only)
 
+Directories (configurable via .hivemindrc.json):
+  .hive-mind-working/    Pipeline output (specs, plans, reports)
+  ../.hive-mind-persist/ Shared knowledge (memory, knowledge-base)
+  .hive-mind-lab/        Test and experiment output
+
 Rough cost estimate: ~$0.02 per PRD word (SPEC+PLAN+EXECUTE).
 A 500-word PRD ≈ $10. A 2000-word PRD ≈ $40.
 Use --stop-after-plan for an exact plan preview (runs real LLM calls).`);
 }
 
-function readCheckpointFile(): Checkpoint | null {
-  const content = readFileSafe(".hive-mind/.checkpoint");
+function readCheckpointFile(dirs: PipelineDirs): Checkpoint | null {
+  const content = readFileSafe(join(dirs.workingDir, ".checkpoint"));
   if (!content) return null;
   try {
     return JSON.parse(content) as Checkpoint;

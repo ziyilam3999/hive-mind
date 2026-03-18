@@ -18,6 +18,7 @@ import { getToolsForAgent } from "../../agents/tool-permissions.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const config = getDefaultConfig();
 
@@ -51,6 +52,7 @@ function makePlan(stories: Story[], modules?: Module[]): ExecutionPlan {
 
 describe("integrate-verify", () => {
   const testDir = join(process.cwd(), ".test-integrate-verify");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   beforeEach(() => {
     rmSync(testDir, { recursive: true, force: true });
@@ -65,7 +67,7 @@ describe("integrate-verify", () => {
 
   it("skips for single-repo (no modules)", async () => {
     const plan = makePlan([makeStory({ id: "US-01" })]);
-    const result = await runIntegrateVerify(plan, testDir, config);
+    const result = await runIntegrateVerify(plan, dirs, config);
     expect(result.skipped).toBe(true);
     expect(result.passed).toBe(true);
     expect(vi.mocked(spawnAgentWithRetry)).not.toHaveBeenCalled();
@@ -73,7 +75,7 @@ describe("integrate-verify", () => {
 
   it("skips for empty modules array", async () => {
     const plan = makePlan([makeStory({ id: "US-01" })], []);
-    const result = await runIntegrateVerify(plan, testDir, config);
+    const result = await runIntegrateVerify(plan, dirs, config);
     expect(result.skipped).toBe(true);
   });
 
@@ -86,7 +88,7 @@ describe("integrate-verify", () => {
         { id: "app", path: "/app", role: "consumer", dependencies: ["lib"] },
       ],
     );
-    const result = await runIntegrateVerify(plan, testDir, config);
+    const result = await runIntegrateVerify(plan, dirs, config);
     expect(result.skipped).toBe(false);
     expect(result.warning).toBe("No contracts defined — cannot verify");
     expect(vi.mocked(spawnAgentWithRetry)).not.toHaveBeenCalled();
@@ -107,7 +109,7 @@ describe("integrate-verify", () => {
       ],
     );
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const result = await runIntegrateVerify(plan, testDir, config);
+    const result = await runIntegrateVerify(plan, dirs, config);
     consoleSpy.mockRestore();
 
     // 2 edges: lib→app, lib→api
@@ -129,7 +131,7 @@ describe("integrate-verify", () => {
       ],
     );
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    await runIntegrateVerify(plan, testDir, config);
+    await runIntegrateVerify(plan, dirs, config);
     consoleSpy.mockRestore();
 
     const call = vi.mocked(spawnAgentWithRetry).mock.calls[0];
@@ -154,7 +156,7 @@ describe("integrate-verify", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     // Should not throw — non-fatal
-    const result = await runIntegrateVerify(plan, testDir, config);
+    const result = await runIntegrateVerify(plan, dirs, config);
 
     expect(result.boundaries).toHaveLength(1);
     expect(result.boundaries[0].passed).toBe(false);

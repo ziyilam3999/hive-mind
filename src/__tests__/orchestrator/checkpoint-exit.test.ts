@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 // Mock the agent spawner to avoid calling real claude CLI
 vi.mock("../../agents/spawner.js", () => ({
@@ -27,8 +28,9 @@ describe("orchestrator checkpoint exit", () => {
     const prdPath = join(testDir, "PRD.md");
     writeFileSync(prdPath, "# Test PRD");
     const hmDir = join(testDir, ".hive-mind");
+    const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
 
-    await runPipeline(prdPath, hmDir, config);
+    await runPipeline(prdPath, dirs, config);
 
     const calls = consoleSpy.mock.calls.map((c) => c[0]);
     // Should have SPEC but NOT PLAN
@@ -46,10 +48,11 @@ describe("orchestrator checkpoint exit", () => {
     const testDir = join(process.cwd(), ".test-orch-ship");
     mkdirSync(testDir, { recursive: true });
     writeFileSync(join(testDir, ".checkpoint"), '{"awaiting":"ship"}');
+    const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
     await resumeFromCheckpoint(
       { awaiting: "ship", message: "test", timestamp: "2026-03-06T00:00:00Z", feedback: null },
-      testDir,
+      dirs,
       config,
     );
 

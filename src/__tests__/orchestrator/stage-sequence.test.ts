@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 // Mock the agent spawner to avoid calling real claude CLI
 vi.mock("../../agents/spawner.js", () => ({
@@ -30,7 +31,9 @@ describe("orchestrator stage sequence", () => {
     writeFileSync(prdPath, "# Test PRD");
 
     try {
-      await runPipeline(prdPath, join(testDir, ".hive-mind"), config);
+      const hmDir = join(testDir, ".hive-mind");
+      const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
+      await runPipeline(prdPath, dirs, config);
     } catch {
       // process.exit throws
     }
@@ -53,9 +56,10 @@ describe("orchestrator stage sequence", () => {
     mkdirSync(testDir, { recursive: true });
 
     // Test ship checkpoint (simplest)
+    const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
     await resumeFromCheckpoint(
       { awaiting: "ship", message: "test", timestamp: "2026-03-06T00:00:00Z", feedback: null },
-      testDir,
+      dirs,
       config,
     );
     const calls = consoleSpy.mock.calls.map((c) => c[0]);

@@ -2,6 +2,7 @@ import type { Checkpoint } from "./types/checkpoint.js";
 import type { ExecutionPlan } from "./types/execution-plan.js";
 import { getSourceFilePaths } from "./types/execution-plan.js";
 import type { HiveMindConfig } from "./config/schema.js";
+import type { PipelineDirs } from "./types/pipeline-dirs.js";
 import { fileExists, ensureDir, readFileSafe } from "./utils/file-io.js";
 import { createMemoryFromTemplate } from "./memory/memory-manager.js";
 import {
@@ -56,9 +57,9 @@ import { writeFileAtomic } from "./utils/file-io.js";
 import { spawnAgentWithRetry } from "./agents/spawner.js";
 import { getAgentRules } from "./agents/prompts.js";
 
-async function safeUpdateManifest(hiveMindDir: string): Promise<void> {
+async function safeUpdateManifest(workingDir: string): Promise<void> {
   try {
-    await updateManifest(hiveMindDir);
+    await updateManifest(workingDir);
   } catch (err) {
     console.warn(`Warning: Manifest update failed: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -66,7 +67,7 @@ async function safeUpdateManifest(hiveMindDir: string): Promise<void> {
 
 export async function runPipeline(
   prdPath: string,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean },
 ): Promise<void> {
@@ -74,21 +75,22 @@ export async function runPipeline(
     throw new HiveMindError(`PRD file not found: ${prdPath}`);
   }
 
-  ensureDir(hiveMindDir);
-  ensureDir(join(hiveMindDir, "spec"));
-  ensureDir(join(hiveMindDir, "plans"));
-  ensureDir(join(hiveMindDir, "reports"));
+  ensureDir(dirs.workingDir);
+  ensureDir(join(dirs.workingDir, "spec"));
+  ensureDir(join(dirs.workingDir, "plans"));
+  ensureDir(join(dirs.workingDir, "reports"));
+  ensureDir(dirs.knowledgeDir);
 
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   if (!fileExists(memoryPath)) {
     createMemoryFromTemplate(memoryPath);
   }
 
-  await runSpecStage(prdPath, hiveMindDir, config);
-  await safeUpdateManifest(hiveMindDir);
+  await runSpecStage(prdPath, dirs, config);
+  await safeUpdateManifest(dirs.workingDir);
 
-  const logPath0 = join(hiveMindDir, "manager-log.jsonl");
-  const specDir = join(hiveMindDir, "spec");
+  const logPath0 = join(dirs.workingDir, "manager-log.jsonl");
+  const specDir = join(dirs.workingDir, "spec");
   const specFiles = fileExists(specDir) ? (await import("node:fs")).readdirSync(specDir).filter((f: string) => f.endsWith(".md")) : [];
   appendLogEntry(logPath0, createLogEntry("SPEC_COMPLETE", {
     artifactCount: specFiles.length,
@@ -96,10 +98,10 @@ export async function runPipeline(
 
   // --stop-after-plan: auto-approve SPEC, run PLAN, print summary, exit
   if (options?.stopAfterPlan) {
-    await runPlanStage(hiveMindDir, config);
-    await safeUpdateManifest(hiveMindDir);
+    await runPlanStage(dirs, config);
+    await safeUpdateManifest(dirs.workingDir);
 
-    const planFilePath = join(hiveMindDir, "plans", "execution-plan.json");
+    const planFilePath = join(dirs.workingDir, "plans", "execution-plan.json");
     if (fileExists(planFilePath)) {
       const planData = loadExecutionPlan(planFilePath);
       console.log("\n--- Plan Preview (--stop-after-plan) ---");
@@ -113,7 +115,7 @@ export async function runPipeline(
     return;
   }
 
-  writeCheckpoint(hiveMindDir, {
+  writeCheckpoint(dirs.workingDir, {
     awaiting: "approve-spec",
     message: getCheckpointMessage("approve-spec"),
     timestamp: isoTimestamp(),
@@ -127,7 +129,7 @@ export async function runPipeline(
 
 export async function resumeFromCheckpoint(
   checkpoint: Checkpoint,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   options?: { silent?: boolean; skipBaseline?: boolean },
 ): Promise<void> {
@@ -136,17 +138,17 @@ export async function resumeFromCheckpoint(
 
   switch (checkpoint.awaiting) {
     case "approve-spec": {
-      deleteCheckpoint(hiveMindDir);
+      deleteCheckpoint(dirs.workingDir);
 
       // Tooling detect/setup (US-11)
-      const specPath = join(hiveMindDir, "spec", "SPEC-v1.0.md");
+      const specPath = join(dirs.workingDir, "spec", "SPEC-v1.0.md");
       const specContent = readFileSafe(specPath);
       if (specContent) {
         const requirements = parseRequiredTooling(specContent);
         if (requirements.length > 0) {
           const { allDetected } = await detectAllTools(requirements, config);
           if (!allDetected) {
-            const setupOk = await runToolingSetup(requirements, hiveMindDir, config);
+            const setupOk = await runToolingSetup(requirements, dirs, config);
             if (!setupOk) {
               throw new HiveMindError("Tooling setup failed. Please install required tools manually.");
             }
@@ -154,11 +156,11 @@ export async function resumeFromCheckpoint(
         }
       }
 
-      await runPlanStage(hiveMindDir, config, feedback);
-      await safeUpdateManifest(hiveMindDir);
+      await runPlanStage(dirs, config, feedback);
+      await safeUpdateManifest(dirs.workingDir);
 
-      const planLogPath = join(hiveMindDir, "manager-log.jsonl");
-      const planFilePath = join(hiveMindDir, "plans", "execution-plan.json");
+      const planLogPath = join(dirs.workingDir, "manager-log.jsonl");
+      const planFilePath = join(dirs.workingDir, "plans", "execution-plan.json");
       if (fileExists(planFilePath)) {
         try {
           const planData = loadExecutionPlan(planFilePath);
@@ -171,7 +173,7 @@ export async function resumeFromCheckpoint(
         }
       }
 
-      writeCheckpoint(hiveMindDir, {
+      writeCheckpoint(dirs.workingDir, {
         awaiting: "approve-plan",
         message: getCheckpointMessage("approve-plan"),
         timestamp: isoTimestamp(),
@@ -184,7 +186,7 @@ export async function resumeFromCheckpoint(
       break;
     }
     case "approve-plan": {
-      deleteCheckpoint(hiveMindDir);
+      deleteCheckpoint(dirs.workingDir);
 
       // Baseline check — verify codebase compiles and tests pass before burning agent tokens
       if (!options?.skipBaseline) {
@@ -192,7 +194,7 @@ export async function resumeFromCheckpoint(
       }
 
       const tracker = new CostTracker();
-      await runExecuteStage(hiveMindDir, config, tracker);
+      await runExecuteStage(dirs, config, tracker);
 
       const summary = tracker.getSummary();
       if (summary.totalCostUsd > 0) {
@@ -203,15 +205,15 @@ export async function resumeFromCheckpoint(
       }
 
       // Integration verification (Phase 6 — multi-repo only)
-      const planPath2 = join(hiveMindDir, "plans", "execution-plan.json");
+      const planPath2 = join(dirs.workingDir, "plans", "execution-plan.json");
       const plan2 = loadExecutionPlan(planPath2);
-      const integResult = await runIntegrateVerify(plan2, hiveMindDir, config, tracker);
+      const integResult = await runIntegrateVerify(plan2, dirs, config, tracker);
 
       if (!integResult.skipped) {
         const integMessage = buildIntegrationCheckpointMessage(integResult);
         console.log(integMessage);
 
-        writeCheckpoint(hiveMindDir, {
+        writeCheckpoint(dirs.workingDir, {
           awaiting: "approve-integration",
           message: integMessage,
           timestamp: isoTimestamp(),
@@ -224,10 +226,10 @@ export async function resumeFromCheckpoint(
         break;
       }
 
-      await runReportStage(hiveMindDir, config);
-      await safeUpdateManifest(hiveMindDir);
+      await runReportStage(dirs, config);
+      await safeUpdateManifest(dirs.workingDir);
 
-      writeCheckpoint(hiveMindDir, {
+      writeCheckpoint(dirs.workingDir, {
         awaiting: "verify",
         message: getCheckpointMessage("verify"),
         timestamp: isoTimestamp(),
@@ -240,9 +242,9 @@ export async function resumeFromCheckpoint(
       break;
     }
     case "approve-diagnosis": {
-      deleteCheckpoint(hiveMindDir);
+      deleteCheckpoint(dirs.workingDir);
 
-      const exitCode = await resumeBugFixPipeline(hiveMindDir, config, { silent });
+      const exitCode = await resumeBugFixPipeline(dirs, config, { silent });
       if (exitCode !== 0) {
         console.error("Bug fix pipeline failed.");
       } else {
@@ -251,12 +253,12 @@ export async function resumeFromCheckpoint(
       break;
     }
     case "approve-integration": {
-      deleteCheckpoint(hiveMindDir);
+      deleteCheckpoint(dirs.workingDir);
 
-      await runReportStage(hiveMindDir, config);
-      await safeUpdateManifest(hiveMindDir);
+      await runReportStage(dirs, config);
+      await safeUpdateManifest(dirs.workingDir);
 
-      writeCheckpoint(hiveMindDir, {
+      writeCheckpoint(dirs.workingDir, {
         awaiting: "verify",
         message: getCheckpointMessage("verify"),
         timestamp: isoTimestamp(),
@@ -269,9 +271,9 @@ export async function resumeFromCheckpoint(
       break;
     }
     case "verify": {
-      deleteCheckpoint(hiveMindDir);
+      deleteCheckpoint(dirs.workingDir);
 
-      writeCheckpoint(hiveMindDir, {
+      writeCheckpoint(dirs.workingDir, {
         awaiting: "ship",
         message: getCheckpointMessage("ship"),
         timestamp: isoTimestamp(),
@@ -284,7 +286,7 @@ export async function resumeFromCheckpoint(
       break;
     }
     case "ship": {
-      deleteCheckpoint(hiveMindDir);
+      deleteCheckpoint(dirs.workingDir);
       console.log("Pipeline complete.");
       break;
     }
@@ -293,21 +295,21 @@ export async function resumeFromCheckpoint(
 
 export async function runSpecStage(
   prdPath: string,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   feedback?: string,
 ): Promise<void> {
   console.log("Running SPEC stage...");
-  await specStage(prdPath, hiveMindDir, config, feedback);
+  await specStage(prdPath, dirs, config, feedback);
 }
 
 export async function runPlanStage(
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   feedback?: string,
 ): Promise<void> {
   console.log("Running PLAN stage...");
-  await planStage(hiveMindDir, config, feedback);
+  await planStage(dirs, config, feedback);
 }
 
 export interface StoryExecutionResult {
@@ -327,7 +329,7 @@ export interface StoryExecutionResult {
  */
 export async function executeOneStory(
   story: Story,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
@@ -335,25 +337,25 @@ export async function executeOneStory(
 ): Promise<StoryExecutionResult> {
   // FW-01: If story has sub-tasks, execute per sub-task
   if (story.subTasks && story.subTasks.length > 0) {
-    return executeStoryWithSubTasks(story, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
+    return executeStoryWithSubTasks(story, dirs, config, costTracker, roleReportsDir, moduleCwd);
   }
 
-  return executeWholeStory(story, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
+  return executeWholeStory(story, dirs, config, costTracker, roleReportsDir, moduleCwd);
 }
 
 /** Original whole-story execution path */
 async function executeWholeStory(
   story: Story,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
   moduleCwd?: string,
 ): Promise<StoryExecutionResult> {
-  const logPath = join(hiveMindDir, "manager-log.jsonl");
+  const logPath = join(dirs.workingDir, "manager-log.jsonl");
 
   // RD-07: Check for mid-story checkpoint — skip completed sub-stages
-  const checkpointPath = join(hiveMindDir, getReportPath(story.id, "checkpoint.json"));
+  const checkpointPath = join(dirs.workingDir, getReportPath(story.id, "checkpoint.json"));
   const checkpointContent = readFileSafe(checkpointPath);
   const completedSubStages = new Set<string>();
   if (checkpointContent) {
@@ -369,7 +371,7 @@ async function executeWholeStory(
   // BUILD sub-pipeline (US-13)
   if (!completedSubStages.has("BUILD")) {
     console.log(`[${story.id}] BUILD: Starting...`);
-    await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir, undefined, moduleCwd);
+    await runBuild(story, dirs, config, costTracker, roleReportsDir, undefined, moduleCwd);
   } else {
     console.log(`[${story.id}] BUILD: Skipped (checkpoint)`);
   }
@@ -380,7 +382,7 @@ async function executeWholeStory(
 
   // COMPLIANCE check — between BUILD and VERIFY (ENH-17)
   // Non-fatal (P39): failure → proceed to VERIFY
-  const complianceResult = await runComplianceCheck(story, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
+  const complianceResult = await runComplianceCheck(story, dirs, config, costTracker, roleReportsDir, moduleCwd);
   if (!complianceResult.skipped) {
     appendLogEntry(logPath, createLogEntry("COMPLIANCE_CHECK", {
       storyId: story.id,
@@ -393,7 +395,7 @@ async function executeWholeStory(
   // VERIFY sub-pipeline (US-14) — no plan writes (refactored in Step 5)
   if (!completedSubStages.has("VERIFY")) {
     console.log(`[${story.id}] VERIFY: Starting...`);
-    const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir, undefined, moduleCwd);
+    const verifyResult = await runVerify(story, dirs, undefined, config, costTracker, roleReportsDir, undefined, moduleCwd);
 
     return {
       storyId: story.id,
@@ -420,13 +422,13 @@ async function executeWholeStory(
  */
 async function executeStoryWithSubTasks(
   story: Story,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
   moduleCwd?: string,
 ): Promise<StoryExecutionResult> {
-  const logPath = join(hiveMindDir, "manager-log.jsonl");
+  const logPath = join(dirs.workingDir, "manager-log.jsonl");
   let totalAttempts = 0;
 
   console.log(`[${story.id}] SUB-TASK EXECUTION: ${story.subTasks!.length} sub-tasks`);
@@ -441,7 +443,7 @@ async function executeStoryWithSubTasks(
       subTask.attempts = attempt;
 
       console.log(`[${story.id}/${subTask.id}] BUILD: Starting (attempt ${attempt})...`);
-      await runBuild(story, hiveMindDir, config, costTracker, roleReportsDir, {
+      await runBuild(story, dirs, config, costTracker, roleReportsDir, {
         sourceFiles: getSourceFilePaths(subTask.sourceFiles),
         title: subTask.title,
       }, moduleCwd);
@@ -451,7 +453,7 @@ async function executeStoryWithSubTasks(
       }));
 
       console.log(`[${story.id}/${subTask.id}] VERIFY: Starting...`);
-      const verifyResult = await runVerify(story, hiveMindDir, undefined, config, costTracker, roleReportsDir, {
+      const verifyResult = await runVerify(story, dirs, undefined, config, costTracker, roleReportsDir, {
         sourceFiles: getSourceFilePaths(subTask.sourceFiles),
         title: subTask.title,
       }, moduleCwd);
@@ -480,7 +482,7 @@ async function executeStoryWithSubTasks(
   }
 
   // All sub-tasks passed — run compliance on the whole story
-  const complianceResult = await runComplianceCheck(story, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
+  const complianceResult = await runComplianceCheck(story, dirs, config, costTracker, roleReportsDir, moduleCwd);
   if (!complianceResult.skipped) {
     appendLogEntry(logPath, createLogEntry("COMPLIANCE_CHECK", {
       storyId: story.id,
@@ -498,19 +500,19 @@ async function executeStoryWithSubTasks(
 }
 
 export async function runExecuteStage(
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   costTracker?: CostTracker,
 ): Promise<void> {
   console.log("Running EXECUTE stage...");
 
-  const planPath = join(hiveMindDir, "plans", "execution-plan.json");
+  const planPath = join(dirs.workingDir, "plans", "execution-plan.json");
   if (!fileExists(planPath)) {
     console.log("No execution plan found. Skipping EXECUTE stage.");
     return;
   }
 
-  const logPath = join(hiveMindDir, "manager-log.jsonl");
+  const logPath = join(dirs.workingDir, "manager-log.jsonl");
   let plan: ExecutionPlan = loadExecutionPlan(planPath);
 
   validateDependencies(plan);
@@ -521,7 +523,7 @@ export async function runExecuteStage(
     saveExecutionPlan(planPath, plan);
   }
 
-  const roleReportsDir = join(hiveMindDir, "plans", "role-reports");
+  const roleReportsDir = join(dirs.workingDir, "plans", "role-reports");
 
   // Wave executor: process stories in waves of non-overlapping, dependency-ready stories
   while (true) {
@@ -540,7 +542,7 @@ export async function runExecuteStage(
     // Parallel BUILD+VERIFY (bounded by maxConcurrency)
     const tasks = wave.map((s) => () => {
       const moduleCwd = getModuleCwd(plan, s.moduleId);
-      return executeOneStory(s, hiveMindDir, config, costTracker, roleReportsDir, moduleCwd);
+      return executeOneStory(s, dirs, config, costTracker, roleReportsDir, moduleCwd);
     });
     const settled = await runWithConcurrency(tasks, config.maxConcurrency);
 
@@ -548,7 +550,7 @@ export async function runExecuteStage(
     if (wave.length > 1) {
       const storyFiles = new Map<string, string[]>();
       for (const s of wave) {
-        const implPath = join(hiveMindDir, getReportPath(s.id, "impl-report.md"));
+        const implPath = join(dirs.workingDir, getReportPath(s.id, "impl-report.md"));
         const implContent = readFileSafe(implPath);
         if (implContent) {
           const parsed = parseImplReport(implContent);
@@ -596,11 +598,11 @@ export async function runExecuteStage(
         // COMMIT sub-pipeline (US-15) — serialized, no git races
         const storyModuleCwd = getModuleCwd(plan, story.moduleId);
         console.log(`[${story.id}] COMMIT: Starting...`);
-        const commitResult = await runCommit(story, hiveMindDir, {
+        const commitResult = await runCommit(story, dirs.workingDir, {
           passed: true,
           attempts: result.value.attempts,
-          testReportPath: join(hiveMindDir, `reports/${story.id}/test-report.md`),
-          evalReportPath: join(hiveMindDir, `reports/${story.id}/eval-report.md`),
+          testReportPath: join(dirs.workingDir, `reports/${story.id}/test-report.md`),
+          evalReportPath: join(dirs.workingDir, `reports/${story.id}/eval-report.md`),
           parserConfidence: "default",
         }, config, storyModuleCwd);
         plan = updateStoryStatus(plan, story.id, "passed");
@@ -652,12 +654,12 @@ export async function runExecuteStage(
 
     // Single disk write per wave
     saveExecutionPlan(planPath, plan);
-    await safeUpdateManifest(hiveMindDir);
+    await safeUpdateManifest(dirs.workingDir);
 
     // Sequential LEARN — no memory.md races
     for (const story of wave) {
       console.log(`[${story.id}] LEARN: Starting...`);
-      await runLearn(story, hiveMindDir, config, costTracker, roleReportsDir);
+      await runLearn(story, dirs, config, costTracker, roleReportsDir);
     }
 
     // Budget enforcement after wave (not per-story)
@@ -665,7 +667,7 @@ export async function runExecuteStage(
   }
 
   // K18: Best-effort cleanup of scratch directories
-  try { rmSync(join(hiveMindDir, "tmp"), { recursive: true, force: true }); } catch { /* best-effort */ }
+  try { rmSync(join(dirs.labDir, "tmp"), { recursive: true, force: true }); } catch { /* best-effort */ }
 
   // Check if all stories failed
   const allFailed = plan.stories.every((s) => s.status === "failed");
@@ -675,11 +677,11 @@ export async function runExecuteStage(
 }
 
 export async function runReportStage(
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
 ): Promise<void> {
   console.log("Running REPORT stage...");
-  await reportStage(hiveMindDir, config);
+  await reportStage(dirs, config);
 }
 
 /**
@@ -688,16 +690,16 @@ export async function runReportStage(
  */
 export async function runBugFixPipeline(
   bugReportPath: string,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   options?: { silent?: boolean; skipBaseline?: boolean },
 ): Promise<number> {
-  const bugFixDir = join(hiveMindDir, "reports", "bug-fix");
-  ensureDir(hiveMindDir);
-  ensureDir(join(hiveMindDir, "reports"));
+  const bugFixDir = join(dirs.workingDir, "reports", "bug-fix");
+  ensureDir(dirs.workingDir);
+  ensureDir(join(dirs.workingDir, "reports"));
   ensureDir(bugFixDir);
 
-  const logPath = join(hiveMindDir, "manager-log.jsonl");
+  const logPath = join(dirs.workingDir, "manager-log.jsonl");
   const maxAttempts = 3;
 
   // Read bug report
@@ -752,7 +754,7 @@ export async function runBugFixPipeline(
     saveBugFixState(bugFixDir, state);
 
     // DIAGNOSE
-    const diagResult = await runDiagnose(bugReportPath, hiveMindDir, config, attempt);
+    const diagResult = await runDiagnose(bugReportPath, dirs, config, attempt);
 
     if (!diagResult.success) {
       console.error(`DIAGNOSE failed on attempt ${attempt}`);
@@ -771,7 +773,7 @@ export async function runBugFixPipeline(
       state.checkpointFired = true;
       saveBugFixState(bugFixDir, state);
 
-      writeCheckpoint(hiveMindDir, {
+      writeCheckpoint(dirs.workingDir, {
         awaiting: "approve-diagnosis",
         message: getCheckpointMessage("approve-diagnosis"),
         timestamp: isoTimestamp(),
@@ -795,7 +797,7 @@ export async function runBugFixPipeline(
       inputFiles: [toSlash(diagResult.reportPath), toSlash(bugReportPath)],
       outputFile: toSlash(fixReportPath),
       rules: getAgentRules("fixer"),
-      memoryContent: readFileSafe(join(hiveMindDir, "memory.md")) ?? "",
+      memoryContent: readFileSafe(join(dirs.knowledgeDir, "memory.md")) ?? "",
     }, config);
 
     appendLogEntry(logPath, createLogEntry("FIX_COMPLETE", { attempt }));
@@ -876,11 +878,11 @@ export async function runBugFixPipeline(
  * Continues from FIX stage.
  */
 export async function resumeBugFixPipeline(
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   _options?: { silent?: boolean },
 ): Promise<number> {
-  const bugFixDir = join(hiveMindDir, "reports", "bug-fix");
+  const bugFixDir = join(dirs.workingDir, "reports", "bug-fix");
   const state = loadBugFixState(bugFixDir);
   if (!state) {
     throw new HiveMindError("No bug-fix state found. Run 'hive-mind bug --report <path>' first.");
@@ -888,8 +890,8 @@ export async function resumeBugFixPipeline(
 
   // Find the bug report path from state directory
   const bugReportPaths = [
-    join(hiveMindDir, "..", "bug-report.md"),
-    join(hiveMindDir, "bug-report.md"),
+    join(dirs.workingDir, "..", "bug-report.md"),
+    join(dirs.workingDir, "bug-report.md"),
   ];
   let bugReportPath: string | undefined;
   for (const p of bugReportPaths) {
@@ -899,7 +901,7 @@ export async function resumeBugFixPipeline(
     }
   }
 
-  const logPath = join(hiveMindDir, "manager-log.jsonl");
+  const logPath = join(dirs.workingDir, "manager-log.jsonl");
   const maxAttempts = 3;
   const attempts: Array<{ diagnosisPath: string; verifyReason: string }> = [];
 
@@ -915,7 +917,7 @@ export async function resumeBugFixPipeline(
     // On subsequent attempts, run diagnosis again
     if (attempt > state.attemptNumber || !fileExists(currentDiagPath)) {
       if (bugReportPath) {
-        await runDiagnose(bugReportPath, hiveMindDir, config, attempt);
+        await runDiagnose(bugReportPath, dirs, config, attempt);
       }
     }
 
@@ -932,7 +934,7 @@ export async function resumeBugFixPipeline(
       inputFiles: fixInputFiles,
       outputFile: toSlash(fixReportPath),
       rules: getAgentRules("fixer"),
-      memoryContent: readFileSafe(join(hiveMindDir, "memory.md")) ?? "",
+      memoryContent: readFileSafe(join(dirs.knowledgeDir, "memory.md")) ?? "",
     }, config);
 
     appendLogEntry(logPath, createLogEntry("FIX_COMPLETE", { attempt }));

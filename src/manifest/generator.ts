@@ -156,8 +156,8 @@ function formatInventory(groups: CategoryGroup[]): string {
   return lines.join("\n");
 }
 
-export async function updateManifest(hiveMindDir: string): Promise<void> {
-  const manifestPath = join(hiveMindDir, "MANIFEST.md");
+export async function updateManifest(workingDir: string): Promise<void> {
+  const manifestPath = join(workingDir, "MANIFEST.md");
 
   // Preserve static content if manifest exists
   let staticContent = STATIC_TEMPLATE;
@@ -172,7 +172,7 @@ export async function updateManifest(hiveMindDir: string): Promise<void> {
   }
 
   // Scan and categorize files
-  const files = scanDirectory(hiveMindDir, hiveMindDir);
+  const files = scanDirectory(workingDir, workingDir);
   const groups = categorizeFiles(files);
   const inventory = formatInventory(groups);
 

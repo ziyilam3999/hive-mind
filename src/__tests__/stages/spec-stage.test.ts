@@ -17,6 +17,7 @@ import { spawnAgentWithRetry } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const config = getDefaultConfig();
 
@@ -24,6 +25,7 @@ describe("spec-stage", () => {
   const testDir = join(process.cwd(), ".test-spec-stage");
   const hmDir = join(testDir, ".hive-mind");
   const prdPath = join(testDir, "PRD.md");
+  const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
 
   function setup() {
     mkdirSync(testDir, { recursive: true });
@@ -39,7 +41,7 @@ describe("spec-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runSpecStage(prdPath, hmDir, config);
+      await runSpecStage(prdPath, dirs, config);
       consoleSpy.mockRestore();
 
       for (const step of SPEC_STEPS) {
@@ -54,7 +56,7 @@ describe("spec-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runSpecStage(prdPath, hmDir, config);
+      await runSpecStage(prdPath, dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -81,7 +83,7 @@ describe("spec-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runSpecStage(prdPath, hmDir, config);
+      await runSpecStage(prdPath, dirs, config);
       consoleSpy.mockRestore();
 
       expect(vi.mocked(spawnAgentWithRetry).mock.calls.length).toBe(6);
@@ -94,7 +96,7 @@ describe("spec-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runSpecStage(prdPath, hmDir, config);
+      await runSpecStage(prdPath, dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -131,7 +133,7 @@ describe("spec-stage", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       // Should not throw — empty critiques are handled gracefully
-      await runSpecStage(prdPath, hmDir, config);
+      await runSpecStage(prdPath, dirs, config);
 
       expect(warnSpy).toHaveBeenCalled();
 

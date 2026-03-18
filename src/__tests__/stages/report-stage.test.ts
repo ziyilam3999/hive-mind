@@ -21,11 +21,13 @@ import { spawnAgentWithRetry, spawnAgentsParallel } from "../../agents/spawner.j
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const config = getDefaultConfig();
 
 describe("report-stage", () => {
   const testDir = join(process.cwd(), ".test-report-stage");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   function setup() {
     mkdirSync(join(testDir, "reports", "US-01"), { recursive: true });
@@ -48,7 +50,7 @@ describe("report-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
 
       expect(existsSync(join(testDir, "consolidated-report.md"))).toBe(true);
@@ -61,7 +63,7 @@ describe("report-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
 
       expect(existsSync(join(testDir, "retrospective.md"))).toBe(true);
@@ -74,7 +76,7 @@ describe("report-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentsParallel).mock.calls;
@@ -94,7 +96,7 @@ describe("report-stage", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentsParallel).mock.calls;
@@ -119,7 +121,7 @@ describe("report-stage", () => {
 
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
 
       // Memory file should still exist
@@ -139,7 +141,7 @@ describe("report-stage", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
 
       expect(warnSpy).toHaveBeenCalled();

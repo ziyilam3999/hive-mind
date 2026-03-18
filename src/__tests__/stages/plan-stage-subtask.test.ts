@@ -40,11 +40,13 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
 import { getAgentRules } from "../../agents/prompts.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const config = getDefaultConfig();
 
 describe("plan-stage decomposition (FW-01)", () => {
   const testDir = join(process.cwd(), ".test-plan-subtask");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   function setup() {
     spawnedTypes.length = 0;
@@ -97,7 +99,7 @@ describe("plan-stage decomposition (FW-01)", () => {
         return { success: true, outputFile: cfg.outputFile };
       });
 
-      await runPlanStage(testDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -150,7 +152,7 @@ describe("plan-stage decomposition (FW-01)", () => {
         return { success: true, outputFile: cfg.outputFile };
       });
 
-      await runPlanStage(testDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -193,7 +195,7 @@ describe("plan-stage decomposition (FW-01)", () => {
       });
 
       // Should NOT throw — decomposer failure is non-fatal
-      await runPlanStage(testDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -239,7 +241,7 @@ describe("plan-stage decomposition (FW-01)", () => {
       });
 
       // Should NOT throw
-      await runPlanStage(testDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 

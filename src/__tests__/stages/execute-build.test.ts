@@ -16,6 +16,7 @@ import { spawnAgentWithRetry } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const testStory: Story = {
   id: "US-99",
@@ -37,6 +38,7 @@ const config = getDefaultConfig();
 
 describe("execute-build", () => {
   const testDir = join(process.cwd(), ".test-exec-build");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   function setup() {
     mkdirSync(join(testDir, "plans", "steps"), { recursive: true });
@@ -55,7 +57,7 @@ describe("execute-build", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runBuild(testStory, testDir, config);
+      await runBuild(testStory, dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -71,7 +73,7 @@ describe("execute-build", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const result = await runBuild(testStory, testDir, config);
+      const result = await runBuild(testStory, dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.implReportPath).toMatch(/reports[/\\]US-99[/\\]impl-report\.md/);
@@ -87,7 +89,7 @@ describe("execute-build", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runBuild(testStory, testDir, config);
+      await runBuild(testStory, dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -108,7 +110,7 @@ describe("execute-build", () => {
 
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runBuild(testStory, testDir, config, undefined, roleReportsDir);
+      await runBuild(testStory, dirs, config, undefined, roleReportsDir);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -125,7 +127,7 @@ describe("execute-build", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runBuild(testStory, testDir, config);
+      await runBuild(testStory, dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -140,7 +142,7 @@ describe("execute-build", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runBuild(testStory, testDir, config, undefined, undefined, undefined, "/external/repo");
+      await runBuild(testStory, dirs, config, undefined, undefined, undefined, "/external/repo");
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -157,7 +159,7 @@ describe("execute-build", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runBuild(testStory, testDir, config);
+      await runBuild(testStory, dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -172,7 +174,7 @@ describe("execute-build", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runBuild(testStory, testDir, config, undefined, undefined, undefined, "/external/repo");
+      await runBuild(testStory, dirs, config, undefined, undefined, undefined, "/external/repo");
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;

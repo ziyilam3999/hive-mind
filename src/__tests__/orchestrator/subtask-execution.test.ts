@@ -31,6 +31,7 @@ import { executeOneStory } from "../../orchestrator.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const config = getDefaultConfig();
 
@@ -76,6 +77,7 @@ function makeStoryWithoutSubTasks(): Story {
 
 describe("sub-task execution (FW-01)", () => {
   const testDir = join(process.cwd(), ".test-subtask-exec");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   async function setup() {
     spawnCalls.length = 0;
@@ -100,7 +102,7 @@ describe("sub-task execution (FW-01)", () => {
     await setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const result = await executeOneStory(makeStoryWithSubTasks(), testDir, config);
+      const result = await executeOneStory(makeStoryWithSubTasks(), dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -136,7 +138,7 @@ describe("sub-task execution (FW-01)", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await executeOneStory(makeStoryWithSubTasks(), testDir, config);
+      const result = await executeOneStory(makeStoryWithSubTasks(), dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -180,7 +182,7 @@ describe("sub-task execution (FW-01)", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await executeOneStory(makeStoryWithSubTasks(), testDir, config);
+      const result = await executeOneStory(makeStoryWithSubTasks(), dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -197,7 +199,7 @@ describe("sub-task execution (FW-01)", () => {
     await setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const result = await executeOneStory(makeStoryWithoutSubTasks(), testDir, config);
+      const result = await executeOneStory(makeStoryWithoutSubTasks(), dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -212,7 +214,7 @@ describe("sub-task execution (FW-01)", () => {
     await setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await executeOneStory(makeStoryWithSubTasks(), testDir, config);
+      await executeOneStory(makeStoryWithSubTasks(), dirs, config);
       consoleSpy.mockRestore();
 
       const complianceCalls = spawnCalls.filter((c) => c.type === "compliance-reviewer");
@@ -245,7 +247,7 @@ describe("sub-task execution (FW-01)", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await executeOneStory(makeStoryWithSubTasks(), testDir, config);
+      const result = await executeOneStory(makeStoryWithSubTasks(), dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 

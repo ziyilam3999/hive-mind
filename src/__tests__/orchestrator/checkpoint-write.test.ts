@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 // Mock the agent spawner to avoid calling real claude CLI
 const mockPlanJson = JSON.stringify({
@@ -55,8 +56,9 @@ describe("orchestrator checkpoint write", () => {
     const prdPath = join(testDir, "PRD.md");
     writeFileSync(prdPath, "# Test PRD");
     const hmDir = join(testDir, ".hive-mind");
+    const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
 
-    await runPipeline(prdPath, hmDir, config);
+    await runPipeline(prdPath, dirs, config);
 
     const cpPath = join(hmDir, ".checkpoint");
     expect(existsSync(cpPath)).toBe(true);
@@ -76,10 +78,11 @@ describe("orchestrator checkpoint write", () => {
     // Create the SPEC file that plan-stage needs
     mkdirSync(join(testDir, "spec"), { recursive: true });
     writeFileSync(join(testDir, "spec", "SPEC-v1.0.md"), "# SPEC\n## Requirements\nBuild something");
+    const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
     await resumeFromCheckpoint(
       { awaiting: "approve-spec", message: "test", timestamp: "2026-03-06T00:00:00Z", feedback: null },
-      testDir,
+      dirs,
       config,
     );
 

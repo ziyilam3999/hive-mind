@@ -3,26 +3,27 @@ import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import type { HiveMindConfig } from "../config/schema.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { join } from "node:path";
 
 export async function runToolingSetup(
   requirements: ToolingRequirement[],
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
 ): Promise<boolean> {
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
   const toolingTable = requirements
     .map((r) => `| ${r.tool} | ${r.purpose} | ${r.installCommand} | ${r.detectCommand} |`)
     .join("\n");
 
-  const outputFile = join(hiveMindDir, "spec", "tooling-setup-report.md");
+  const outputFile = join(dirs.workingDir, "spec", "tooling-setup-report.md");
 
   const result = await spawnAgentWithRetry({
     type: "tooling-setup",
     model: "sonnet",
-    inputFiles: [hiveMindDir],
+    inputFiles: [dirs.workingDir],
     outputFile,
     rules: getAgentRules("tooling-setup"),
     memoryContent: `${memoryContent}\n\n## REQUIRED TOOLING\n| Tool | Purpose | Install Command | Detect Command |\n|------|---------|-----------------|----------------|\n${toolingTable}`,

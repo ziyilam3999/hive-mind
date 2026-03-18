@@ -7,6 +7,7 @@ import type { HiveMindConfig } from "../config/schema.js";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { loadConstitution } from "../config/loader.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { checkTruncation } from "../utils/truncation-monitor.js";
 import { estimateTokens } from "../utils/token-count.js";
 
@@ -51,14 +52,14 @@ const SELF_REVIEW_BLOCK = {
 
 export async function runSpecStage(
   prdPath: string,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   feedback?: string,
 ): Promise<void> {
-  const specDir = join(hiveMindDir, "spec");
+  const specDir = join(dirs.workingDir, "spec");
   ensureDir(specDir);
 
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
   const prdContent = readFileSafe(prdPath);
@@ -67,11 +68,11 @@ export async function runSpecStage(
   }
 
   // Collect knowledge-base files
-  const kbDir = join(hiveMindDir, "knowledge-base");
+  const kbDir = join(dirs.knowledgeDir, "knowledge-base");
   const kbFiles = collectKnowledgeBaseFiles(kbDir);
 
-  const guidelinesPath = join(hiveMindDir, "document-guidelines.md");
-  const constitutionContent = loadConstitution(hiveMindDir);
+  const guidelinesPath = join(dirs.knowledgeDir, "document-guidelines.md");
+  const constitutionContent = loadConstitution(dirs.knowledgeDir);
 
   // S.1: Researcher (with justification analysis — replaces former S.2 justifier)
   console.log("S.1: Running researcher...");

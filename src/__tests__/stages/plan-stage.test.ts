@@ -48,6 +48,7 @@ import { spawnAgentWithRetry, spawnAgentsParallel } from "../../agents/spawner.j
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 describe("plan-stage keyword scanning", () => {
   it("mandatory roles always activated", () => {
@@ -86,6 +87,7 @@ const config = getDefaultConfig();
 describe("plan-stage role independence", () => {
   const testDir = join(process.cwd(), ".test-plan-stage");
   const hmDir = join(testDir, ".hive-mind");
+  const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
 
   function setup() {
     mkdirSync(join(hmDir, "spec"), { recursive: true });
@@ -105,7 +107,7 @@ describe("plan-stage role independence", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
 
       // Role agents are spawned via spawnAgentsParallel
@@ -136,7 +138,7 @@ describe("plan-stage role independence", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -159,7 +161,7 @@ describe("plan-stage role independence", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
 
       const plannerCall = vi.mocked(spawnAgentWithRetry).mock.calls.find(

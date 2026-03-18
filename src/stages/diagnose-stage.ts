@@ -6,6 +6,7 @@ import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, writeFileAtomic, ensureDir, fileExists } from "../utils/file-io.js";
 import { join } from "node:path";
 import { loadConstitution } from "../config/loader.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 
 const toSlash = (p: string): string => p.replace(/\\/g, "/");
 
@@ -81,16 +82,16 @@ export function saveBugFixState(bugFixDir: string, state: BugFixState): void {
 
 export async function runDiagnose(
   bugReportPath: string,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   attemptNumber: number,
 ): Promise<DiagnoseResult> {
-  const bugFixDir = join(hiveMindDir, "reports", "bug-fix");
+  const bugFixDir = join(dirs.workingDir, "reports", "bug-fix");
   ensureDir(bugFixDir);
 
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
-  const constitutionContent = loadConstitution(hiveMindDir);
+  const constitutionContent = loadConstitution(dirs.knowledgeDir);
 
   const reportPath = join(bugFixDir, `diagnosis-report-attempt-${attemptNumber}.md`);
 
@@ -133,7 +134,7 @@ export async function runDiagnose(
   let escalationPrdPath: string | undefined;
   if (parsed.shouldEscalate) {
     const bugContent = readFileSafe(bugReportPath) ?? "";
-    escalationPrdPath = join(hiveMindDir, "escalated-bug-PRD.md");
+    escalationPrdPath = join(dirs.workingDir, "escalated-bug-PRD.md");
     const prd = buildEscalationPrd(bugContent, reportContent);
     writeFileAtomic(escalationPrdPath, prd);
     console.log("DIAGNOSE: Escalation recommended — wrote escalated-bug-PRD.md");

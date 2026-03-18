@@ -28,6 +28,7 @@ import { spawnAgentWithRetry } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const makeStory = (overrides?: Partial<Story>): Story => ({
   id: "US-99",
@@ -57,6 +58,7 @@ const config = getDefaultConfig();
 
 describe("execute-verify", () => {
   const testDir = join(process.cwd(), ".test-exec-verify");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   function setup() {
     spawnCalls.length = 0;
@@ -80,7 +82,7 @@ describe("execute-verify", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      const result = await runVerify(makeStory(), dirs, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -112,7 +114,7 @@ describe("execute-verify", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      const result = await runVerify(makeStory(), dirs, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
       errSpy.mockRestore();
 
@@ -152,7 +154,7 @@ describe("execute-verify", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      await runVerify(makeStory(), dirs, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -200,7 +202,7 @@ describe("execute-verify", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      const result = await runVerify(makeStory(), dirs, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -221,7 +223,7 @@ describe("execute-verify", () => {
       const planBefore = readFileSync(planPath, "utf-8");
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runVerify(makeStory(), testDir, planPath, config);
+      await runVerify(makeStory(), dirs, planPath, config);
       consoleSpy.mockRestore();
 
       const planAfter = readFileSync(planPath, "utf-8");
@@ -261,7 +263,7 @@ describe("execute-verify", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      await runVerify(makeStory(), dirs, join(testDir, "plans", "execution-plan.json"), config);
 
       // Should have logged a warning about unverified fix
       const warnCalls = warnSpy.mock.calls.map((c) => c[0]);
@@ -279,7 +281,7 @@ describe("execute-verify", () => {
     vi.mocked(spawnAgentWithRetry).mockClear();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config, undefined, undefined, undefined, "/external/repo");
+      await runVerify(makeStory(), dirs, join(testDir, "plans", "execution-plan.json"), config, undefined, undefined, undefined, "/external/repo");
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -297,7 +299,7 @@ describe("execute-verify", () => {
     vi.mocked(spawnAgentWithRetry).mockClear();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      await runVerify(makeStory(), dirs, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -316,7 +318,7 @@ describe("execute-verify", () => {
     vi.mocked(spawnAgentWithRetry).mockClear();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runVerify(makeStory(), testDir, join(testDir, "plans", "execution-plan.json"), config);
+      await runVerify(makeStory(), dirs, join(testDir, "plans", "execution-plan.json"), config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;

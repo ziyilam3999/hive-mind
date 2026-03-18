@@ -8,6 +8,7 @@ import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
 import { parseModules, resolveAndValidateModules } from "../utils/module-parser.js";
 import { loadConstitution } from "../config/loader.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { getSourceFilePaths } from "../types/execution-plan.js";
 
 const ROLE_KEYWORDS: Record<string, string[]> = {
@@ -44,27 +45,27 @@ export function scanForRoleKeywords(specContent: string): string[] {
 }
 
 export async function runPlanStage(
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   feedback?: string,
 ): Promise<void> {
-  const plansDir = join(hiveMindDir, "plans");
+  const plansDir = join(dirs.workingDir, "plans");
   const roleReportsDir = join(plansDir, "role-reports");
   const stepsDir = join(plansDir, "steps");
   ensureDir(plansDir);
   ensureDir(roleReportsDir);
   ensureDir(stepsDir);
 
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
   const feedbackMemory = feedback
     ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
     : memoryContent;
 
-  const constitutionContent = loadConstitution(hiveMindDir);
+  const constitutionContent = loadConstitution(dirs.knowledgeDir);
 
   // Load SPEC
-  const specPath = join(hiveMindDir, "spec", "SPEC-v1.0.md");
+  const specPath = join(dirs.workingDir, "spec", "SPEC-v1.0.md");
   const specContent = readFileSafe(specPath);
   if (!specContent) {
     throw new Error(`SPEC-v1.0.md not found at: ${specPath}`);
@@ -180,7 +181,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     // Module paths are relative to workspace root (parent of .hive-mind/).
     // resolveAndValidateModules uses dirname(basePath) as resolve base,
     // so pass a file path whose dirname is the workspace root.
-    const workspaceRoot = join(hiveMindDir, "..");
+    const workspaceRoot = join(dirs.workingDir, "..");
     const resolvedModules = resolveAndValidateModules(parsedModules, join(workspaceRoot, "dummy"));
     (planData as Record<string, unknown>).modules = resolvedModules;
     // Persist modules into execution-plan.json

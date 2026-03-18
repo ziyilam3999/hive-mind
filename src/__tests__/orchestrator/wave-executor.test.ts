@@ -41,6 +41,7 @@ import { saveExecutionPlan, loadExecutionPlan } from "../../state/execution-plan
 import { spawnAgentWithRetry } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const config = getDefaultConfig();
 
@@ -88,6 +89,7 @@ function resetMock() {
 describe("wave executor", () => {
   const testDir = join(process.cwd(), ".test-wave-exec");
   const hiveMindDir = testDir;
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
   const planPath = join(testDir, "plans", "execution-plan.json");
 
   function setup(plan: ExecutionPlan) {
@@ -117,7 +119,7 @@ describe("wave executor", () => {
     setup(plan);
     const restore = suppressConsole();
     try {
-      await runExecuteStage(hiveMindDir, config);
+      await runExecuteStage(dirs, config);
       const result = loadExecutionPlan(planPath);
       expect(result.stories[0].status).toBe("passed");
     } finally {
@@ -138,7 +140,7 @@ describe("wave executor", () => {
     });
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      await runExecuteStage(hiveMindDir, config);
+      await runExecuteStage(dirs, config);
       const result = loadExecutionPlan(planPath);
       expect(result.stories[0].status).toBe("passed");
       expect(result.stories[1].status).toBe("passed");
@@ -166,7 +168,7 @@ describe("wave executor", () => {
     });
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      await runExecuteStage(hiveMindDir, config);
+      await runExecuteStage(dirs, config);
       const result = loadExecutionPlan(planPath);
       expect(result.stories[0].status).toBe("passed");
       expect(result.stories[1].status).toBe("passed");
@@ -200,7 +202,7 @@ describe("wave executor", () => {
     setup(plan);
     const restore = suppressConsole();
     try {
-      await runExecuteStage(hiveMindDir, config);
+      await runExecuteStage(dirs, config);
       const result = loadExecutionPlan(planPath);
       expect(result.stories[0].status).toBe("failed");
       expect(result.stories[1].status).toBe("not-started");
@@ -222,7 +224,7 @@ describe("wave executor", () => {
     });
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      await runExecuteStage(hiveMindDir, config);
+      await runExecuteStage(dirs, config);
       const result = loadExecutionPlan(planPath);
       expect(result.stories[0].status).toBe("passed");
       expect(result.stories[1].status).toBe("passed");
@@ -244,7 +246,7 @@ describe("wave executor", () => {
     setup(plan);
     const restore = suppressConsole();
     try {
-      await runExecuteStage(hiveMindDir, config);
+      await runExecuteStage(dirs, config);
       const result = loadExecutionPlan(planPath);
       expect(result.stories[0].status).toBe("passed");
       expect(result.stories[1].status).toBe("passed");
@@ -262,7 +264,7 @@ describe("wave executor", () => {
     setup(plan);
     const restore = suppressConsole();
     try {
-      await runExecuteStage(hiveMindDir, config);
+      await runExecuteStage(dirs, config);
       const result = loadExecutionPlan(planPath);
       for (const story of result.stories) {
         expect(["passed", "failed", "skipped"]).toContain(story.status);
@@ -283,7 +285,7 @@ describe("wave executor", () => {
     setup(plan);
     const restore = suppressConsole();
     try {
-      await runExecuteStage(hiveMindDir, seqConfig);
+      await runExecuteStage(dirs, seqConfig);
       const result = loadExecutionPlan(planPath);
       expect(result.stories[0].status).toBe("passed");
       expect(result.stories[1].status).toBe("passed");
@@ -323,7 +325,7 @@ describe("wave executor", () => {
     setup(plan);
     const restore = suppressConsole();
     try {
-      await runExecuteStage(hiveMindDir, config);
+      await runExecuteStage(dirs, config);
       expect(learnCalls.length).toBe(2);
     } finally {
       restore();
@@ -347,7 +349,7 @@ describe("wave executor", () => {
     setup(plan);
     const restore = suppressConsole();
     try {
-      await runExecuteStage(hiveMindDir, config);
+      await runExecuteStage(dirs, config);
       const result = loadExecutionPlan(planPath);
       // Both should pass — commits happen sequentially after parallel BUILD+VERIFY
       expect(result.stories[0].status).toBe("passed");
@@ -372,7 +374,7 @@ describe("wave executor", () => {
     const restore = suppressConsole();
     try {
       await expect(
-        runExecuteStage(hiveMindDir, config, tracker),
+        runExecuteStage(dirs, config, tracker),
       ).rejects.toThrow("Budget exceeded");
     } finally {
       restore();
@@ -385,7 +387,7 @@ describe("wave executor", () => {
     mkdirSync(testDir, { recursive: true });
     const restore = suppressConsole();
     try {
-      await runExecuteStage(testDir, config);
+      await runExecuteStage(dirs, config);
     } finally {
       restore();
       cleanup();
@@ -395,6 +397,7 @@ describe("wave executor", () => {
 
 describe("executeOneStory", () => {
   const testDir = join(process.cwd(), ".test-exec-one");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   function setup(story: Story) {
     rmSync(testDir, { recursive: true, force: true });
@@ -419,7 +422,7 @@ describe("executeOneStory", () => {
     setup(story);
     const restore = suppressConsole();
     try {
-      const result = await executeOneStory(story, testDir, config);
+      const result = await executeOneStory(story, dirs, config);
       expect(result.passed).toBe(true);
       expect(result.storyId).toBe("US-99");
       expect(result.attempts).toBe(1);
@@ -446,7 +449,7 @@ describe("executeOneStory", () => {
     setup(story);
     const restore = suppressConsole();
     try {
-      const result = await executeOneStory(story, testDir, config);
+      const result = await executeOneStory(story, dirs, config);
       expect(result.passed).toBe(false);
       expect(result.errorMessage).toContain("Verification failed");
     } finally {

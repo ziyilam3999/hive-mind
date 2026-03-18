@@ -1,8 +1,9 @@
 import { DEFAULT_CONFIG } from "./schema.js";
 import type { HiveMindConfig } from "./schema.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import type { ModelTier } from "../types/agents.js";
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 const CONFIG_FILENAME = ".hivemindrc.json";
 
@@ -25,7 +26,7 @@ export function validateConfig(raw: unknown): ValidationResult {
   }
 
   const obj = raw as Record<string, unknown>;
-  const knownKeys = new Set(Object.keys(DEFAULT_CONFIG));
+  const knownKeys = new Set([...Object.keys(DEFAULT_CONFIG), "workingDir", "knowledgeDir", "labDir"]);
 
   for (const key of Object.keys(obj)) {
     if (!knownKeys.has(key)) {
@@ -71,6 +72,12 @@ export function validateConfig(raw: unknown): ValidationResult {
     }
   }
 
+  for (const dirKey of ["workingDir", "knowledgeDir", "labDir"] as const) {
+    if (dirKey in obj && typeof obj[dirKey] !== "string") {
+      errors.push(`${dirKey} must be a string, got: ${JSON.stringify(obj[dirKey])}`);
+    }
+  }
+
   if ("modelAssignments" in obj) {
     const ma = obj.modelAssignments;
     if (typeof ma !== "object" || ma === null || Array.isArray(ma)) {
@@ -101,8 +108,17 @@ function findConfigFile(startDir: string): string | undefined {
   }
 }
 
-export function loadConstitution(hiveMindDir: string): string | undefined {
-  const constitutionPath = join(hiveMindDir, "constitution.md");
+export function resolvePipelineDirs(config: HiveMindConfig, cwd: string): PipelineDirs {
+  const resolvePath = (p: string) => isAbsolute(p) ? p : resolve(cwd, p);
+  return {
+    workingDir: resolvePath(config.workingDir ?? ".hive-mind-working"),
+    knowledgeDir: resolvePath(config.knowledgeDir ?? "../.hive-mind-persist"),
+    labDir: resolvePath(config.labDir ?? ".hive-mind-lab"),
+  };
+}
+
+export function loadConstitution(knowledgeDir: string): string | undefined {
+  const constitutionPath = join(knowledgeDir, "constitution.md");
   if (!existsSync(constitutionPath)) return undefined;
   const constitutionContent = readFileSync(constitutionPath, "utf-8").trim();
   return constitutionContent || undefined;
@@ -160,5 +176,8 @@ export function loadConfig(projectRoot: string): HiveMindConfig {
     baselineBuildCommand: (obj.baselineBuildCommand as string | undefined) ?? defaults.baselineBuildCommand,
     baselineTestCommand: (obj.baselineTestCommand as string | undefined) ?? defaults.baselineTestCommand,
     modelAssignments,
+    workingDir: (obj.workingDir as string | undefined) ?? undefined,
+    knowledgeDir: (obj.knowledgeDir as string | undefined) ?? undefined,
+    labDir: (obj.labDir as string | undefined) ?? undefined,
   };
 }

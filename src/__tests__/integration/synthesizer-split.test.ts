@@ -67,12 +67,14 @@ import { spawnAgentWithRetry, spawnAgentsParallel } from "../../agents/spawner.j
 import { mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const config = getDefaultConfig();
 
 describe("synthesizer-split integration", () => {
   const testDir = join(process.cwd(), ".test-synth-split");
   const hmDir = join(testDir, ".hive-mind");
+  const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
 
   function setup() {
     mkdirSync(join(hmDir, "spec"), { recursive: true });
@@ -93,7 +95,7 @@ describe("synthesizer-split integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -115,7 +117,7 @@ describe("synthesizer-split integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -136,7 +138,7 @@ describe("synthesizer-split integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -156,7 +158,7 @@ describe("synthesizer-split integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -180,7 +182,7 @@ describe("synthesizer-split integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -199,7 +201,7 @@ describe("synthesizer-split integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -227,7 +229,7 @@ describe("synthesizer-split integration", () => {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       // Should not throw
-      await runPlanStage(hmDir, config);
+      await runPlanStage(dirs, config);
       consoleSpy.mockRestore();
 
       // Verify warning was logged

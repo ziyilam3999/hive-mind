@@ -18,6 +18,9 @@ export interface HiveMindConfig {
   baselineBuildCommand: string;
   baselineTestCommand: string;
   modelAssignments: Record<string, ModelTier>;
+  workingDir?: string;
+  knowledgeDir?: string;
+  labDir?: string;
 }
 
 export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {

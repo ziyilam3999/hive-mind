@@ -16,6 +16,7 @@ import { spawnAgentWithRetry } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const makeStory = (overrides?: Partial<Story>): Story => ({
   id: "US-99",
@@ -38,6 +39,7 @@ const config = getDefaultConfig();
 
 describe("execute-learn", () => {
   const testDir = join(process.cwd(), ".test-exec-learn");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   function setup() {
     mkdirSync(join(testDir, "reports", "US-99"), { recursive: true });
@@ -55,7 +57,7 @@ describe("execute-learn", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const failedStory = makeStory({ status: "failed", attempts: 3 });
-      const learningPath = await runLearn(failedStory, testDir, config);
+      const learningPath = await runLearn(failedStory, dirs, config);
       consoleSpy.mockRestore();
 
       expect(existsSync(learningPath)).toBe(true);
@@ -69,7 +71,7 @@ describe("execute-learn", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runLearn(makeStory(), testDir, config);
+      await runLearn(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -89,7 +91,7 @@ describe("execute-learn", () => {
 
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runLearn(makeStory(), testDir, config);
+      await runLearn(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -113,7 +115,7 @@ describe("execute-learn", () => {
 
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runLearn(makeStory(), testDir, config, undefined, roleReportsDir);
+      await runLearn(makeStory(), dirs, config, undefined, roleReportsDir);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
@@ -129,7 +131,7 @@ describe("execute-learn", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runLearn(makeStory(), testDir, config);
+      await runLearn(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;

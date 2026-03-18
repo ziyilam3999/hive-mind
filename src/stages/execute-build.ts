@@ -10,6 +10,7 @@ import { readFileSafe, ensureDir } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { join } from "node:path";
 
 export interface SubTaskScope {
@@ -19,27 +20,27 @@ export interface SubTaskScope {
 
 export async function runBuild(
   story: Story,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
   subTaskScope?: SubTaskScope,
   moduleCwd?: string,
 ): Promise<{ implReportPath: string; refactorReportPath: string }> {
-  const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
+  const reportsDir = join(dirs.workingDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
 
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
-  const stepFilePath = join(hiveMindDir, story.stepFile);
+  const stepFilePath = join(dirs.workingDir, story.stepFile);
   const stepFileContent = readFileSafe(stepFilePath);
   if (!stepFileContent) {
     throw new Error(`Step file not found: ${stepFilePath}`);
   }
 
   // E.1: Implementer — receives ONLY step file + memory (P16: self-contained)
-  const implReportPath = join(hiveMindDir, getReportPath(story.id, "impl-report.md"));
+  const implReportPath = join(dirs.workingDir, getReportPath(story.id, "impl-report.md"));
   console.log(`E.1: Running implementer for ${story.id}...`);
 
   const implRoleContents = roleReportsDir
@@ -59,11 +60,11 @@ export async function runBuild(
   costTracker?.recordAgentCost(story.id, "implementer", implResult.costUsd, implResult.durationMs);
 
   // E.2: Refactorer — receives source code + impl-report + memory
-  const refactorReportPath = join(hiveMindDir, getReportPath(story.id, "refactor-report.md"));
+  const refactorReportPath = join(dirs.workingDir, getReportPath(story.id, "refactor-report.md"));
   console.log(`E.2: Running refactorer for ${story.id}...`);
 
   const effectiveSourceFiles = subTaskScope ? subTaskScope.sourceFiles : story.sourceFiles;
-  const sourceFiles = getSourceFilePaths(effectiveSourceFiles).map((f) => join(moduleCwd ?? hiveMindDir, f));
+  const sourceFiles = getSourceFilePaths(effectiveSourceFiles).map((f) => join(moduleCwd ?? dirs.workingDir, f));
   const refactorRoleContents = roleReportsDir
     ? buildRoleReportContents("refactorer", story.rolesUsed, roleReportsDir)
     : undefined;
@@ -87,7 +88,7 @@ export async function runBuild(
     completedSubStages: ["BUILD"],
     timestamp: isoTimestamp(),
   };
-  const checkpointPath = join(hiveMindDir, getReportPath(story.id, "checkpoint.json"));
+  const checkpointPath = join(dirs.workingDir, getReportPath(story.id, "checkpoint.json"));
   writeFileAtomic(checkpointPath, JSON.stringify(checkpoint, null, 2) + "\n");
 
   return { implReportPath, refactorReportPath };

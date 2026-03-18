@@ -8,6 +8,7 @@ import { getReportPath } from "../reports/templates.js";
 import { parseComplianceReport, parseComplianceFixReport, type ComplianceResult } from "../reports/parser.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { join } from "node:path";
 
 const MAX_COMPLIANCE_FIX_ATTEMPTS = 2;
@@ -28,23 +29,23 @@ export interface ComplianceCheckResult {
  */
 export async function runComplianceCheck(
   story: Story,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
   moduleCwd?: string,
 ): Promise<ComplianceCheckResult> {
-  const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
+  const reportsDir = join(dirs.workingDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
 
-  const reportPath = join(hiveMindDir, getReportPath(story.id, "compliance-report.md"));
-  const stepFilePath = join(hiveMindDir, story.stepFile);
-  const implReportPath = join(hiveMindDir, getReportPath(story.id, "impl-report.md"));
+  const reportPath = join(dirs.workingDir, getReportPath(story.id, "compliance-report.md"));
+  const stepFilePath = join(dirs.workingDir, story.stepFile);
+  const implReportPath = join(dirs.workingDir, getReportPath(story.id, "impl-report.md"));
 
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
-  const sourceFiles = getSourceFilePaths(story.sourceFiles).map((f) => join(moduleCwd ?? hiveMindDir, f));
+  const sourceFiles = getSourceFilePaths(story.sourceFiles).map((f) => join(moduleCwd ?? dirs.workingDir, f));
 
   const reviewerRoleContents = roleReportsDir
     ? buildRoleReportContents("compliance-reviewer", story.rolesUsed, roleReportsDir)
@@ -63,7 +64,7 @@ export async function runComplianceCheck(
   // FAIL → run compliance-fixer loop (ENH-18)
   for (let fixAttempt = 1; fixAttempt <= MAX_COMPLIANCE_FIX_ATTEMPTS; fixAttempt++) {
     const fixResult = await runComplianceFixer(
-      story, hiveMindDir, stepFilePath, reportPath, implReportPath, sourceFiles,
+      story, dirs.workingDir, stepFilePath, reportPath, implReportPath, sourceFiles,
       memoryContent, fixAttempt, config, costTracker, roleReportsDir,
     );
 

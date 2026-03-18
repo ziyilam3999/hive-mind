@@ -10,6 +10,7 @@ import { parseTestReport, parseEvalReport } from "../reports/parser.js";
 import { appendLogEntry, createLogEntry } from "../state/manager-log.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { join } from "node:path";
 import { copyFileSync } from "node:fs";
 import type { StoryCheckpoint } from "../types/checkpoint.js";
@@ -31,7 +32,7 @@ export interface SubTaskScope {
 
 export async function runVerify(
   story: Story,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   planPath: string | undefined,
   config: HiveMindConfig,
   costTracker?: CostTracker,
@@ -39,30 +40,30 @@ export async function runVerify(
   subTaskScope?: SubTaskScope,
   moduleCwd?: string,
 ): Promise<VerifyResult> {
-  const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
+  const reportsDir = join(dirs.workingDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
 
-  const scratchDir = join(hiveMindDir, "tmp", story.id);
+  const scratchDir = join(dirs.labDir, "tmp", story.id);
   ensureDir(scratchDir);
 
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
-  const stepFilePath = join(hiveMindDir, story.stepFile);
+  const stepFilePath = join(dirs.workingDir, story.stepFile);
   const maxAttempts = story.maxAttempts;
 
   let attempt = 0;
   let lastConfidence: "structured" | "matched" | "default" = "default";
-  const testReportPath = join(hiveMindDir, getReportPath(story.id, "test-report.md"));
-  const evalReportPath = join(hiveMindDir, getReportPath(story.id, "eval-report.md"));
+  const testReportPath = join(dirs.workingDir, getReportPath(story.id, "test-report.md"));
+  const evalReportPath = join(dirs.workingDir, getReportPath(story.id, "eval-report.md"));
 
   while (attempt < maxAttempts) {
     attempt++;
 
     // E.3: Tester — runs ACs via Bash
     console.log(`E.3: Running tester for ${story.id} (attempt ${attempt})...`);
-    const priorFixReports = collectPriorReports(hiveMindDir, story.id, "fix-report", attempt);
-    const priorDiagReports = collectPriorReports(hiveMindDir, story.id, "diagnosis-report", attempt);
+    const priorFixReports = collectPriorReports(dirs.workingDir, story.id, "fix-report", attempt);
+    const priorDiagReports = collectPriorReports(dirs.workingDir, story.id, "diagnosis-report", attempt);
 
     const testerRoleContents = roleReportsDir
       ? buildRoleReportContents("tester-exec", story.rolesUsed, roleReportsDir)
@@ -92,7 +93,7 @@ export async function runVerify(
       try { copyFileSync(testReportPath, testArchivePath); } catch { /* best-effort */ }
     }
 
-    const logPath = join(hiveMindDir, "manager-log.jsonl");
+    const logPath = join(dirs.workingDir, "manager-log.jsonl");
     appendLogEntry(logPath, createLogEntry("VERIFY_ATTEMPT", {
       storyId: story.id,
       attempt,
@@ -109,9 +110,9 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.4 / E.4a+E.4b: Fix AC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ac", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
+      await runFixPipeline(story, dirs.workingDir, attempt, "ac", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
       // K5: Post-fix verification gate
-      if (!verifyFixApplied(hiveMindDir, story.id, attempt)) {
+      if (!verifyFixApplied(dirs.workingDir, story.id, attempt)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
         appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
       }
@@ -168,9 +169,9 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.6 / E.6a+E.6b: Fix EC failures
-      await runFixPipeline(story, hiveMindDir, attempt, "ec", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
+      await runFixPipeline(story, dirs.workingDir, attempt, "ec", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
       // K5: Post-fix verification gate
-      if (!verifyFixApplied(hiveMindDir, story.id, attempt)) {
+      if (!verifyFixApplied(dirs.workingDir, story.id, attempt)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
         appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
       }
@@ -184,7 +185,7 @@ export async function runVerify(
       completedSubStages: ["BUILD", "VERIFY"],
       timestamp: isoTimestamp(),
     };
-    writeFileAtomic(join(hiveMindDir, getReportPath(story.id, "checkpoint.json")), JSON.stringify(verifyCheckpoint, null, 2) + "\n");
+    writeFileAtomic(join(dirs.workingDir, getReportPath(story.id, "checkpoint.json")), JSON.stringify(verifyCheckpoint, null, 2) + "\n");
 
     return { passed: true, attempts: attempt, testReportPath, evalReportPath, parserConfidence: lastConfidence };
   }

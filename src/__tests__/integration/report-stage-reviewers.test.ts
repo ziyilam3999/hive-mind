@@ -21,11 +21,13 @@ import { spawnAgentsParallel } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const config = getDefaultConfig();
 
 describe("report-stage-reviewers integration", () => {
   const testDir = join(process.cwd(), ".test-report-reviewers");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   function setup() {
     mkdirSync(join(testDir, "reports", "US-01"), { recursive: true });
@@ -72,7 +74,7 @@ describe("report-stage-reviewers integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -94,7 +96,7 @@ describe("report-stage-reviewers integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -114,7 +116,7 @@ describe("report-stage-reviewers integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -132,7 +134,7 @@ describe("report-stage-reviewers integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 
@@ -150,7 +152,7 @@ describe("report-stage-reviewers integration", () => {
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      await runReportStage(testDir, config);
+      await runReportStage(dirs, config);
       consoleSpy.mockRestore();
       warnSpy.mockRestore();
 

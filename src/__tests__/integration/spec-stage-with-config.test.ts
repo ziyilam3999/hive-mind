@@ -40,11 +40,13 @@ import { runSpecStage, SPEC_STEPS } from "../../stages/spec-stage.js";
 import { loadConfig, getDefaultConfig } from "../../config/loader.js";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 describe("integration: SPEC stage with config-driven model assignments", () => {
   const testDir = join(process.cwd(), ".test-integration-spec");
   const hmDir = join(testDir, ".hive-mind");
   const prdPath = join(testDir, "PRD.md");
+  const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
 
   beforeEach(() => {
     spawnCalls.length = 0;
@@ -60,7 +62,7 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const config = getDefaultConfig();
 
-    await runSpecStage(prdPath, hmDir, config);
+    await runSpecStage(prdPath, dirs, config);
     consoleSpy.mockRestore();
 
     const specDir = join(hmDir, "spec");
@@ -87,7 +89,7 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     expect(config.modelAssignments.reporter).toBe("haiku"); // default preserved
 
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    await runSpecStage(prdPath, hmDir, config);
+    await runSpecStage(prdPath, dirs, config);
     consoleSpy.mockRestore();
 
     // Every spawn call should receive the same config with critic=opus
@@ -121,7 +123,7 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const config = getDefaultConfig();
 
-    await runSpecStage(prdPath, hmDir, config);
+    await runSpecStage(prdPath, dirs, config);
     consoleSpy.mockRestore();
 
     // All 6 steps completed despite agents returning metadata
@@ -138,7 +140,7 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const config = getDefaultConfig();
 
-    await runSpecStage(prdPath, hmDir, config);
+    await runSpecStage(prdPath, dirs, config);
     consoleSpy.mockRestore();
 
     const types = spawnCalls.map((c) => c.config.type);
@@ -156,7 +158,7 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const config = getDefaultConfig();
 
-    await runSpecStage(prdPath, hmDir, config);
+    await runSpecStage(prdPath, dirs, config);
     consoleSpy.mockRestore();
 
     // Find the two critic calls (indices 3 and 5)

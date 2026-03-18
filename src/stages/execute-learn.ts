@@ -6,6 +6,7 @@ import { fileExists, ensureDir } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { join } from "node:path";
 
 const REPORT_FILES = [
@@ -17,15 +18,15 @@ const REPORT_FILES = [
 
 export async function runLearn(
   story: Story,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
 ): Promise<string> {
-  const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
+  const reportsDir = join(dirs.workingDir, getReportPath(story.id, ""));
   ensureDir(reportsDir);
 
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
   // Collect all report files for this story

@@ -36,6 +36,7 @@ import { runComplianceCheck } from "../../stages/execute-compliance.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
+import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 
 const makeStory = (overrides?: Partial<Story>): Story => ({
   id: "US-99",
@@ -58,6 +59,7 @@ const config = getDefaultConfig();
 
 describe("execute-compliance", () => {
   const testDir = join(process.cwd(), ".test-exec-compliance");
+  const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
 
   function setup() {
     spawnCalls.length = 0;
@@ -81,7 +83,7 @@ describe("execute-compliance", () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const result = await runComplianceCheck(makeStory(), testDir, config);
+      const result = await runComplianceCheck(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -123,7 +125,7 @@ describe("execute-compliance", () => {
       });
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const result = await runComplianceCheck(makeStory(), testDir, config);
+      const result = await runComplianceCheck(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -156,7 +158,7 @@ describe("execute-compliance", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await runComplianceCheck(makeStory(), testDir, config);
+      const result = await runComplianceCheck(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -189,7 +191,7 @@ describe("execute-compliance", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await runComplianceCheck(makeStory(), testDir, config);
+      const result = await runComplianceCheck(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -226,7 +228,7 @@ describe("execute-compliance", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await runComplianceCheck(makeStory(), testDir, config);
+      const result = await runComplianceCheck(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -252,7 +254,7 @@ describe("execute-compliance", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await runComplianceCheck(makeStory(), testDir, config);
+      const result = await runComplianceCheck(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -278,7 +280,7 @@ describe("execute-compliance", () => {
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const result = await runComplianceCheck(makeStory(), testDir, config);
+      const result = await runComplianceCheck(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
@@ -329,7 +331,7 @@ describe("execute-compliance", () => {
       });
 
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runComplianceCheck(makeStory(), testDir, config);
+      await runComplianceCheck(makeStory(), dirs, config);
       consoleSpy.mockRestore();
 
       // Verify fixer received compliance-report.md as input

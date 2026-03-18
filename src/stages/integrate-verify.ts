@@ -5,6 +5,7 @@ import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, ensureDir } from "../utils/file-io.js";
+import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { join } from "node:path";
 
 export interface IntegrationVerifyResult {
@@ -29,7 +30,7 @@ export interface BoundaryResult {
  */
 export async function runIntegrateVerify(
   plan: ExecutionPlan,
-  hiveMindDir: string,
+  dirs: PipelineDirs,
   config: HiveMindConfig,
   costTracker?: CostTracker,
 ): Promise<IntegrationVerifyResult> {
@@ -38,7 +39,7 @@ export async function runIntegrateVerify(
     return { passed: true, skipped: true, boundaries: [] };
   }
 
-  const specPath = join(hiveMindDir, "spec", "SPEC-v1.0.md");
+  const specPath = join(dirs.workingDir, "spec", "SPEC-v1.0.md");
   const specContent = readFileSafe(specPath) ?? "";
 
   // Check for ## Inter-Module Contracts section
@@ -52,7 +53,7 @@ export async function runIntegrateVerify(
     };
   }
 
-  const memoryPath = join(hiveMindDir, "memory.md");
+  const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
   // Enumerate edges from Module.dependencies
@@ -67,7 +68,7 @@ export async function runIntegrateVerify(
     return { passed: true, skipped: false, boundaries: [] };
   }
 
-  const reportsDir = join(hiveMindDir, "reports", "integration");
+  const reportsDir = join(dirs.workingDir, "reports", "integration");
   ensureDir(reportsDir);
 
   const boundaries: BoundaryResult[] = [];
@@ -79,8 +80,8 @@ export async function runIntegrateVerify(
     const producerStories = plan.stories.filter((s) => s.moduleId === edge.producer);
     const consumerStories = plan.stories.filter((s) => s.moduleId === edge.consumer);
     const implReports = [
-      ...producerStories.map((s) => join(hiveMindDir, `reports/${s.id}/impl-report.md`)),
-      ...consumerStories.map((s) => join(hiveMindDir, `reports/${s.id}/impl-report.md`)),
+      ...producerStories.map((s) => join(dirs.workingDir, `reports/${s.id}/impl-report.md`)),
+      ...consumerStories.map((s) => join(dirs.workingDir, `reports/${s.id}/impl-report.md`)),
     ].filter((p) => readFileSafe(p) !== null);
 
     try {
