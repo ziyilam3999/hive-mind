@@ -58,6 +58,44 @@ import { writeFileAtomic } from "./utils/file-io.js";
 import { spawnAgentWithRetry } from "./agents/spawner.js";
 import { getAgentRules } from "./agents/prompts.js";
 
+function printTimingSummary(tracker: CostTracker): void {
+  const timing = tracker.getTimingSummary();
+  if (timing.agentCount > 0) {
+    console.log(`\nTiming summary (${timing.agentCount} agents, ${(timing.totalDurationMs / 1000).toFixed(1)}s total):`);
+    console.log(`  Fastest: ${timing.fastest!.agentType} (${timing.fastest!.storyId}) — ${(timing.fastest!.durationMs / 1000).toFixed(1)}s`);
+    console.log(`  Median:  ${timing.median!.agentType} (${timing.median!.storyId}) — ${(timing.median!.durationMs / 1000).toFixed(1)}s`);
+    console.log(`  Slowest: ${timing.slowest!.agentType} (${timing.slowest!.storyId}) — ${(timing.slowest!.durationMs / 1000).toFixed(1)}s`);
+  }
+}
+
+function writeTimingReport(tracker: CostTracker, workingDir: string): void {
+  const timing = tracker.getTimingSummary();
+  if (timing.agentCount === 0) return;
+
+  const lines: string[] = [
+    "# Agent Timing Report",
+    "",
+    "## Summary",
+    `- Total agents: ${timing.agentCount}`,
+    `- Total duration: ${(timing.totalDurationMs / 1000).toFixed(1)}s`,
+    `- Fastest: ${timing.fastest!.agentType} (${timing.fastest!.storyId}) — ${(timing.fastest!.durationMs / 1000).toFixed(1)}s`,
+    `- Median: ${timing.median!.agentType} (${timing.median!.storyId}) — ${(timing.median!.durationMs / 1000).toFixed(1)}s`,
+    `- Slowest: ${timing.slowest!.agentType} (${timing.slowest!.storyId}) — ${(timing.slowest!.durationMs / 1000).toFixed(1)}s`,
+    "",
+    "## All Agents (sorted by duration)",
+    "| # | Stage | Agent | Duration | Cost |",
+    "|---|-------|-------|----------|------|",
+  ];
+
+  timing.perAgent.forEach((entry, i) => {
+    lines.push(`| ${i + 1} | ${entry.storyId} | ${entry.agentType} | ${(entry.durationMs / 1000).toFixed(1)}s | $${entry.costUsd.toFixed(4)} |`);
+  });
+
+  lines.push("");
+  writeFileAtomic(join(workingDir, "timing-report.md"), lines.join("\n"));
+  console.log(`Timing report written to ${join(workingDir, "timing-report.md")}`);
+}
+
 async function safeUpdateManifest(workingDir: string): Promise<void> {
   try {
     await updateManifest(workingDir);
@@ -111,7 +149,8 @@ export async function runPipeline(
   }
 
   // skipNormalize — proceed directly to SPEC with original PRD
-  await runSpecThenCheckpoint(prdPath, dirs, config, options?.silent ?? false, options?.stopAfterPlan, options?.greenfield);
+  const tracker = new CostTracker(options?.budget);
+  await runSpecThenCheckpoint(prdPath, dirs, config, options?.silent ?? false, options?.stopAfterPlan, options?.greenfield, tracker);
 }
 
 async function runSpecThenCheckpoint(
@@ -121,9 +160,10 @@ async function runSpecThenCheckpoint(
   silent: boolean,
   stopAfterPlan?: boolean,
   greenfield?: boolean,
+  tracker?: CostTracker,
 ): Promise<void> {
   console.log("Running SPEC stage...");
-  await specStage(prdPath, dirs, config, undefined, greenfield);
+  await specStage(prdPath, dirs, config, undefined, greenfield, tracker);
   await safeUpdateManifest(dirs.workingDir);
 
   const specLogPath = join(dirs.workingDir, "manager-log.jsonl");
@@ -135,7 +175,7 @@ async function runSpecThenCheckpoint(
 
   // --stop-after-plan: auto-approve SPEC, run PLAN, print summary, exit
   if (stopAfterPlan) {
-    await runPlanStage(dirs, config, undefined, greenfield);
+    await runPlanStage(dirs, config, undefined, greenfield, tracker);
     await safeUpdateManifest(dirs.workingDir);
 
     const planFilePath = join(dirs.workingDir, "plans", "execution-plan.json");
@@ -148,6 +188,11 @@ async function runSpecThenCheckpoint(
         console.log(`  ${s.id}: ${s.title} (${fileCount} files)`);
       }
       console.log("\nPipeline stopped after PLAN. No EXECUTE agents were spawned.");
+    }
+
+    if (tracker) {
+      printTimingSummary(tracker);
+      writeTimingReport(tracker, dirs.workingDir);
     }
     return;
   }
@@ -239,7 +284,8 @@ export async function resumeFromCheckpoint(
       }
 
       // Approved — proceed to SPEC with normalized PRD
-      await runSpecThenCheckpoint(normalizedPrd, dirs, config, silent, startData.stopAfterPlan, startData.greenfield);
+      const normalizeTracker = new CostTracker(startData.budget);
+      await runSpecThenCheckpoint(normalizedPrd, dirs, config, silent, startData.stopAfterPlan, startData.greenfield, normalizeTracker);
       break;
     }
     case "approve-spec": {
@@ -311,6 +357,9 @@ export async function resumeFromCheckpoint(
           console.log(`  ${storyId}: $${cost.toFixed(4)}`);
         }
       }
+
+      printTimingSummary(tracker);
+      writeTimingReport(tracker, dirs.workingDir);
 
       // Integration verification (Phase 6 — multi-repo only)
       const planPath2 = join(dirs.workingDir, "plans", "execution-plan.json");
@@ -407,9 +456,10 @@ export async function runSpecStage(
   config: HiveMindConfig,
   feedback?: string,
   greenfield?: boolean,
+  tracker?: CostTracker,
 ): Promise<void> {
   console.log("Running SPEC stage...");
-  await specStage(prdPath, dirs, config, feedback, greenfield);
+  await specStage(prdPath, dirs, config, feedback, greenfield, tracker);
 }
 
 export async function runPlanStage(
@@ -417,9 +467,10 @@ export async function runPlanStage(
   config: HiveMindConfig,
   feedback?: string,
   greenfield?: boolean,
+  tracker?: CostTracker,
 ): Promise<void> {
   console.log("Running PLAN stage...");
-  await planStage(dirs, config, feedback, greenfield);
+  await planStage(dirs, config, feedback, greenfield, tracker);
 }
 
 export interface StoryExecutionResult {

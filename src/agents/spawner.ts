@@ -25,6 +25,9 @@ export async function spawnAgent(
     outputFile: config.outputFile,
   });
 
+  const elapsed = result.json?.duration_ms;
+  console.log(`[agent:${config.type}] completed in ${elapsed ? `${(elapsed / 1000).toFixed(1)}s` : '?'}${result.killedByOutputDetection ? ' (killed by output detection)' : ''}`);
+
   const outputExists = fileExists(config.outputFile);
 
   // Fail only if exit code is bad AND no output file
@@ -37,6 +40,7 @@ export async function spawnAgent(
       modelUsed: result.json?.model,
       sessionId: result.json?.session_id,
       durationMs: result.json?.duration_ms,
+      killedByOutputDetection: result.killedByOutputDetection,
     };
   }
 
@@ -48,6 +52,7 @@ export async function spawnAgent(
     modelUsed: result.json?.model,
     sessionId: result.json?.session_id,
     durationMs: result.json?.duration_ms,
+    killedByOutputDetection: result.killedByOutputDetection,
   };
 }
 

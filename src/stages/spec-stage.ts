@@ -10,6 +10,7 @@ import { loadConstitution } from "../config/loader.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { checkTruncation } from "../utils/truncation-monitor.js";
 import { estimateTokens } from "../utils/token-count.js";
+import type { CostTracker } from "../utils/cost-tracker.js";
 
 const SPEC_STEPS = [
   "research-report.md",
@@ -64,6 +65,7 @@ export async function runSpecStage(
   config: HiveMindConfig,
   feedback?: string,
   greenfield?: boolean,
+  tracker?: CostTracker,
 ): Promise<void> {
   const specDir = join(dirs.workingDir, "spec");
   ensureDir(specDir);
@@ -95,7 +97,7 @@ export async function runSpecStage(
     rules: getAgentRules("researcher"),
     instructionBlocks: researcherBlocks,
     memoryContent,
-  }, config, constitutionContent);
+  }, config, constitutionContent, tracker);
 
   const researchReport = join(specDir, "research-report.md");
 
@@ -126,7 +128,7 @@ export async function runSpecStage(
     memoryContent: feedback
       ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
       : memoryContent,
-  }, config, constitutionContent);
+  }, config, constitutionContent, tracker);
 
   const specDraft = join(specDir, "SPEC-draft.md");
 
@@ -139,7 +141,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "critique-1.md"),
     rules: getAgentRules("critic"),
     memoryContent,
-  }, config, constitutionContent);
+  }, config, constitutionContent, tracker);
 
   const critique1 = join(specDir, "critique-1.md");
 
@@ -153,7 +155,7 @@ export async function runSpecStage(
     rules: getAgentRules("spec-corrector"),
     instructionBlocks: [SELF_REVIEW_BLOCK],
     memoryContent,
-  }, config, constitutionContent);
+  }, config, constitutionContent, tracker);
 
   const specV02 = join(specDir, "SPEC-v0.2.md");
 
@@ -166,7 +168,7 @@ export async function runSpecStage(
     outputFile: join(specDir, "critique-2.md"),
     rules: getAgentRules("critic"),
     memoryContent,
-  }, config, constitutionContent);
+  }, config, constitutionContent, tracker);
 
   const critique2 = join(specDir, "critique-2.md");
 
@@ -180,16 +182,17 @@ export async function runSpecStage(
     rules: getAgentRules("spec-corrector"),
     instructionBlocks: [SELF_REVIEW_BLOCK],
     memoryContent,
-  }, config, constitutionContent);
+  }, config, constitutionContent, tracker);
 
   console.log("SPEC stage complete. 6 artifacts produced.");
 }
 
 const MODEL_MAX_TOKENS = 200_000; // Conservative estimate for structured output
 
-async function spawnStep(agentConfig: AgentConfig, hiveMindConfig: HiveMindConfig, constitutionContent?: string): Promise<void> {
+async function spawnStep(agentConfig: AgentConfig, hiveMindConfig: HiveMindConfig, constitutionContent?: string, tracker?: CostTracker): Promise<void> {
   const config = constitutionContent ? { ...agentConfig, constitutionContent } : agentConfig;
   const result = await spawnAgentWithRetry(config, hiveMindConfig);
+  tracker?.recordAgentCost("SPEC", agentConfig.type, result.costUsd, result.durationMs);
   if (!result.success) {
     // Empty critique is acceptable — log warning but proceed
     if (agentConfig.type === "critic") {

@@ -8,6 +8,15 @@ export interface AgentCostEntry {
   timestamp: string;
 }
 
+export interface TimingSummary {
+  totalDurationMs: number;
+  agentCount: number;
+  fastest: { agentType: string; storyId: string; durationMs: number } | null;
+  median: { agentType: string; storyId: string; durationMs: number } | null;
+  slowest: { agentType: string; storyId: string; durationMs: number } | null;
+  perAgent: Array<{ storyId: string; agentType: string; durationMs: number; costUsd: number }>;
+}
+
 export interface CostSummary {
   totalCostUsd: number;
   totalDurationMs: number;
@@ -69,6 +78,28 @@ export class CostTracker {
         `Budget exceeded: $${this.getPipelineTotal().toFixed(4)} spent, budget is $${this.budgetUsd!.toFixed(2)}`,
       );
     }
+  }
+
+  getTimingSummary(): TimingSummary {
+    const sorted = [...this.entries]
+      .filter(e => e.durationMs > 0)
+      .sort((a, b) => a.durationMs - b.durationMs);
+
+    const pick = (e: AgentCostEntry) => ({
+      agentType: e.agentType, storyId: e.storyId, durationMs: e.durationMs,
+    });
+
+    return {
+      totalDurationMs: sorted.reduce((s, e) => s + e.durationMs, 0),
+      agentCount: sorted.length,
+      fastest: sorted.length > 0 ? pick(sorted[0]) : null,
+      median: sorted.length > 0 ? pick(sorted[Math.floor(sorted.length / 2)]) : null,
+      slowest: sorted.length > 0 ? pick(sorted[sorted.length - 1]) : null,
+      perAgent: sorted.map(e => ({
+        storyId: e.storyId, agentType: e.agentType,
+        durationMs: e.durationMs, costUsd: e.costUsd,
+      })),
+    };
   }
 
   getSummary(): CostSummary {

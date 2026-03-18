@@ -10,6 +10,7 @@ import { parseModules, resolveAndValidateModules } from "../utils/module-parser.
 import { loadConstitution } from "../config/loader.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { getSourceFilePaths } from "../types/execution-plan.js";
+import type { CostTracker } from "../utils/cost-tracker.js";
 
 const ROLE_KEYWORDS: Record<string, string[]> = {
   security: [
@@ -57,6 +58,7 @@ export async function runPlanStage(
   config: HiveMindConfig,
   feedback?: string,
   greenfield?: boolean,
+  tracker?: CostTracker,
 ): Promise<void> {
   const plansDir = join(dirs.workingDir, "plans");
   const roleReportsDir = join(plansDir, "role-reports");
@@ -103,6 +105,7 @@ export async function runPlanStage(
 
   const roleReportPaths: string[] = [];
   for (let i = 0; i < roleResults.length; i++) {
+    tracker?.recordAgentCost("PLAN", roleConfigs[i].type, roleResults[i].costUsd, roleResults[i].durationMs);
     if (roleResults[i].success) {
       roleReportPaths.push(roleConfigs[i].outputFile);
     } else {
@@ -156,7 +159,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   if (greenfield) {
     plannerRules.push(`${GREENFIELD_PLAN_BLOCK.heading}: ${GREENFIELD_PLAN_BLOCK.content}`);
   }
-  await spawnAgentWithRetry({
+  const plannerResult = await spawnAgentWithRetry({
     type: "planner",
     model: "opus",
     inputFiles: [specPath, ...roleReportPaths],
@@ -165,6 +168,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     memoryContent: feedbackMemory,
     constitutionContent,
   }, config);
+  tracker?.recordAgentCost("PLAN", "planner", plannerResult.costUsd, plannerResult.durationMs);
 
   if (!fileExists(planJsonPath)) {
     throw new Error("Planner failed to produce execution-plan.json");
@@ -219,7 +223,10 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     constitutionContent,
   }));
 
-  await spawnAgentsParallel(acConfigs, config);
+  const acResults = await spawnAgentsParallel(acConfigs, config);
+  for (let i = 0; i < acResults.length; i++) {
+    tracker?.recordAgentCost("PLAN", "ac-generator", acResults[i].costUsd, acResults[i].durationMs);
+  }
 
   // EC-generator per story (parallel)
   console.log(`Running ${stories.length} EC-generators in parallel...`);
@@ -233,7 +240,10 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     constitutionContent,
   }));
 
-  await spawnAgentsParallel(ecConfigs, config);
+  const ecResults = await spawnAgentsParallel(ecConfigs, config);
+  for (let i = 0; i < ecResults.length; i++) {
+    tracker?.recordAgentCost("PLAN", "ec-generator", ecResults[i].costUsd, ecResults[i].durationMs);
+  }
 
   // Assembly: merge skeleton + ACs + ECs into final step files
   console.log("Assembling step files...");
@@ -258,7 +268,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     if (filteredRoleReports.length === 0) continue;
 
     try {
-      await spawnAgentWithRetry({
+      const enricherResult = await spawnAgentWithRetry({
         type: "enricher",
         model: "sonnet",
         inputFiles: [stepFilePath, ...filteredRoleReports],
@@ -266,6 +276,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
         rules: getAgentRules("enricher"),
         memoryContent: feedbackMemory,
       }, config);
+      tracker?.recordAgentCost("PLAN", "enricher", enricherResult.costUsd, enricherResult.durationMs);
 
       // Validate step file still has required sections
       const enrichedContent = readFileSafe(stepFilePath);
@@ -293,7 +304,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   if (highComplexityStories.length > 0) {
     console.log(`Running decomposer for ${highComplexityStories.length} high-complexity stories...`);
     for (const story of highComplexityStories) {
-      const subTasks = await decomposeStory(story, stepsDir, feedbackMemory, config);
+      const subTasks = await decomposeStory(story, stepsDir, feedbackMemory, config, tracker);
       if (subTasks.length > 0) {
         story.subTasks = subTasks;
         console.log(`  ${story.id}: decomposed into ${subTasks.length} sub-tasks`);
@@ -307,7 +318,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   // Step 4: AC consolidator
   console.log("Running AC consolidator...");
   const acPath = join(plansDir, "acceptance-criteria.md");
-  await spawnAgentWithRetry({
+  const synthResult = await spawnAgentWithRetry({
     type: "synthesizer",
     model: "opus",
     inputFiles: [stepsDir],
@@ -317,6 +328,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     ],
     memoryContent: feedbackMemory,
   }, config);
+  tracker?.recordAgentCost("PLAN", "synthesizer", synthResult.costUsd, synthResult.durationMs);
 
   console.log("PLAN stage complete.");
 }
@@ -365,6 +377,7 @@ async function decomposeStory(
   stepsDir: string,
   memoryContent: string,
   config: HiveMindConfig,
+  tracker?: CostTracker,
 ): Promise<SubTask[]> {
   // Decompose all high-complexity stories regardless of file count.
   // Dogfood finding: planner always creates 1-file stories, so the old 3-file gate was dead code.
@@ -374,7 +387,7 @@ async function decomposeStory(
   const outputPath = join(stepsDir, `${story.id}-subtasks.json`);
 
   try {
-    await spawnAgentWithRetry({
+    const decomposerResult = await spawnAgentWithRetry({
       type: "decomposer",
       model: "sonnet",
       inputFiles: [stepFilePath],
@@ -382,6 +395,7 @@ async function decomposeStory(
       rules: getAgentRules("decomposer"),
       memoryContent,
     }, config);
+    tracker?.recordAgentCost("PLAN", "decomposer", decomposerResult.costUsd, decomposerResult.durationMs);
 
     const content = readFileSafe(outputPath);
     if (!content) {
