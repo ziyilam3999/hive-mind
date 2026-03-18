@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/ziyilam3999/hive-mind/compare/v0.4.0...v0.5.0) (2026-03-18)
+
+
+### Features
+
+* add timing/polling observability with test coverage ([af74c40](https://github.com/ziyilam3999/hive-mind/commit/af74c40f405f718afda3920809d8997a66a918bf))
+
 ## [0.4.0](https://github.com/ziyilam3999/hive-mind/compare/v0.3.0...v0.4.0) (2026-03-18)
 
 
