@@ -29,7 +29,7 @@ import { join } from "node:path";
 import { rmSync, readdirSync } from "node:fs";
 import { HiveMindError } from "./utils/errors.js";
 import { notifyCheckpoint } from "./utils/notify.js";
-import { CostTracker } from "./utils/cost-tracker.js";
+import { CostTracker, estimatePipelineCost } from "./utils/cost-tracker.js";
 import { runSpecStage as specStage } from "./stages/spec-stage.js";
 import { runPlanStage as planStage } from "./stages/plan-stage.js";
 import { runBuild } from "./stages/execute-build.js";
@@ -149,7 +149,8 @@ export async function runPipeline(
   }
 
   // skipNormalize — proceed directly to SPEC with original PRD
-  const tracker = new CostTracker(options?.budget);
+  const costLogPath = join(dirs.workingDir, "cost-log.jsonl");
+  const tracker = new CostTracker(options?.budget, costLogPath);
   await runSpecThenCheckpoint(prdPath, dirs, config, options?.silent ?? false, options?.stopAfterPlan, options?.greenfield, tracker);
 }
 
@@ -284,7 +285,8 @@ export async function resumeFromCheckpoint(
       }
 
       // Approved — proceed to SPEC with normalized PRD
-      const normalizeTracker = new CostTracker(startData.budget);
+      const normCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+      const normalizeTracker = CostTracker.loadFromDisk(normCostLogPath, startData.budget);
       await runSpecThenCheckpoint(normalizedPrd, dirs, config, silent, startData.stopAfterPlan, startData.greenfield, normalizeTracker);
       break;
     }
@@ -308,7 +310,8 @@ export async function resumeFromCheckpoint(
         }
       }
 
-      const specTracker = new CostTracker(startDataSpec.budget);
+      const specCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+      const specTracker = CostTracker.loadFromDisk(specCostLogPath, startDataSpec.budget);
       await runPlanStage(dirs, config, feedback, startDataSpec.greenfield, specTracker);
       await safeUpdateManifest(dirs.workingDir);
 
@@ -366,7 +369,8 @@ export async function resumeFromCheckpoint(
       }
       deleteCheckpoint(dirs.workingDir);
 
-      const tracker = new CostTracker(startDataPlan.budget);
+      const execCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+      const tracker = CostTracker.loadFromDisk(execCostLogPath, startDataPlan.budget);
       await runExecuteStage(dirs, config, tracker);
 
       const summary = tracker.getSummary();
@@ -705,6 +709,44 @@ export async function runExecuteStage(
 
   const roleReportsDir = join(dirs.workingDir, "plans", "role-reports");
 
+  // Cost estimation gate: show estimated cost and prompt for approval
+  const pendingStories = plan.stories.filter((s) => s.status === "not-started");
+  if (pendingStories.length > 0) {
+    const maxAttempts = Math.max(...pendingStories.map((s) => s.maxAttempts));
+    const estimate = estimatePipelineCost(pendingStories.length, maxAttempts);
+
+    console.log(`\n--- Cost Estimate ---`);
+    console.log(`Stories to execute: ${pendingStories.length}`);
+    for (const b of estimate.breakdown) {
+      console.log(`  ${b.stage}: $${b.total.toFixed(2)} ($${b.perStory.toFixed(2)}/story)`);
+    }
+    console.log(`  Estimated total: $${estimate.estimatedUsd.toFixed(2)}`);
+    console.log(`  (Actual costs may vary based on complexity and retries)\n`);
+
+    // Auto-approve if budget is set and estimate is within budget
+    const budgetUsd = costTracker?.["budgetUsd"] as number | undefined;
+    if (budgetUsd !== undefined && estimate.estimatedUsd <= budgetUsd) {
+      console.log(`Estimate within budget ($${budgetUsd.toFixed(2)}). Auto-approved.`);
+    } else if (process.stdin.isTTY) {
+      // Prompt for human approval (only in interactive terminals)
+      const { createInterface } = await import("node:readline");
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await new Promise<string>((resolve) => {
+        rl.question("Proceed with execution? [Y/n] ", (ans) => {
+          rl.close();
+          resolve(ans.trim().toLowerCase());
+        });
+      });
+      if (answer === "n" || answer === "no") {
+        console.log("Execution cancelled by user.");
+        return;
+      }
+    } else {
+      // Non-interactive (CI/tests): auto-approve with log
+      console.log("Non-interactive mode — auto-approved.");
+    }
+  }
+
   // Wave executor: process stories in waves of non-overlapping, dependency-ready stories
   while (true) {
     const ready = getReadyStories(plan);
@@ -842,9 +884,15 @@ export async function runExecuteStage(
       await runLearn(story, dirs, config, costTracker, roleReportsDir);
     }
 
-    // Budget enforcement after wave (not per-story)
-    costTracker?.enforceBudget();
+    // Budget warning after wave (informational only — no mid-pipeline kills)
+    if (costTracker?.checkBudget()) {
+      console.warn(`\n[BUDGET] Spending has exceeded budget: $${costTracker.getPipelineTotal().toFixed(2)} spent. Pipeline will continue to completion.`);
+    }
   }
+
+  // Diagnostic: log total spawnClaude invocation count (Issue 8)
+  const { getSpawnClaudeInvocationCount } = await import("./utils/shell.js");
+  console.log(`[DIAGNOSTIC] Total spawnClaude invocations this run: ${getSpawnClaudeInvocationCount()}`);
 
   // K18: Best-effort cleanup of scratch directories
   try { rmSync(join(dirs.labDir, "tmp"), { recursive: true, force: true }); } catch { /* best-effort */ }

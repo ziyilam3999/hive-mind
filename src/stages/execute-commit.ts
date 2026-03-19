@@ -2,7 +2,7 @@ import type { Story } from "../types/execution-plan.js";
 import { getSourceFilePaths } from "../types/execution-plan.js";
 import type { VerifyResult } from "./execute-verify.js";
 import { runShell } from "../utils/shell.js";
-import { readFileSafe } from "../utils/file-io.js";
+import { readFileSafe, fileExists } from "../utils/file-io.js";
 import { parseImplReport, parseFixReport } from "../reports/parser.js";
 import { getReportPath } from "../reports/templates.js";
 import type { HiveMindConfig } from "../config/schema.js";
@@ -74,20 +74,40 @@ export async function runCommit(
     if (content) fixContents.push(content);
   }
 
+  const cwd = moduleCwd ?? process.cwd();
   const modifiedFiles = computeModifiedFiles(story, implContent, fixContents)
     .filter(f => f.includes("/") || f.includes("."));
-  if (modifiedFiles.length === 0) {
-    return { committed: false, commitHash: null, error: "No modified files to commit" };
+
+  // Filter out files that don't exist on disk — log warnings for missing ones
+  const existingFiles: string[] = [];
+  for (const f of modifiedFiles) {
+    const absPath = join(cwd, f);
+    if (fileExists(absPath)) {
+      existingFiles.push(f);
+    } else {
+      console.warn(`[${story.id}] COMMIT: Skipping missing file: ${f}`);
+    }
   }
 
-  const fileList = modifiedFiles.map(f => `"${f}"`).join(" ");
+  if (existingFiles.length === 0) {
+    return { committed: false, commitHash: null, error: "No modified files to commit (all files missing)" };
+  }
+
+  const fileList = existingFiles.map(f => `"${f}"`).join(" ");
   const commitMessage = buildCommitMessage(story, verifyResult);
 
   // Attempt 1: git add + commit (hooks always run)
   const shellOpts = moduleCwd ? { cwd: moduleCwd } : undefined;
   const addResult = await runShell(`git add ${fileList}`, shellOpts);
   if (addResult.exitCode !== 0) {
-    return { committed: false, commitHash: null, error: `git add failed: ${addResult.stderr}` };
+    // Ignore CRLF warnings — git may write to stderr even on success-like conditions
+    const isOnlyWarning = addResult.stderr.split("\n").every(
+      line => line.trim() === "" || line.toLowerCase().includes("warning:"),
+    );
+    if (!isOnlyWarning) {
+      return { committed: false, commitHash: null, error: `git add failed: ${addResult.stderr}` };
+    }
+    console.warn(`[${story.id}] COMMIT: git add warnings (non-fatal): ${addResult.stderr.trim()}`);
   }
 
   let commitResult = await runShell(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, shellOpts);

@@ -3,12 +3,14 @@ import { getSourceFilePaths } from "../types/execution-plan.js";
 import { readFileSafe, writeFileAtomic } from "../utils/file-io.js";
 import { HiveMindError } from "../utils/errors.js";
 import { join } from "node:path";
+import { unlinkSync, existsSync } from "node:fs";
+import { getReportPath } from "../reports/templates.js";
 
 const VALID_TRANSITIONS: Record<string, StoryStatus[]> = {
   "not-started": ["in-progress", "skipped"],
   // "not-started" allowed for crash recovery: resetCrashedStories resets in-progress → not-started
   "in-progress": ["passed", "failed", "not-started"],
-  "failed": ["skipped"],
+  "failed": ["skipped", "not-started"],
 };
 
 export function loadExecutionPlan(planPath: string, hasModulesSection = false): ExecutionPlan {
@@ -340,6 +342,51 @@ export function resetCrashedStories(plan: ExecutionPlan): ExecutionPlan {
       s.status === "in-progress" ? { ...s, status: "not-started" as StoryStatus } : s,
     ),
   };
+}
+
+/**
+ * Reset a failed story to not-started and delete its checkpoint so BUILD reruns.
+ * Returns the updated plan.
+ */
+export function resetFailedStory(
+  plan: ExecutionPlan,
+  storyId: string,
+  workingDir: string,
+): ExecutionPlan {
+  const story = getStory(plan, storyId);
+  if (!story) throw new Error(`Story not found: ${storyId}`);
+  if (story.status !== "failed") {
+    throw new Error(`Story ${storyId} is not failed (status: ${story.status})`);
+  }
+
+  // Delete checkpoint so BUILD is not skipped on retry
+  const cpPath = join(workingDir, getReportPath(storyId, "checkpoint.json"));
+  if (existsSync(cpPath)) {
+    unlinkSync(cpPath);
+    console.log(`[${storyId}] Cleared checkpoint for retry`);
+  }
+
+  // Reset attempts to 0 so the story gets a fresh set of retries
+  const updated = updateStoryStatus(plan, storyId, "not-started");
+  return {
+    ...updated,
+    stories: updated.stories.map((s) =>
+      s.id === storyId ? { ...s, attempts: 0 } : s,
+    ),
+  };
+}
+
+/**
+ * Reset ALL failed stories to not-started and clear their checkpoints.
+ */
+export function resetAllFailedStories(plan: ExecutionPlan, workingDir: string): ExecutionPlan {
+  let updated = plan;
+  for (const story of plan.stories) {
+    if (story.status === "failed") {
+      updated = resetFailedStory(updated, story.id, workingDir);
+    }
+  }
+  return updated;
 }
 
 /**

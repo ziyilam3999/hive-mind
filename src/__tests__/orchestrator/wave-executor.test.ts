@@ -30,6 +30,7 @@ vi.mock("../../agents/spawner.js", () => {
 vi.mock("../../utils/shell.js", () => ({
   spawnClaude: vi.fn(async () => ({ exitCode: 0, stdout: "{}", stderr: "", json: {} })),
   runShell: vi.fn(async () => ({ exitCode: 0, stdout: "abc1234", stderr: "" })),
+  getSpawnClaudeInvocationCount: vi.fn(() => 0),
 }));
 
 vi.mock("../../utils/notify.js", () => ({
@@ -359,7 +360,7 @@ describe("wave executor", () => {
     }
   });
 
-  it("budget enforcement runs after wave completes", async () => {
+  it("budget exceeded logs warning but completes pipeline", async () => {
     const { CostTracker } = await import("../../utils/cost-tracker.js");
     // Budget of $0 — will be exceeded by any cost
     const tracker = new CostTracker(0);
@@ -370,12 +371,16 @@ describe("wave executor", () => {
       makeStory({ id: "US-02", sourceFiles: ["b.ts"] }),
     ]);
     setup(plan);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const restore = suppressConsole();
     try {
-      await expect(
-        runExecuteStage(dirs, config, tracker),
-      ).rejects.toThrow("Budget exceeded");
+      // Pipeline should complete (no throw) — budget exceeded is just a warning
+      await runExecuteStage(dirs, config, tracker);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[BUDGET]"),
+      );
     } finally {
+      warnSpy.mockRestore();
       restore();
       cleanup();
     }

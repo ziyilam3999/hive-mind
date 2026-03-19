@@ -1,10 +1,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 
 export interface ShellResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+}
+
+// Diagnostic counter for spawnClaude invocations (Issue 8)
+let spawnClaudeInvocationCount = 0;
+export function getSpawnClaudeInvocationCount(): number {
+  return spawnClaudeInvocationCount;
 }
 
 export function runShell(
@@ -74,6 +80,15 @@ export interface ClaudeSpawnResult {
 
 export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnResult> {
   return new Promise((resolve) => {
+    spawnClaudeInvocationCount++;
+    const startTime = Date.now();
+
+    // Diagnostic: check if output file already exists (stale from prior run)
+    if (options.outputFile && existsSync(options.outputFile)) {
+      console.warn(`[spawnClaude] DIAGNOSTIC: Output file already exists before spawn: ${options.outputFile} — deleting stale file`);
+      try { unlinkSync(options.outputFile); } catch { /* best-effort */ }
+    }
+
     const args: string[] = [
       "--print",
       "--model", options.model,
@@ -131,7 +146,7 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
       pollTimer = setInterval(() => {
         if (existsSync(options.outputFile!)) {
           killedByOutputDetection = true;
-          console.log(`[spawnClaude] Output file detected, terminating process early: ${options.outputFile}`);
+          console.debug(`[spawnClaude] Output file detected, terminating process early: ${options.outputFile}`);
           child.kill("SIGTERM");
         }
       }, interval);
@@ -165,6 +180,16 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.warn(`[spawnClaude] JSON parse failed — falling back to raw stdout. Error: ${msg}. stdout (first 200 chars): ${stdout.slice(0, 200)}`);
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+
+      // Diagnostic: warn on suspiciously fast completions
+      if (durationMs < 5000 && !killedByOutputDetection) {
+        const hasOutput = options.outputFile ? existsSync(options.outputFile) : stdout.length > 0;
+        if (!hasOutput) {
+          console.warn(`[spawnClaude] DIAGNOSTIC: Agent completed in ${durationMs}ms with no output. exit=${exitCode} stderr=${stderr.slice(0, 200)}`);
         }
       }
 

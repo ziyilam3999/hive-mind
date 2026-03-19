@@ -32,22 +32,22 @@ describe("parseArgs throws HiveMindError instead of process.exit", () => {
 describe("parseArgs resume command", () => {
   it("parses resume with --from", () => {
     const result = parseArgs(["node", "cli", "resume", "--from", "US-03"]);
-    expect(result).toEqual({ command: "resume", from: "US-03", skipFailed: false, silent: false });
+    expect(result).toEqual({ command: "resume", from: "US-03", skipFailed: false, retryFailed: false, silent: false });
   });
 
   it("parses resume with --skip-failed", () => {
     const result = parseArgs(["node", "cli", "resume", "--skip-failed"]);
-    expect(result).toEqual({ command: "resume", from: undefined, skipFailed: true, silent: false });
+    expect(result).toEqual({ command: "resume", from: undefined, skipFailed: true, retryFailed: false, silent: false });
   });
 
   it("parses resume with both --from and --skip-failed", () => {
     const result = parseArgs(["node", "cli", "resume", "--from", "US-02", "--skip-failed"]);
-    expect(result).toEqual({ command: "resume", from: "US-02", skipFailed: true, silent: false });
+    expect(result).toEqual({ command: "resume", from: "US-02", skipFailed: true, retryFailed: false, silent: false });
   });
 
   it("parses resume with no flags", () => {
     const result = parseArgs(["node", "cli", "resume"]);
-    expect(result).toEqual({ command: "resume", from: undefined, skipFailed: false, silent: false });
+    expect(result).toEqual({ command: "resume", from: undefined, skipFailed: false, retryFailed: false, silent: false });
   });
 });
 

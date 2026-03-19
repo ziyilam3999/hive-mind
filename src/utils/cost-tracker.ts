@@ -1,4 +1,6 @@
 import { HiveMindError } from "./errors.js";
+import { appendFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 export interface AgentCostEntry {
   storyId: string;
@@ -24,12 +26,65 @@ export interface CostSummary {
   entries: AgentCostEntry[];
 }
 
+/**
+ * Estimate the total pipeline cost based on story count and stages.
+ * Uses empirical per-story averages from observed runs:
+ *   BUILD ≈ $0.30, VERIFY ≈ $0.15 (per attempt), LEARN ≈ $0.05, COMMIT ≈ $0.01
+ * These are rough heuristics — actual costs depend on model, story complexity, and retries.
+ */
+export function estimatePipelineCost(storyCount: number, maxAttempts: number = 3): {
+  estimatedUsd: number;
+  breakdown: { stage: string; perStory: number; total: number }[];
+} {
+  const stages = [
+    { stage: "BUILD", perStory: 0.30 },
+    { stage: "VERIFY", perStory: 0.15 * Math.min(maxAttempts, 2) }, // avg ~2 attempts
+    { stage: "LEARN", perStory: 0.05 },
+    { stage: "COMMIT", perStory: 0.01 },
+  ];
+
+  const breakdown = stages.map((s) => ({
+    stage: s.stage,
+    perStory: s.perStory,
+    total: s.perStory * storyCount,
+  }));
+
+  const estimatedUsd = breakdown.reduce((sum, b) => sum + b.total, 0);
+  return { estimatedUsd, breakdown };
+}
+
 export class CostTracker {
   private entries: AgentCostEntry[] = [];
   private budgetUsd: number | undefined;
+  private costLogPath: string | undefined;
 
-  constructor(budgetUsd?: number) {
+  constructor(budgetUsd?: number, costLogPath?: string) {
     this.budgetUsd = budgetUsd;
+    this.costLogPath = costLogPath;
+  }
+
+  /**
+   * Load prior cost entries from a JSONL file on disk.
+   * Used on resume to display cumulative totals.
+   */
+  static loadFromDisk(costLogPath: string, budgetUsd?: number): CostTracker {
+    const tracker = new CostTracker(budgetUsd, costLogPath);
+    if (existsSync(costLogPath)) {
+      const content = readFileSync(costLogPath, "utf-8");
+      for (const line of content.trim().split("\n")) {
+        if (!line) continue;
+        try {
+          const entry = JSON.parse(line) as AgentCostEntry;
+          tracker.entries.push(entry);
+        } catch {
+          // Skip corrupt lines
+        }
+      }
+      if (tracker.entries.length > 0) {
+        console.log(`[CostTracker] Loaded ${tracker.entries.length} prior cost entries ($${tracker.getPipelineTotal().toFixed(4)} cumulative)`);
+      }
+    }
+    return tracker;
   }
 
   /**
@@ -46,13 +101,24 @@ export class CostTracker {
     if (costUsd === undefined) {
       console.warn(`[CostTracker] Missing cost data for ${agentType} (${storyId}) — defaulting to $0. Pipeline totals may undercount.`);
     }
-    this.entries.push({
+    const entry: AgentCostEntry = {
       storyId,
       agentType,
       costUsd: costUsd ?? 0,
       durationMs: durationMs ?? 0,
       timestamp: new Date().toISOString(),
-    });
+    };
+    this.entries.push(entry);
+
+    // Persist to disk if path is configured
+    if (this.costLogPath) {
+      try {
+        mkdirSync(dirname(this.costLogPath), { recursive: true });
+        appendFileSync(this.costLogPath, JSON.stringify(entry) + "\n");
+      } catch (err) {
+        console.warn(`[CostTracker] Failed to persist cost entry: ${err instanceof Error ? err.message : err}`);
+      }
+    }
   }
 
   getStoryTotal(storyId: string): number {

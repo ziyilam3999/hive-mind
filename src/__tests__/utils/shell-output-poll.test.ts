@@ -50,8 +50,8 @@ describe("spawnClaude output file polling", () => {
 
   it("kills process when output file detected", async () => {
     const mockedExistsSync = vi.mocked(existsSync);
-    // File doesn't exist initially, then appears
-    mockedExistsSync.mockReturnValueOnce(false).mockReturnValue(true);
+    // File doesn't exist initially (stale check + first poll), then appears on second poll
+    mockedExistsSync.mockReturnValueOnce(false).mockReturnValueOnce(false).mockReturnValue(true);
 
     const promise = spawnClaude({
       model: "sonnet",

@@ -8,6 +8,7 @@ import { runPipeline, resumeFromCheckpoint, runBugFixPipeline } from "./orchestr
 import { loadConfig, resolvePipelineDirs } from "./config/loader.js";
 import { HiveMindError } from "./utils/errors.js";
 import { join } from "node:path";
+import { realpathSync } from "node:fs";
 
 export type ParsedCommand =
   | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean }
@@ -17,7 +18,8 @@ export type ParsedCommand =
   | { command: "status" }
   | { command: "abort" }
   | { command: "manifest" }
-  | { command: "resume"; from?: string; skipFailed?: boolean; silent?: boolean }
+  | { command: "resume"; from?: string; skipFailed?: boolean; retryFailed?: boolean; silent?: boolean }
+  | { command: "retry"; storyId: string; clean?: boolean }
   | { command: "help" }
   | { command: "version" };
 
@@ -89,7 +91,16 @@ export function parseArgs(argv: string[]): ParsedCommand {
       const fromIdx = args.indexOf("--from");
       const from = fromIdx !== -1 ? args[fromIdx + 1] : undefined;
       const skipFailed = args.includes("--skip-failed");
-      return { command: "resume", from, skipFailed, silent };
+      const retryFailed = args.includes("--retry-failed");
+      return { command: "resume", from, skipFailed, retryFailed, silent };
+    }
+    case "retry": {
+      const storyId = args[1];
+      if (!storyId || storyId.startsWith("--")) {
+        throw new HiveMindError("retry requires a story ID: hive-mind retry <storyId>");
+      }
+      const clean = args.includes("--clean");
+      return { command: "retry", storyId, clean };
     }
     default:
       throw new HiveMindError(`Unknown command '${cmd}'. Run 'hive-mind help' for available commands.`);
@@ -190,7 +201,7 @@ export async function main(): Promise<void> {
       if (!fileExists(planPath)) {
         throw new HiveMindError("No execution plan found. Run 'start' and 'approve' first.");
       }
-      const { loadExecutionPlan, updateStoryStatus, saveExecutionPlan } = await import("./state/execution-plan.js");
+      const { loadExecutionPlan, updateStoryStatus, saveExecutionPlan, resetAllFailedStories } = await import("./state/execution-plan.js");
       let plan = loadExecutionPlan(planPath);
 
       // --from <storyId>: mark all stories before the specified one as "skipped"
@@ -205,6 +216,12 @@ export async function main(): Promise<void> {
             plan = updateStoryStatus(plan, s.id, "skipped");
           }
         }
+        saveExecutionPlan(planPath, plan);
+      }
+
+      // --retry-failed: reset failed stories to not-started and clear checkpoints
+      if (parsed.retryFailed) {
+        plan = resetAllFailedStories(plan, dirs.workingDir);
         saveExecutionPlan(planPath, plan);
       }
 
@@ -223,6 +240,41 @@ export async function main(): Promise<void> {
       await runReportStage(dirs, config);
       break;
     }
+    case "retry": {
+      const planPath = join(dirs.workingDir, "plans/execution-plan.json");
+      if (!fileExists(planPath)) {
+        throw new HiveMindError("No execution plan found. Run 'start' and 'approve' first.");
+      }
+      const { loadExecutionPlan, saveExecutionPlan, resetFailedStory, getStory } = await import("./state/execution-plan.js");
+      let plan = loadExecutionPlan(planPath);
+
+      const story = getStory(plan, parsed.storyId);
+      if (!story) {
+        throw new HiveMindError(`Story not found: ${parsed.storyId}`);
+      }
+      if (story.status !== "failed") {
+        throw new HiveMindError(`Story ${parsed.storyId} is not failed (status: ${story.status}). Only failed stories can be retried.`);
+      }
+
+      // Optionally clean the report directory
+      if (parsed.clean) {
+        const { rmSync, existsSync } = await import("node:fs");
+        const reportDir = join(dirs.workingDir, `reports/${parsed.storyId}`);
+        if (existsSync(reportDir)) {
+          rmSync(reportDir, { recursive: true });
+          console.log(`[${parsed.storyId}] Cleaned report directory`);
+        }
+      }
+
+      plan = resetFailedStory(plan, parsed.storyId, dirs.workingDir);
+      saveExecutionPlan(planPath, plan);
+
+      console.log(`[${parsed.storyId}] Reset to not-started. Running execute...`);
+      const { runExecuteStage, runReportStage } = await import("./orchestrator.js");
+      await runExecuteStage(dirs, config);
+      await runReportStage(dirs, config);
+      break;
+    }
   }
 }
 
@@ -235,6 +287,7 @@ Commands:
   approve                Approve current checkpoint and continue
   reject --feedback <t>  Reject with feedback and re-run current stage
   resume                 Resume execution from saved plan
+  retry <storyId>        Retry a failed story (reset + re-execute)
   status                 Show current pipeline status
   abort                  Cancel active pipeline
   manifest               Update MANIFEST.md in working directory
@@ -250,6 +303,8 @@ Options:
   --greenfield           New project with no existing code (start only)
   --from <storyId>       Resume from specific story (resume only)
   --skip-failed          Skip failed stories on resume (resume only)
+  --retry-failed         Reset failed stories and retry them (resume only)
+  --clean                Delete report directory before retry (retry only)
 
 Directories (configurable via .hivemindrc.json):
   .hive-mind-working/    Pipeline output (specs, plans, reports)
@@ -271,7 +326,7 @@ function readCheckpointFile(dirs: PipelineDirs): Checkpoint | null {
   }
 }
 
-const isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"));
+const isDirectRun = process.argv[1] && import.meta.url.endsWith(realpathSync(process.argv[1]).replace(/\\/g, "/"));
 if (isDirectRun) {
   main().catch((err) => {
     if (err instanceof HiveMindError) {
