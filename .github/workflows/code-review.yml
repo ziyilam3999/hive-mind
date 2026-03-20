@@ -30,4 +30,4 @@ jobs:
           prompt: |
             Review this PR for bugs, logic errors, security issues, and CLAUDE.md convention violations.
             Be specific and actionable. Only flag issues with high confidence.
-          claude_args: "--max-turns 5"
+          claude_args: "--max-turns 10"
