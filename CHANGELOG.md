@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.5](https://github.com/ziyilam3999/hive-mind/compare/v0.8.4...v0.8.5) (2026-03-20)
+
+
+### Bug Fixes
+
+* **ci:** allow gh CLI commands in code review action ([00ffe7e](https://github.com/ziyilam3999/hive-mind/commit/00ffe7e67457076658503aef5f78de680c39f98a))
+* **ci:** allow gh CLI commands in code review action ([68f615b](https://github.com/ziyilam3999/hive-mind/commit/68f615b4bae3445a105b36225eb45e9629940906))
+
 ## [0.8.4](https://github.com/ziyilam3999/hive-mind/compare/v0.8.3...v0.8.4) (2026-03-20)
 
 
