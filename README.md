@@ -28,6 +28,7 @@
 # Hive Mind
 
 [![CI](https://github.com/ziyilam3999/hive-mind/actions/workflows/ci.yml/badge.svg)](https://github.com/ziyilam3999/hive-mind/actions/workflows/ci.yml)
+[![AI Code Review](https://github.com/ziyilam3999/hive-mind/actions/workflows/code-review.yml/badge.svg)](https://github.com/ziyilam3999/hive-mind/actions/workflows/code-review.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
 ![Node](https://img.shields.io/badge/Node.js-18%2B-green)
