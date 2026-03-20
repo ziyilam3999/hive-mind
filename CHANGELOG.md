@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/ziyilam3999/hive-mind/compare/v0.8.0...v0.8.1) (2026-03-20)
+
+
+### Reverts
+
+* remove unused exitCode from HiveMindError ([2b414fc](https://github.com/ziyilam3999/hive-mind/commit/2b414fc9af592817727e0185952806c28f85df34))
+
 ## [0.8.0](https://github.com/ziyilam3999/hive-mind/compare/v0.7.2...v0.8.0) (2026-03-20)
 
 
