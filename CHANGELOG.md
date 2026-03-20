@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/ziyilam3999/hive-mind/compare/v0.5.1...v0.6.0) (2026-03-20)
+
+
+### Features
+
+* codebase-aware spec pipeline ([19e61be](https://github.com/ziyilam3999/hive-mind/commit/19e61be83a7e79469eacb4374afc406f636fd79c))
+* codebase-aware spec pipeline with 4 new agent types ([5807a4e](https://github.com/ziyilam3999/hive-mind/commit/5807a4e763ba3e321a333449d519c33cc80eb005))
+
+
+### Bug Fixes
+
+* add missing getSpawnClaudeInvocationCount to pipeline-smoke mock ([b34f73e](https://github.com/ziyilam3999/hive-mind/commit/b34f73ed423682a1e0fb43f6d336a0b19dde3e3e))
+* pipeline reliability improvements from 32-story monday-bot run ([c87143b](https://github.com/ziyilam3999/hive-mind/commit/c87143beb2ed71e50b542da64d8f039b34220ee2))
+
 ## [0.5.1](https://github.com/ziyilam3999/hive-mind/compare/v0.5.0...v0.5.1) (2026-03-18)
 
 
