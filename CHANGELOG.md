@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.2](https://github.com/ziyilam3999/hive-mind/compare/v0.7.1...v0.7.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* **ci:** increase code review max-turns from 5 to 10 ([a1c5a2d](https://github.com/ziyilam3999/hive-mind/commit/a1c5a2d4b084c4fc139d6cc1b36b1d726caa6a7e))
+* **ci:** increase code review max-turns to 10 ([6de1d2f](https://github.com/ziyilam3999/hive-mind/commit/6de1d2f5a8cff36f782abd20aedbd97bca6f486e))
+
 ## [0.7.1](https://github.com/ziyilam3999/hive-mind/compare/v0.7.0...v0.7.1) (2026-03-20)
 
 
