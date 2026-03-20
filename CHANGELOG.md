@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/ziyilam3999/hive-mind/compare/v0.7.2...v0.8.0) (2026-03-20)
+
+
+### Features
+
+* add exitCode property to HiveMindError ([23b3273](https://github.com/ziyilam3999/hive-mind/commit/23b3273e6f04c4b3fb923d5ecc85a559bfc4b769))
+* add exitCode property to HiveMindError ([6599f63](https://github.com/ziyilam3999/hive-mind/commit/6599f6326060ae4dd5e4f7e0718e27b3cc8f2968))
+
 ## [0.7.2](https://github.com/ziyilam3999/hive-mind/compare/v0.7.1...v0.7.2) (2026-03-20)
 
 
