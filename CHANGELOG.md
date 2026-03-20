@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.3](https://github.com/ziyilam3999/hive-mind/compare/v0.8.2...v0.8.3) (2026-03-20)
+
+
+### Bug Fixes
+
+* **ci:** pass github_token explicitly for PR comment posting ([7e36581](https://github.com/ziyilam3999/hive-mind/commit/7e365813e7e1c0d47bed7a6d27a2cb2c9ebf39f7))
+* **ci:** pass github_token for PR comment posting ([6672437](https://github.com/ziyilam3999/hive-mind/commit/6672437b68fd4309b52ec36cffab8967b5543225))
+
 ## [0.8.2](https://github.com/ziyilam3999/hive-mind/compare/v0.8.1...v0.8.2) (2026-03-20)
 
 
