@@ -58,6 +58,10 @@ export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
   "diagnostician-bug": "opus",
   "workspace-cleanup": "haiku",
   "normalizer": "sonnet",
+  "relevance-scanner": "sonnet",
+  "codebase-analyzer": "opus",
+  "feature-spec-drafter": "opus",
+  "reconciler": "opus",
 };
 
 export const DEFAULT_CONFIG: HiveMindConfig = {

@@ -26,7 +26,8 @@ vi.mock("../../agents/spawner.js", () => {
     spawnAgentWithRetry: vi.fn(impl),
     spawnAgentsParallel: vi.fn(
       async (configs: Array<{ outputFile: string; type: string }>, hiveMindConfig: Record<string, unknown>) => {
-        return Promise.all(configs.map((c) => impl(c, hiveMindConfig)));
+        const results = await Promise.all(configs.map((c) => impl(c, hiveMindConfig)));
+        return results;
       },
     ),
   };
@@ -58,7 +59,7 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
-  it("SPEC stage produces all 7 artifacts with default config", async () => {
+  it("SPEC stage produces all artifacts with default config", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const config = getDefaultConfig();
 
@@ -70,8 +71,8 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
       expect(existsSync(join(specDir, step))).toBe(true);
     }
 
-    // 6 sequential spawns via spawnAgentWithRetry
-    expect(spawnCalls.length).toBe(6);
+    // 9 total agents: 7 sequential + 2 parallel (all tracked via spawnCalls)
+    expect(spawnCalls.length).toBe(9);
   });
 
   it("config roundtrip: write config file → load → spawn with correct model", async () => {
@@ -126,8 +127,8 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     await runSpecStage(prdPath, dirs, config);
     consoleSpy.mockRestore();
 
-    // All 6 steps completed despite agents returning metadata
-    expect(spawnCalls.length).toBe(6);
+    // All 9 agents completed despite agents returning metadata
+    expect(spawnCalls.length).toBe(9);
 
     // Verify metadata was included in mock returns (the mock always includes it)
     // The key thing is that the SPEC stage didn't crash
@@ -144,9 +145,13 @@ describe("integration: SPEC stage with config-driven model assignments", () => {
     consoleSpy.mockRestore();
 
     const types = spawnCalls.map((c) => c.config.type);
+    // Non-greenfield: scanner → (researcher + analyzer parallel) → feature-drafter → reconciler → critique pipeline
     expect(types).toEqual([
+      "relevance-scanner",
       "researcher",
-      "spec-drafter",
+      "codebase-analyzer",
+      "feature-spec-drafter",
+      "reconciler",
       "critic",
       "spec-corrector",
       "critic",

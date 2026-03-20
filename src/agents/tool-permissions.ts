@@ -68,6 +68,12 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
 
   // Normalize stage — read input + write output
   "normalizer": OUTPUT_TOOLS,
+
+  // Codebase-aware SPEC stage
+  "relevance-scanner": OUTPUT_TOOLS,
+  "codebase-analyzer": OUTPUT_TOOLS,
+  "feature-spec-drafter": OUTPUT_TOOLS,
+  "reconciler": OUTPUT_TOOLS,
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {
