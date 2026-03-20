@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/ziyilam3999/hive-mind/compare/v0.6.0...v0.7.0) (2026-03-20)
+
+
+### Features
+
+* add scorecard agent for stage-aware pipeline report card ([cb7c7ce](https://github.com/ziyilam3999/hive-mind/commit/cb7c7cec279225f83cfa8f1e0068ca0af3ee93f9))
+* add scorecard agent for stage-aware pipeline report card ([ca42854](https://github.com/ziyilam3999/hive-mind/commit/ca42854ae28af5328b891dce369b003161633f46))
+
 ## [0.6.0](https://github.com/ziyilam3999/hive-mind/compare/v0.5.1...v0.6.0) (2026-03-20)
 
 
