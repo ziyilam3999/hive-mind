@@ -3,11 +3,8 @@
  * Distinguishes intentional error conditions from unexpected bugs.
  */
 export class HiveMindError extends Error {
-  readonly exitCode: number;
-
-  constructor(message: string, exitCode = 1) {
+  constructor(message: string) {
     super(message);
     this.name = "HiveMindError";
-    this.exitCode = exitCode;
   }
 }
