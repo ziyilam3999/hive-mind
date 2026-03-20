@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.6](https://github.com/ziyilam3999/hive-mind/compare/v0.8.5...v0.8.6) (2026-03-20)
+
+
+### Bug Fixes
+
+* **ci:** use settings input for tool permissions ([aa6f4c7](https://github.com/ziyilam3999/hive-mind/commit/aa6f4c724bf6fd82a39f1ac6eb620e1952d7091a))
+* **ci:** use settings input for tool permissions in code review ([4325ec1](https://github.com/ziyilam3999/hive-mind/commit/4325ec10725cd5b55908621b946084dc6911d2b1))
+
 ## [0.8.5](https://github.com/ziyilam3999/hive-mind/compare/v0.8.4...v0.8.5) (2026-03-20)
 
 
