@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.4](https://github.com/ziyilam3999/hive-mind/compare/v0.8.3...v0.8.4) (2026-03-20)
+
+
+### Bug Fixes
+
+* **ci:** instruct Claude to post review as PR comment ([491f56b](https://github.com/ziyilam3999/hive-mind/commit/491f56bff882c3f19f54f7a6746424c8c4ccf289))
+* **ci:** instruct Claude to post review as PR comment via gh CLI ([357a50d](https://github.com/ziyilam3999/hive-mind/commit/357a50dd850f34531757bd90fe6de04565e7ffb4))
+
 ## [0.8.3](https://github.com/ziyilam3999/hive-mind/compare/v0.8.2...v0.8.3) (2026-03-20)
 
 
