@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/ziyilam3999/hive-mind/compare/v0.7.0...v0.7.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* **ci:** add id-token permission for OAuth OIDC exchange ([6128499](https://github.com/ziyilam3999/hive-mind/commit/6128499ee73038774cf74c7e5d5ec686fce3ffb4))
+
 ## [0.7.0](https://github.com/ziyilam3999/hive-mind/compare/v0.6.0...v0.7.0) (2026-03-20)
 
 
