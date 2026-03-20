@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/ziyilam3999/hive-mind/compare/v0.8.1...v0.8.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* **ci:** enable full output for code review debugging ([40a5e40](https://github.com/ziyilam3999/hive-mind/commit/40a5e40f53be6fbe6ccf2152148a007f3a73e693))
+* **ci:** enable show_full_output for code review debugging ([dfcf15d](https://github.com/ziyilam3999/hive-mind/commit/dfcf15d91971977a55e6a3e7b390a025ab9be8c1))
+
 ## [0.8.1](https://github.com/ziyilam3999/hive-mind/compare/v0.8.0...v0.8.1) (2026-03-20)
 
 
