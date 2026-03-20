@@ -32,4 +32,6 @@ jobs:
           prompt: |
             Review this PR for bugs, logic errors, security issues, and CLAUDE.md convention violations.
             Be specific and actionable. Only flag issues with high confidence.
+            After completing your review, post it as a comment on the PR using:
+            gh pr comment ${{ github.event.pull_request.number }} --body "<your review>"
           claude_args: "--max-turns 10"
