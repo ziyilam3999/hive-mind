@@ -124,8 +124,8 @@ describe("greenfield flow", () => {
     expect(researcherCall).toBeDefined();
     expect(researcherCall!.instructionBlocks?.some((b) => b.heading === "GREENFIELD PROJECT")).toBe(true);
 
-    // Check that spec-drafter got GREENFIELD block
-    const drafterCall = spawnCalls.find((c) => c.type === "spec-drafter");
+    // Check that feature-spec-drafter got GREENFIELD block
+    const drafterCall = spawnCalls.find((c) => c.type === "feature-spec-drafter");
     expect(drafterCall).toBeDefined();
     expect(drafterCall!.instructionBlocks?.some((b) => b.heading === "GREENFIELD PROJECT")).toBe(true);
 

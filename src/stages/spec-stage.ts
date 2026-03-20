@@ -1,8 +1,8 @@
 import type { AgentConfig } from "../types/agents.js";
-import { spawnAgentWithRetry } from "../agents/spawner.js";
+import { spawnAgentWithRetry, spawnAgentsParallel } from "../agents/spawner.js";
 import { getAgentRules } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
-import { readFileSafe, ensureDir, fileExists } from "../utils/file-io.js";
+import { readFileSafe, ensureDir, fileExists, writeFileAtomic } from "../utils/file-io.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -11,15 +11,27 @@ import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { checkTruncation } from "../utils/truncation-monitor.js";
 import { estimateTokens } from "../utils/token-count.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
+import { collectProjectFileListing } from "../utils/file-listing.js";
 
-const SPEC_STEPS = [
-  "research-report.md",
-  "SPEC-draft.md",
-  "critique-1.md",
-  "SPEC-v0.2.md",
-  "critique-2.md",
-  "SPEC-v1.0.md",
+// 9 agent outputs for non-greenfield (project-listing.txt written by calling code, not an agent)
+const SPEC_STEPS_FULL = [
+  "relevance-map.md", "research-report.md", "spec-existing.md",
+  "spec-new-features.md", "SPEC-draft.md",
+  "critique-1.md", "SPEC-v0.2.md", "critique-2.md", "SPEC-v1.0.md",
 ] as const;
+
+// 6 agent outputs for greenfield (SPEC-draft.md is a file copy, not in this array)
+const SPEC_STEPS_GREENFIELD = [
+  "research-report.md", "spec-new-features.md",
+  "critique-1.md", "SPEC-v0.2.md", "critique-2.md", "SPEC-v1.0.md",
+] as const;
+
+export function getSpecSteps(greenfield: boolean): readonly string[] {
+  return greenfield ? SPEC_STEPS_GREENFIELD : SPEC_STEPS_FULL;
+}
+
+// Backwards-compatible export for existing test consumers
+const SPEC_STEPS = SPEC_STEPS_FULL;
 
 const ENVIRONMENT_CONTEXT_BLOCK = {
   heading: "ENVIRONMENT CONTEXT",
@@ -66,6 +78,7 @@ export async function runSpecStage(
   feedback?: string,
   greenfield?: boolean,
   tracker?: CostTracker,
+  fromStep?: "drafter",
 ): Promise<void> {
   const specDir = join(dirs.workingDir, "spec");
   ensureDir(specDir);
@@ -85,44 +98,58 @@ export async function runSpecStage(
   const guidelinesPath = join(dirs.knowledgeDir, "document-guidelines.md");
   const constitutionContent = loadConstitution(dirs.knowledgeDir);
 
-  // S.1: Researcher (with justification analysis — replaces former S.2 justifier)
-  console.log("S.1: Running researcher...");
-  const researcherBlocks = [ENVIRONMENT_CONTEXT_BLOCK, DEPLOYMENT_CONTEXT_BLOCK];
-  if (greenfield) researcherBlocks.push(GREENFIELD_CONTEXT_BLOCK);
-  await spawnStep({
-    type: "researcher",
-    model: "opus",
-    inputFiles: [prdPath, ...kbFiles],
-    outputFile: join(specDir, "research-report.md"),
-    rules: getAgentRules("researcher"),
-    instructionBlocks: researcherBlocks,
-    memoryContent,
-  }, config, constitutionContent, tracker);
+  // Add MULTI-MODULE rule when PRD declares modules
+  const multiModuleRule = prdContent.includes("## Modules")
+    ? "MULTI-MODULE: The PRD declares multiple modules. Include a ## Inter-Module Contracts section in the SPEC defining the API boundaries between modules (exports, imports, data formats). This section is used by the integration verifier after execution."
+    : undefined;
+
+  if (greenfield) {
+    await runGreenfieldFlow(specDir, prdPath, kbFiles, guidelinesPath, memoryContent, feedback, constitutionContent, config, tracker, fromStep, multiModuleRule);
+  } else {
+    await runNonGreenfieldFlow(specDir, prdPath, dirs, kbFiles, guidelinesPath, memoryContent, feedback, constitutionContent, config, tracker, fromStep, multiModuleRule);
+  }
+}
+
+async function runGreenfieldFlow(
+  specDir: string,
+  prdPath: string,
+  kbFiles: string[],
+  guidelinesPath: string,
+  memoryContent: string,
+  feedback: string | undefined,
+  constitutionContent: string | undefined,
+  config: HiveMindConfig,
+  tracker: CostTracker | undefined,
+  fromStep: "drafter" | undefined,
+  multiModuleRule: string | undefined,
+): Promise<void> {
+  if (!fromStep) {
+    // S.1: Researcher
+    console.log("S.1: Running researcher...");
+    await spawnStep({
+      type: "researcher",
+      model: "opus",
+      inputFiles: [prdPath, ...kbFiles],
+      outputFile: join(specDir, "research-report.md"),
+      rules: getAgentRules("researcher"),
+      instructionBlocks: [ENVIRONMENT_CONTEXT_BLOCK, DEPLOYMENT_CONTEXT_BLOCK, GREENFIELD_CONTEXT_BLOCK],
+      memoryContent,
+    }, config, constitutionContent, tracker);
+  }
 
   const researchReport = join(specDir, "research-report.md");
 
-  // S.2: Spec-drafter
-  console.log("S.2: Running spec-drafter...");
-  const drafterInputFiles = [researchReport, prdPath];
-  if (fileExists(guidelinesPath)) {
-    drafterInputFiles.push(guidelinesPath);
-  }
+  // S.3: Feature Spec Drafter — input is research-report + PRD only
+  console.log("S.3: Running feature-spec-drafter...");
+  const drafterRules = [...getAgentRules("feature-spec-drafter")];
+  if (multiModuleRule) drafterRules.push(multiModuleRule);
 
-  // Add MULTI-MODULE rule when PRD declares modules
-  const drafterRules = [...getAgentRules("spec-drafter")];
-  if (prdContent.includes("## Modules")) {
-    drafterRules.push(
-      "MULTI-MODULE: The PRD declares multiple modules. Include a ## Inter-Module Contracts section in the SPEC defining the API boundaries between modules (exports, imports, data formats). This section is used by the integration verifier after execution.",
-    );
-  }
-
-  const drafterBlocks = [SELF_REVIEW_BLOCK];
-  if (greenfield) drafterBlocks.push(GREENFIELD_CONTEXT_BLOCK);
+  const drafterBlocks = [SELF_REVIEW_BLOCK, GREENFIELD_CONTEXT_BLOCK];
   await spawnStep({
-    type: "spec-drafter",
+    type: "feature-spec-drafter",
     model: "opus",
-    inputFiles: drafterInputFiles,
-    outputFile: join(specDir, "SPEC-draft.md"),
+    inputFiles: [researchReport, prdPath],
+    outputFile: join(specDir, "spec-new-features.md"),
     rules: drafterRules,
     instructionBlocks: drafterBlocks,
     memoryContent: feedback
@@ -130,10 +157,131 @@ export async function runSpecStage(
       : memoryContent,
   }, config, constitutionContent, tracker);
 
+  // File copy: spec-new-features.md -> SPEC-draft.md (keeps critique pipeline input consistent)
+  const specNewFeatures = readFileSafe(join(specDir, "spec-new-features.md"));
+  if (specNewFeatures) {
+    writeFileAtomic(join(specDir, "SPEC-draft.md"), specNewFeatures);
+  }
+
+  await runCritiquePipeline(specDir, memoryContent, constitutionContent, config, tracker);
+
+  console.log("SPEC stage complete (greenfield). 6 agents spawned.");
+}
+
+async function runNonGreenfieldFlow(
+  specDir: string,
+  prdPath: string,
+  dirs: PipelineDirs,
+  kbFiles: string[],
+  guidelinesPath: string,
+  memoryContent: string,
+  feedback: string | undefined,
+  constitutionContent: string | undefined,
+  config: HiveMindConfig,
+  tracker: CostTracker | undefined,
+  fromStep: "drafter" | undefined,
+  multiModuleRule: string | undefined,
+): Promise<void> {
+  if (!fromStep) {
+    // Write project-listing.txt BEFORE spawning the scanner
+    const projectListing = collectProjectFileListing({ root: process.cwd() });
+    writeFileAtomic(join(specDir, "project-listing.txt"), projectListing);
+
+    // S.0: Relevance Scanner
+    console.log("S.0: Running relevance-scanner...");
+    await spawnStep({
+      type: "relevance-scanner",
+      model: "sonnet",
+      inputFiles: [join(specDir, "project-listing.txt"), prdPath],
+      outputFile: join(specDir, "relevance-map.md"),
+      rules: getAgentRules("relevance-scanner"),
+      memoryContent,
+    }, config, constitutionContent, tracker);
+
+    // S.1 + S.2 in PARALLEL
+    console.log("S.1+S.2: Running researcher + codebase-analyzer in parallel...");
+    const researcherConfig: AgentConfig = {
+      type: "researcher",
+      model: "opus",
+      inputFiles: [prdPath, ...kbFiles],
+      outputFile: join(specDir, "research-report.md"),
+      rules: getAgentRules("researcher"),
+      instructionBlocks: [ENVIRONMENT_CONTEXT_BLOCK, DEPLOYMENT_CONTEXT_BLOCK],
+      memoryContent,
+    };
+
+    const analyzerConfig: AgentConfig = {
+      type: "codebase-analyzer",
+      model: "opus",
+      inputFiles: [join(specDir, "relevance-map.md")],
+      outputFile: join(specDir, "spec-existing.md"),
+      rules: getAgentRules("codebase-analyzer"),
+      memoryContent,
+      cwd: process.cwd(),
+    };
+
+    const parallelConfigs = [researcherConfig, analyzerConfig].map((c) =>
+      constitutionContent ? { ...c, constitutionContent } : c,
+    );
+    const parallelResults = await spawnAgentsParallel(parallelConfigs, config);
+
+    for (let i = 0; i < parallelResults.length; i++) {
+      const r = parallelResults[i];
+      const c = parallelConfigs[i];
+      tracker?.recordAgentCost("SPEC", c.type, r.costUsd, r.durationMs);
+      if (!r.success) {
+        throw new Error(`Agent ${c.type} failed: ${r.error}`);
+      }
+    }
+  }
+
+  const researchReport = join(specDir, "research-report.md");
+
+  // S.3: Feature Spec Drafter — NO codebase files
+  console.log("S.3: Running feature-spec-drafter...");
+  const drafterRules = [...getAgentRules("feature-spec-drafter")];
+  if (multiModuleRule) drafterRules.push(multiModuleRule);
+
+  await spawnStep({
+    type: "feature-spec-drafter",
+    model: "opus",
+    inputFiles: [researchReport, prdPath],
+    outputFile: join(specDir, "spec-new-features.md"),
+    rules: drafterRules,
+    instructionBlocks: [SELF_REVIEW_BLOCK],
+    memoryContent: feedback
+      ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
+      : memoryContent,
+  }, config, constitutionContent, tracker);
+
+  // S.4: Reconciler — merges spec-existing + spec-new-features
+  console.log("S.4: Running reconciler...");
+  await spawnStep({
+    type: "reconciler",
+    model: "opus",
+    inputFiles: [join(specDir, "spec-existing.md"), join(specDir, "spec-new-features.md")],
+    outputFile: join(specDir, "SPEC-draft.md"),
+    rules: getAgentRules("reconciler"),
+    instructionBlocks: [SELF_REVIEW_BLOCK],
+    memoryContent,
+  }, config, constitutionContent, tracker);
+
+  await runCritiquePipeline(specDir, memoryContent, constitutionContent, config, tracker);
+
+  console.log("SPEC stage complete. 9 agents spawned.");
+}
+
+async function runCritiquePipeline(
+  specDir: string,
+  memoryContent: string,
+  constitutionContent: string | undefined,
+  config: HiveMindConfig,
+  tracker: CostTracker | undefined,
+): Promise<void> {
   const specDraft = join(specDir, "SPEC-draft.md");
 
-  // S.3: Critic round 1 — ONLY receives SPEC-draft.md (P5/F9 isolation)
-  console.log("S.3: Running critic (round 1)...");
+  // S.5: Critic round 1 — ONLY receives SPEC-draft.md (isolation)
+  console.log("S.5: Running critic (round 1)...");
   await spawnStep({
     type: "critic",
     model: "sonnet",
@@ -145,8 +293,8 @@ export async function runSpecStage(
 
   const critique1 = join(specDir, "critique-1.md");
 
-  // S.4: Spec-corrector
-  console.log("S.4: Running spec-corrector...");
+  // S.6: Spec-corrector
+  console.log("S.6: Running spec-corrector...");
   await spawnStep({
     type: "spec-corrector",
     model: "opus",
@@ -159,8 +307,8 @@ export async function runSpecStage(
 
   const specV02 = join(specDir, "SPEC-v0.2.md");
 
-  // S.5: Critic round 2 — ONLY receives SPEC-v0.2.md (P5/F9 isolation)
-  console.log("S.5: Running critic (round 2)...");
+  // S.7: Critic round 2 — ONLY receives SPEC-v0.2.md (isolation)
+  console.log("S.7: Running critic (round 2)...");
   await spawnStep({
     type: "critic",
     model: "sonnet",
@@ -172,8 +320,8 @@ export async function runSpecStage(
 
   const critique2 = join(specDir, "critique-2.md");
 
-  // S.6: Spec-corrector (final)
-  console.log("S.6: Running spec-corrector (final)...");
+  // S.8: Spec-corrector (final)
+  console.log("S.8: Running spec-corrector (final)...");
   await spawnStep({
     type: "spec-corrector",
     model: "opus",
@@ -183,11 +331,9 @@ export async function runSpecStage(
     instructionBlocks: [SELF_REVIEW_BLOCK],
     memoryContent,
   }, config, constitutionContent, tracker);
-
-  console.log("SPEC stage complete. 6 artifacts produced.");
 }
 
-const MODEL_MAX_TOKENS = 200_000; // Conservative estimate for structured output
+const MODEL_MAX_TOKENS = 200_000;
 
 async function spawnStep(agentConfig: AgentConfig, hiveMindConfig: HiveMindConfig, constitutionContent?: string, tracker?: CostTracker): Promise<void> {
   const config = constitutionContent ? { ...agentConfig, constitutionContent } : agentConfig;
@@ -226,4 +372,4 @@ function collectKnowledgeBaseFiles(kbDir: string): string[] {
   }
 }
 
-export { SPEC_STEPS };
+export { SPEC_STEPS, SPEC_STEPS_FULL, SPEC_STEPS_GREENFIELD };

@@ -33,7 +33,11 @@ export type AgentType =
   | "integration-verifier"
   | "diagnostician-bug"
   | "workspace-cleanup"
-  | "normalizer";
+  | "normalizer"
+  | "relevance-scanner"
+  | "codebase-analyzer"
+  | "feature-spec-drafter"
+  | "reconciler";
 
 export interface AgentConfig {
   type: AgentType;

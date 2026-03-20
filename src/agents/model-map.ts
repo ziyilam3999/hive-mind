@@ -34,6 +34,10 @@ export const AGENT_MODEL_MAP: Record<AgentType, ModelTier> = {
   "diagnostician-bug": "opus",
   "workspace-cleanup": "haiku",
   "normalizer": "sonnet",
+  "relevance-scanner": "sonnet",
+  "codebase-analyzer": "opus",
+  "feature-spec-drafter": "opus",
+  "reconciler": "opus",
 };
 
 export function getModelForAgent(agentType: AgentType): ModelTier {

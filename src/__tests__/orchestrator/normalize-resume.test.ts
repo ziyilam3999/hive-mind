@@ -13,6 +13,15 @@ vi.mock("../../agents/spawner.js", () => ({
     return { success: true, outputFile: config.outputFile };
   }),
   spawnAgent: vi.fn(async () => ({ success: true, outputFile: "" })),
+  spawnAgentsParallel: vi.fn(async (configs: Array<{ outputFile: string; type: string }>) => {
+    const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+    const { dirname } = await import("node:path");
+    return configs.map((c) => {
+      md(dirname(c.outputFile), { recursive: true });
+      wf(c.outputFile, `# Mock output for ${c.type}`);
+      return { success: true, outputFile: c.outputFile };
+    });
+  }),
 }));
 
 vi.mock("../../utils/shell.js", () => ({

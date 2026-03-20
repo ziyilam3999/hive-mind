@@ -294,6 +294,27 @@ export async function resumeFromCheckpoint(
       deleteCheckpoint(dirs.workingDir);
       const startDataSpec = getPipelineStartData(dirs.workingDir);
 
+      if (feedback) {
+        // REQ-08: Re-run spec from feature drafter onward (reuse S.0/S.1/S.2 artifacts)
+        const specCostLogPathFb = join(dirs.workingDir, "cost-log.jsonl");
+        const specTrackerFb = CostTracker.loadFromDisk(specCostLogPathFb, startDataSpec.budget);
+        const prdPath = startDataSpec.prdPath;
+        await specStage(prdPath, dirs, config, feedback, startDataSpec.greenfield, specTrackerFb, "drafter");
+        await safeUpdateManifest(dirs.workingDir);
+
+        writeCheckpoint(dirs.workingDir, {
+          awaiting: "approve-spec",
+          message: getCheckpointMessage("approve-spec"),
+          timestamp: isoTimestamp(),
+          feedback: null,
+        });
+        console.log("SPEC stage updated with feedback. Review again.");
+        notifyCheckpoint(silent);
+        return;
+      }
+
+      // No feedback = approved. Proceed to plan.
+
       // Tooling detect/setup (US-11)
       const specPath = join(dirs.workingDir, "spec", "SPEC-v1.0.md");
       const specContent = readFileSafe(specPath);
@@ -312,7 +333,7 @@ export async function resumeFromCheckpoint(
 
       const specCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const specTracker = CostTracker.loadFromDisk(specCostLogPath, startDataSpec.budget);
-      await runPlanStage(dirs, config, feedback, startDataSpec.greenfield, specTracker);
+      await runPlanStage(dirs, config, undefined, startDataSpec.greenfield, specTracker);
       await safeUpdateManifest(dirs.workingDir);
 
       const planLogPath = join(dirs.workingDir, "manager-log.jsonl");

@@ -6,6 +6,7 @@ import { join } from "node:path";
 const ELI5_AGENTS: Set<AgentType> = new Set([
   "reporter", "retrospective", "diagnostician",
   "spec-drafter", "spec-corrector", "critic",
+  "feature-spec-drafter",
 ]);
 
 /** Agents that produce status reports (PASS/FAIL) — get structured output instruction */
@@ -57,6 +58,10 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "diagnostician-bug": "Read bug report + codebase, perform root cause analysis, produce diagnosis-report-attempt-N.md with Root Cause, Affected Files, Recommended Fix, and Confidence sections",
   "workspace-cleanup": "Identify and relocate stray files created by prior agents outside the scratch directory",
   "normalizer": "Read input document (any format: plan, design doc, rough notes, existing PRD), produce a structured normalized-prd.md",
+  "relevance-scanner": "Read project file listing + PRD, score each file for relevance, produce relevance-map.md with CRITICAL/HIGH/MEDIUM/LOW/NONE classifications",
+  "codebase-analyzer": "Read relevance-map.md, inspect CRITICAL/HIGH source files via tool calls, produce spec-existing.md documenting current architecture, integration points, and constraints",
+  "feature-spec-drafter": "Produce spec-new-features.md from research report + PRD in isolation — NO codebase files, design features from first principles to avoid anchoring on existing patterns",
+  "reconciler": "Merge spec-existing.md (what exists) with spec-new-features.md (what's new) into SPEC-draft.md, categorizing each item as REUSE/MODIFY/CREATE with integration instructions",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -228,6 +233,34 @@ const AGENT_RULES: Record<string, string[]> = {
     "RELOCATE: Move stray files into the scratch directory using `mv`. Do not delete them.",
     "REPORT: List every relocated file in your output report. If no stray files found, report 'clean'.",
     "SAFE: Never touch files inside src/, node_modules/, .git/, or the .hive-mind-* directories.",
+  ],
+  "relevance-scanner": [
+    "SCORE-ALL: Every file in the listing must receive a relevance score: CRITICAL (directly modified), HIGH (integration point), MEDIUM (referenced), LOW (same domain), NONE (unrelated).",
+    "PRD-GROUNDED: Score based on PRD requirements. A file is CRITICAL only if a PRD requirement directly implies changes to it.",
+    "FORMAT: Output as a markdown table with columns: File Path | Score | Reason (one-line justification).",
+    "THRESHOLD: Include only CRITICAL, HIGH, and MEDIUM files in the output. Omit LOW and NONE to keep the map concise.",
+    "NO-GUESSING: If you cannot determine relevance from the file path and first-line summary alone, score as MEDIUM with a note to investigate.",
+  ],
+  "codebase-analyzer": [
+    "TOOL-DRIVEN: Use Read, Glob, and Grep tools to inspect source files on-demand. Do NOT rely solely on the relevance-map — read actual code.",
+    "CITE-EVIDENCE: Every claim must include file:line references. [Wrong: 'The module exports X'] [Right: 'src/foo.ts:42 exports X']",
+    "STRUCTURE: Organize output as: ## Architecture Overview, ## Integration Points, ## Constraints & Invariants, ## Patterns to Preserve.",
+    "INTEGRATION-FOCUS: For each CRITICAL/HIGH file, document: what it exports, what depends on it, what conventions it follows.",
+    "NO-DESIGN: You are documenting what EXISTS, not proposing changes. Do not suggest modifications or improvements.",
+  ],
+  "feature-spec-drafter": [
+    "ISOLATION: You receive ONLY the research report and PRD. You do NOT see existing code. Design features from first principles.",
+    "NO-ANCHORING: Do not reference or assume existing implementations. Describe what SHOULD exist, not what to modify.",
+    "FACT-VERIFY: Before incorporating any researcher claim, verify it against the PRD. Do not propagate unverified findings.",
+    "AUTHOR-VOICE: Keep the PRD author's structure, format, and intent. The spec should feel like a natural evolution of the PRD.",
+    "UNJUSTIFIED-FIX: Address all UNJUSTIFIED and GAP-FAILURE-MODE items from the research report. Each must have a resolution.",
+  ],
+  "reconciler": [
+    "CATEGORIZE: Every item in the merged SPEC must be tagged REUSE (use as-is), MODIFY (change existing), or CREATE (build new).",
+    "CONFLICT-RESOLVE: When spec-existing and spec-new-features disagree, explain the conflict and choose the approach that minimizes integration risk.",
+    "INTEGRATION-INSTRUCTIONS: For each MODIFY item, specify exactly which existing file/function to change and how.",
+    "COMPLETENESS: The merged SPEC must cover everything from both inputs. Do not silently drop items from either source.",
+    "SELF-REVIEW: After merging, verify that no REUSE item conflicts with a CREATE item (e.g., creating something that already exists).",
   ],
   "normalizer": [
     "EXTRACT-REQUIREMENTS: Identify all requirements and number them REQ-01, REQ-02, etc. Group by phase/module if the source document has phases.",
