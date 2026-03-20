@@ -57,6 +57,7 @@ import { runShell } from "./utils/shell.js";
 import { writeFileAtomic } from "./utils/file-io.js";
 import { spawnAgentWithRetry } from "./agents/spawner.js";
 import { getAgentRules } from "./agents/prompts.js";
+import { runScorecard } from "./stages/scorecard.js";
 
 function printTimingSummary(tracker: CostTracker): void {
   const timing = tracker.getTimingSummary();
@@ -134,6 +135,7 @@ export async function runPipeline(
   if (!skipNormalize) {
     console.log("Running NORMALIZE stage...");
     await runNormalizeStage(prdPath, dirs, config);
+    await runScorecard("normalize", dirs, config);
     console.log("NORMALIZE stage complete. Awaiting approval.");
 
     writeCheckpoint(dirs.workingDir, {
@@ -166,6 +168,7 @@ async function runSpecThenCheckpoint(
   console.log("Running SPEC stage...");
   await specStage(prdPath, dirs, config, undefined, greenfield, tracker);
   await safeUpdateManifest(dirs.workingDir);
+  await runScorecard("spec", dirs, config);
 
   const specLogPath = join(dirs.workingDir, "manager-log.jsonl");
   const specDir = join(dirs.workingDir, "spec");
@@ -350,6 +353,8 @@ export async function resumeFromCheckpoint(
         }
       }
 
+      await runScorecard("plan", dirs, config);
+
       // Honor stopAfterPlan from persisted start data
       if (startDataSpec.stopAfterPlan) {
         if (fileExists(planFilePath)) {
@@ -429,6 +434,7 @@ export async function resumeFromCheckpoint(
 
       await runReportStage(dirs, config);
       await safeUpdateManifest(dirs.workingDir);
+      await runScorecard("report", dirs, config);
 
       writeCheckpoint(dirs.workingDir, {
         awaiting: "verify",
@@ -458,6 +464,7 @@ export async function resumeFromCheckpoint(
 
       await runReportStage(dirs, config);
       await safeUpdateManifest(dirs.workingDir);
+      await runScorecard("report", dirs, config);
 
       writeCheckpoint(dirs.workingDir, {
         awaiting: "verify",
@@ -904,6 +911,8 @@ export async function runExecuteStage(
       console.log(`[${story.id}] LEARN: Starting...`);
       await runLearn(story, dirs, config, costTracker, roleReportsDir);
     }
+
+    await runScorecard("execute-wave", dirs, config, `Wave completed.`);
 
     // Budget warning after wave (informational only — no mid-pipeline kills)
     if (costTracker?.checkBudget()) {

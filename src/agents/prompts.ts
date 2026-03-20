@@ -7,6 +7,7 @@ const ELI5_AGENTS: Set<AgentType> = new Set([
   "reporter", "retrospective", "diagnostician",
   "spec-drafter", "spec-corrector", "critic",
   "feature-spec-drafter",
+  "scorecard",
 ]);
 
 /** Agents that produce status reports (PASS/FAIL) — get structured output instruction */
@@ -62,6 +63,7 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "codebase-analyzer": "Read relevance-map.md, inspect CRITICAL/HIGH source files via tool calls, produce spec-existing.md documenting current architecture, integration points, and constraints",
   "feature-spec-drafter": "Produce spec-new-features.md from research report + PRD in isolation — NO codebase files, design features from first principles to avoid anchoring on existing patterns",
   "reconciler": "Merge spec-existing.md (what exists) with spec-new-features.md (what's new) into SPEC-draft.md, categorizing each item as REUSE/MODIFY/CREATE with integration instructions",
+  "scorecard": "Produce or update report-card.md with stage-specific metrics, cumulative progress, and (on final stage) an overall letter grade",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -261,6 +263,13 @@ const AGENT_RULES: Record<string, string[]> = {
     "INTEGRATION-INSTRUCTIONS: For each MODIFY item, specify exactly which existing file/function to change and how.",
     "COMPLETENESS: The merged SPEC must cover everything from both inputs. Do not silently drop items from either source.",
     "SELF-REVIEW: After merging, verify that no REUSE item conflicts with a CREATE item (e.g., creating something that already exists).",
+  ],
+  "scorecard": [
+    "ACCUMULATE: If report-card.md already has content, APPEND a new ## section for the current stage. Do NOT overwrite previous sections.",
+    "GRADE-SCALE: Final grade only on REPORT stage. A (>=90% pass), B (>=75%), C (>=60%), D (>=50%), F (<50%). Adjust for retry success rate and failure severity.",
+    "DATA-DRIVEN: Cite exact numbers from input files. No vague claims. Use markdown tables for metrics.",
+    "FAILURE-CATEGORIES: When story results are available, group failures by pattern (verification, build, blocked by deps, etc.).",
+    "CONCISE: Each stage section should be 15-25 lines. The full report card should fit on 2 screens max.",
   ],
   "normalizer": [
     "EXTRACT-REQUIREMENTS: Identify all requirements and number them REQ-01, REQ-02, etc. Group by phase/module if the source document has phases.",

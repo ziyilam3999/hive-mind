@@ -23,6 +23,9 @@ vi.mock("../../agents/spawner.js", () => {
   return {
     spawnAgentWithRetry: vi.fn(impl),
     spawnAgent: vi.fn(async () => ({ success: true, outputFile: "" })),
+    spawnAgentsParallel: vi.fn(async (configs: AgentConfig[]) => {
+      return Promise.all(configs.map(impl));
+    }),
     __defaultImpl: impl,
   };
 });

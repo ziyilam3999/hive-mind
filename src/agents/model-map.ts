@@ -38,6 +38,7 @@ export const AGENT_MODEL_MAP: Record<AgentType, ModelTier> = {
   "codebase-analyzer": "opus",
   "feature-spec-drafter": "opus",
   "reconciler": "opus",
+  "scorecard": "haiku",
 };
 
 export function getModelForAgent(agentType: AgentType): ModelTier {

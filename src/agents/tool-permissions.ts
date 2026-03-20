@@ -74,6 +74,9 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
   "codebase-analyzer": OUTPUT_TOOLS,
   "feature-spec-drafter": OUTPUT_TOOLS,
   "reconciler": OUTPUT_TOOLS,
+
+  // Scorecard — read artifacts + write report-card.md
+  "scorecard": OUTPUT_TOOLS,
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {

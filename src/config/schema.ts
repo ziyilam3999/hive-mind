@@ -62,6 +62,7 @@ export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
   "codebase-analyzer": "opus",
   "feature-spec-drafter": "opus",
   "reconciler": "opus",
+  "scorecard": "haiku",
 };
 
 export const DEFAULT_CONFIG: HiveMindConfig = {

@@ -37,7 +37,8 @@ export type AgentType =
   | "relevance-scanner"
   | "codebase-analyzer"
   | "feature-spec-drafter"
-  | "reconciler";
+  | "reconciler"
+  | "scorecard";
 
 export interface AgentConfig {
   type: AgentType;
