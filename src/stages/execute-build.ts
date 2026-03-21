@@ -11,7 +11,12 @@ import { getReportPath } from "../reports/templates.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export interface SubTaskScope {
   sourceFiles: string[];
@@ -81,7 +86,58 @@ export async function runBuild(
   }, config);
   costTracker?.recordAgentCost(story.id, "refactorer", refactorResult.costUsd, refactorResult.durationMs);
 
-  // RD-07: Write mid-story checkpoint after BUILD completes (flush to disk before next sub-stage)
+  // Fix 1: Post-BUILD file existence gate — verify all sourceFiles exist on disk
+  // This gate means "BUILD didn't complete" so it must run BEFORE the checkpoint.
+  const effectiveSourceFilePaths = getSourceFilePaths(effectiveSourceFiles);
+  const targetDir = moduleCwd ?? dirs.workingDir;
+
+  if (effectiveSourceFilePaths.length === 0) {
+    console.warn(`[${story.id}] Warning: sourceFiles is empty — skipping file existence check`);
+  } else {
+    const missingFiles = effectiveSourceFilePaths.filter(
+      (f) => !existsSync(resolve(targetDir, f)),
+    );
+    if (missingFiles.length > 0) {
+      console.warn(`[${story.id}] BUILD file existence check failed. Missing files: ${missingFiles.join(", ")}`);
+      throw new Error(`BUILD file existence check failed: missing files: ${missingFiles.join(", ")}`);
+    }
+  }
+
+  // Fix 2: Pipeline-level tsc gate — catch type errors before VERIFY (async)
+  const pkgJsonPath = resolve(targetDir, "package.json");
+  let hasTsc = false;
+  if (existsSync(pkgJsonPath)) {
+    try {
+      const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+      hasTsc = !!(pkgJson.dependencies?.typescript || pkgJson.devDependencies?.typescript);
+    } catch {
+      console.debug(`[${story.id}] Could not parse package.json for tsc gate check, skipping`);
+    }
+  }
+  if (hasTsc) {
+    try {
+      await execFileAsync("npx", ["tsc", "--noEmit"], {
+        cwd: targetDir,
+        timeout: 120_000,
+        shell: process.platform === "win32",
+      });
+    } catch (err: unknown) {
+      const execErr = err as { killed?: boolean; signal?: string; code?: number; stdout?: string; stderr?: string };
+      if (execErr.killed || execErr.signal) {
+        console.debug(`[${story.id}] tsc gate skipped (timeout/signal): ${execErr.signal}`);
+      } else {
+        const tscOutput = (execErr.stdout || execErr.stderr || "").slice(0, 2000);
+        console.warn(`[${story.id}] tsc --noEmit failed after BUILD:\n${tscOutput}`);
+        throw new Error(`BUILD type-check gate failed:\n${tscOutput}`);
+      }
+    }
+  } else if (existsSync(pkgJsonPath)) {
+    console.debug(`[${story.id}] Target project has no typescript dependency, skipping tsc gate`);
+  }
+
+  // RD-07: Write mid-story checkpoint after ALL gates pass.
+  // Must be after both file existence gate and tsc gate so that crash-restart
+  // re-runs BUILD when either gate failed (not just file existence).
   const checkpoint: StoryCheckpoint = {
     storyId: story.id,
     lastCompletedSubStage: "BUILD",

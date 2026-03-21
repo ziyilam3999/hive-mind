@@ -15,10 +15,16 @@ let killedByOutputDetectionOverrides: Record<string, boolean> = {};
 
 // ── Mocks (P33 TDZ-safe inline factories) ──────────────────────────────────
 vi.mock("../../agents/spawner.js", () => {
-  const mockSpawn = async (config: { outputFile: string; type: string; memoryContent?: string }) => {
+  const mockSpawn = async (config: { outputFile: string; type: string; memoryContent?: string; cwd?: string }) => {
     const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
-    const { dirname } = await import("node:path");
+    const { dirname, join } = await import("node:path");
     md(dirname(config.outputFile), { recursive: true });
+
+    // Simulate implementer creating source files on disk (Fix 1 gate requires them)
+    if (config.type === "implementer") {
+      const targetDir = config.cwd ?? dirname(dirname(config.outputFile));
+      wf(join(targetDir, "package.json"), '{"name": "mock"}');
+    }
 
     if (config.type === "planner") {
       wf(config.outputFile, JSON.stringify({

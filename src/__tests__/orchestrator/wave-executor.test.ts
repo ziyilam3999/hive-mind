@@ -43,6 +43,7 @@ vi.mock("../../utils/notify.js", () => ({
 import { runExecuteStage, executeOneStory } from "../../orchestrator.js";
 import { saveExecutionPlan, loadExecutionPlan } from "../../state/execution-plan.js";
 import { spawnAgentWithRetry } from "../../agents/spawner.js";
+import { getSourceFilePaths } from "../../types/execution-plan.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PipelineDirs } from "../../types/pipeline-dirs.js";
@@ -106,6 +107,12 @@ describe("wave executor", () => {
         join(testDir, story.stepFile),
         `# ${story.id}\n## ACCEPTANCE CRITERIA\n- AC-1: test\n## EVALUATION CRITERIA\n- EC-1: eval`,
       );
+      // Pre-create source files so the post-BUILD file existence gate passes
+      for (const sf of getSourceFilePaths(story.sourceFiles)) {
+        const sfDir = join(testDir, sf, "..");
+        mkdirSync(sfDir, { recursive: true });
+        writeFileSync(join(testDir, sf), `// mock ${sf}`);
+      }
     }
   }
 
