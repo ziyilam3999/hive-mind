@@ -95,6 +95,7 @@ describe("wave executor", () => {
   const testDir = join(process.cwd(), ".test-wave-exec");
   const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
   const planPath = join(testDir, "plans", "execution-plan.json");
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
 
   function setup(plan: ExecutionPlan) {
     rmSync(testDir, { recursive: true, force: true });
@@ -114,9 +115,12 @@ describe("wave executor", () => {
         writeFileSync(join(testDir, sf), `// mock ${sf}`);
       }
     }
+    // Sandbox process.cwd() so cwd fallback in execute-build resolves to testDir
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(testDir);
   }
 
   function cleanup() {
+    cwdSpy?.mockRestore();
     rmSync(testDir, { recursive: true, force: true });
   }
 

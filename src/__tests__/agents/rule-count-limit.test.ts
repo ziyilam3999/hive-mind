@@ -17,4 +17,11 @@ describe("agent rule count limit", () => {
       expect(rules.length, `${agentType} has ${rules.length} rules`).toBeLessThanOrEqual(7);
     }
   });
+
+  it("reporter rules include SOURCE-OF-TRUTH for execution-plan authority", () => {
+    const rules = getAgentRules("reporter");
+    const sotRule = rules.find((r) => r.includes("SOURCE-OF-TRUTH"));
+    expect(sotRule).toBeDefined();
+    expect(sotRule).toContain("execution-plan.json");
+  });
 });

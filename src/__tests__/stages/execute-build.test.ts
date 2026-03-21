@@ -46,6 +46,7 @@ const config = getDefaultConfig();
 describe("execute-build", () => {
   const testDir = join(process.cwd(), ".test-exec-build");
   const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
 
   function setup() {
     mkdirSync(join(testDir, "plans", "steps"), { recursive: true });
@@ -56,10 +57,13 @@ describe("execute-build", () => {
       join(testDir, testStory.stepFile),
       "# US-99: Test Story\n## OUTPUT\nsrc/test.ts\n## ACCEPTANCE CRITERIA\n- AC-0: lint",
     );
+    // Sandbox process.cwd() so cwd fallback resolves to testDir
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(testDir);
     vi.mocked(spawnAgentWithRetry).mockClear();
   }
 
   function cleanup() {
+    cwdSpy?.mockRestore();
     rmSync(testDir, { recursive: true, force: true });
   }
 
@@ -168,7 +172,7 @@ describe("execute-build", () => {
     }
   });
 
-  it("undefined moduleCwd — no cwd in agent config", async () => {
+  it("undefined moduleCwd — cwd defaults to process.cwd()", async () => {
     setup();
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -177,7 +181,10 @@ describe("execute-build", () => {
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
       const implCall = calls.find((c) => c[0].type === "implementer");
-      expect(implCall![0].cwd).toBeUndefined();
+      const refactorCall = calls.find((c) => c[0].type === "refactorer");
+      // With fix: cwd falls back to process.cwd() (spied to testDir), not undefined
+      expect(implCall![0].cwd).toBe(testDir);
+      expect(refactorCall![0].cwd).toBe(testDir);
     } finally {
       cleanup();
     }
