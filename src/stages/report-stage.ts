@@ -319,7 +319,8 @@ export function buildStatusSummary(planPath: string, outputPath: string): boolea
       .map((s) => `| ${s.id} | ${s.status} | ${s.attempts} |`)
       .join("\n");
 
-    const statusBreakdown = Object.entries(counts)
+    const otherStatuses = Object.entries(counts)
+      .filter(([status]) => status !== "passed" && status !== "failed")
       .map(([status, count]) => `- ${status}: ${count}`)
       .join("\n");
 
@@ -332,7 +333,7 @@ ${rows}
 ## Totals
 - Total stories: ${total}
 - Passed: ${passed} (${pct}%)
-${statusBreakdown}
+- Failed: ${failed}${otherStatuses ? "\n" + otherStatuses : ""}
 `;
 
     writeFileSync(outputPath, md, "utf-8");
