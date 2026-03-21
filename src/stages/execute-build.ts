@@ -84,9 +84,7 @@ export async function runBuild(
   costTracker?.recordAgentCost(story.id, "refactorer", refactorResult.costUsd, refactorResult.durationMs);
 
   // Fix 1: Post-BUILD file existence gate — verify all sourceFiles exist on disk
-  const effectiveSourceFilePaths = getSourceFilePaths(
-    subTaskScope ? subTaskScope.sourceFiles : story.sourceFiles,
-  );
+  const effectiveSourceFilePaths = getSourceFilePaths(effectiveSourceFiles);
   const targetDir = moduleCwd ?? dirs.workingDir;
 
   if (effectiveSourceFilePaths.length === 0) {
@@ -103,32 +101,31 @@ export async function runBuild(
 
   // Fix 2: Pipeline-level tsc gate — catch type errors before VERIFY
   const pkgJsonPath = resolve(targetDir, "package.json");
+  let hasTsc = false;
   if (existsSync(pkgJsonPath)) {
     try {
       const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-      const hasTsc = pkgJson.dependencies?.typescript || pkgJson.devDependencies?.typescript;
-      if (hasTsc) {
-        const tscResult = spawnSync("npx", ["tsc", "--noEmit"], {
-          cwd: targetDir,
-          timeout: 120_000,
-          encoding: "utf-8",
-          shell: process.platform === "win32",
-        });
-        if (tscResult.error || tscResult.signal) {
-          console.debug(`[${story.id}] tsc gate skipped (spawn error or timeout): ${tscResult.error?.message ?? tscResult.signal}`);
-        } else if (tscResult.status !== null && tscResult.status !== 0) {
-          const tscOutput = (tscResult.stderr || tscResult.stdout || "").slice(0, 2000);
-          console.warn(`[${story.id}] tsc --noEmit failed after BUILD:\n${tscOutput}`);
-          throw new Error(`BUILD type-check gate failed:\n${tscOutput}`);
-        }
-      } else {
-        console.debug(`[${story.id}] Target project has no typescript dependency, skipping tsc gate`);
-      }
-    } catch (e) {
-      // Re-throw tsc gate failures, but swallow package.json parse errors
-      if (e instanceof Error && e.message.startsWith("BUILD type-check gate failed")) throw e;
-      console.debug(`[${story.id}] Could not read package.json for tsc gate check, skipping`);
+      hasTsc = !!(pkgJson.dependencies?.typescript || pkgJson.devDependencies?.typescript);
+    } catch {
+      console.debug(`[${story.id}] Could not parse package.json for tsc gate check, skipping`);
     }
+  }
+  if (hasTsc) {
+    const tscResult = spawnSync("npx", ["tsc", "--noEmit"], {
+      cwd: targetDir,
+      timeout: 120_000,
+      encoding: "utf-8",
+      shell: process.platform === "win32",
+    });
+    if (tscResult.error || tscResult.signal) {
+      console.debug(`[${story.id}] tsc gate skipped (spawn error or timeout): ${tscResult.error?.message ?? tscResult.signal}`);
+    } else if (tscResult.status !== null && tscResult.status !== 0) {
+      const tscOutput = (tscResult.stderr || tscResult.stdout || "").slice(0, 2000);
+      console.warn(`[${story.id}] tsc --noEmit failed after BUILD:\n${tscOutput}`);
+      throw new Error(`BUILD type-check gate failed:\n${tscOutput}`);
+    }
+  } else if (existsSync(pkgJsonPath)) {
+    console.debug(`[${story.id}] Target project has no typescript dependency, skipping tsc gate`);
   }
 
   // RD-07: Write mid-story checkpoint after BUILD completes (flush to disk before next sub-stage)

@@ -62,6 +62,11 @@ export async function runVerify(
     preExecFiles = new Set(); // non-existent dir — skip cleanup later
   }
 
+  // Determine effective source files (sub-task scope narrows to sub-task's own files)
+  const effectiveSourceFiles = subTaskScope
+    ? subTaskScope.sourceFiles.map((f) => ({ path: f, changeType: "MODIFIED" as const }))
+    : story.sourceFiles;
+
   let attempt = 0;
   let lastConfidence: "structured" | "matched" | "default" = "default";
   const testReportPath = join(dirs.workingDir, getReportPath(story.id, "test-report.md"));
@@ -120,10 +125,10 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.4 / E.4a+E.4b: Fix AC failures
-      const preFixHashesAc = captureFileHashes(story, moduleCwd ?? dirs.workingDir);
-      await runFixPipeline(story, dirs.workingDir, attempt, "ac", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
+      const preFixHashesAc = captureFileHashes(effectiveSourceFiles, moduleCwd ?? dirs.workingDir);
+      await runFixPipeline(story, dirs.workingDir, attempt, "ac", memoryContent, config, roleReportsDir, moduleCwd, scratchDir, effectiveSourceFiles);
       // K5: Post-fix verification gate (hash-based)
-      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesAc, story, moduleCwd ?? dirs.workingDir)) {
+      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesAc, effectiveSourceFiles, moduleCwd ?? dirs.workingDir)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
         appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
       }
@@ -181,10 +186,10 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.6 / E.6a+E.6b: Fix EC failures
-      const preFixHashesEc = captureFileHashes(story, moduleCwd ?? dirs.workingDir);
-      await runFixPipeline(story, dirs.workingDir, attempt, "ec", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
+      const preFixHashesEc = captureFileHashes(effectiveSourceFiles, moduleCwd ?? dirs.workingDir);
+      await runFixPipeline(story, dirs.workingDir, attempt, "ec", memoryContent, config, roleReportsDir, moduleCwd, scratchDir, effectiveSourceFiles);
       // K5: Post-fix verification gate (hash-based)
-      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesEc, story, moduleCwd ?? dirs.workingDir)) {
+      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesEc, effectiveSourceFiles, moduleCwd ?? dirs.workingDir)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
         appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
       }
@@ -219,6 +224,7 @@ async function runFixPipeline(
   roleReportsDir?: string,
   moduleCwd?: string,
   scratchDir?: string,
+  sourceFilesOverride?: Array<string | import("../types/execution-plan.js").SourceFileEntry>,
 ): Promise<void> {
   const reportsDir = join(hiveMindDir, getReportPath(story.id, ""));
   const stepFilePath = join(hiveMindDir, story.stepFile);
@@ -236,7 +242,7 @@ async function runFixPipeline(
 
   // Fix 4: Enrich diagnosis context — add step file + source files + existence summary
   const targetDir = moduleCwd ?? hiveMindDir;
-  const sourceFilePaths = getSourceFilePaths(story.sourceFiles).map((f) => resolve(targetDir, f));
+  const sourceFilePaths = getSourceFilePaths(sourceFilesOverride ?? story.sourceFiles).map((f) => resolve(targetDir, f));
   const existingSourceFiles = sourceFilePaths.filter((f) => existsSync(f));
   const missingSourceFiles = sourceFilePaths.filter((f) => !existsSync(f));
   const fileExistenceSummary = [
@@ -304,13 +310,13 @@ function collectPriorReports(
   return paths;
 }
 
-/** Capture SHA-256 hashes of a story's source files for pre/post-fix comparison. */
+/** Capture SHA-256 hashes of source files for pre/post-fix comparison. */
 export function captureFileHashes(
-  story: Story,
+  sourceFiles: Array<string | import("../types/execution-plan.js").SourceFileEntry>,
   targetDir: string,
 ): Map<string, string | "absent"> {
   const hashes = new Map<string, string | "absent">();
-  const paths = getSourceFilePaths(story.sourceFiles);
+  const paths = getSourceFilePaths(sourceFiles);
   for (const relPath of paths) {
     const absPath = resolve(targetDir, relPath);
     if (existsSync(absPath)) {
@@ -333,12 +339,12 @@ export function verifyFixApplied(
   storyId: string,
   attempt: number,
   preFixerHashes?: Map<string, string | "absent">,
-  story?: Story,
+  sourceFiles?: Array<string | import("../types/execution-plan.js").SourceFileEntry>,
   targetDir?: string,
 ): boolean {
   // Hash-based verification: compare pre-fixer hashes to current file state
-  if (preFixerHashes && preFixerHashes.size > 0 && story && targetDir) {
-    const paths = getSourceFilePaths(story.sourceFiles);
+  if (preFixerHashes && preFixerHashes.size > 0 && sourceFiles && targetDir) {
+    const paths = getSourceFilePaths(sourceFiles);
     for (const relPath of paths) {
       const absPath = resolve(targetDir, relPath);
       const prevHash = preFixerHashes.get(relPath);
