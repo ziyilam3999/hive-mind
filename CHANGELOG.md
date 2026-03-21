@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.10](https://github.com/ziyilam3999/hive-mind/compare/v0.8.9...v0.8.10) (2026-03-21)
+
+
+### Bug Fixes
+
+* cwd fallback for single-repo projects ([#40](https://github.com/ziyilam3999/hive-mind/issues/40)) ([f7dc756](https://github.com/ziyilam3999/hive-mind/commit/f7dc756227f813944f5a3d10f665dbf067388f03))
+
 ## [0.8.9](https://github.com/ziyilam3999/hive-mind/compare/v0.8.8...v0.8.9) (2026-03-21)
 
 
