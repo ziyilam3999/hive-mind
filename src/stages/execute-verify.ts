@@ -235,7 +235,7 @@ async function runFixPipeline(
     : undefined;
 
   // Fix 4: Enrich diagnosis context — add step file + source files + existence summary
-  const targetDir = moduleCwd ?? process.cwd();
+  const targetDir = moduleCwd ?? hiveMindDir;
   const sourceFilePaths = getSourceFilePaths(story.sourceFiles).map((f) => resolve(targetDir, f));
   const existingSourceFiles = sourceFilePaths.filter((f) => existsSync(f));
   const missingSourceFiles = sourceFilePaths.filter((f) => !existsSync(f));

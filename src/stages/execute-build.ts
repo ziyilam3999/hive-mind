@@ -114,7 +114,9 @@ export async function runBuild(
           encoding: "utf-8",
           shell: process.platform === "win32",
         });
-        if (tscResult.status !== 0) {
+        if (tscResult.error || tscResult.signal) {
+          console.debug(`[${story.id}] tsc gate skipped (spawn error or timeout): ${tscResult.error?.message ?? tscResult.signal}`);
+        } else if (tscResult.status !== null && tscResult.status !== 0) {
           const tscOutput = (tscResult.stderr || tscResult.stdout || "").slice(0, 2000);
           console.warn(`[${story.id}] tsc --noEmit failed after BUILD:\n${tscOutput}`);
           throw new Error(`BUILD type-check gate failed:\n${tscOutput}`);

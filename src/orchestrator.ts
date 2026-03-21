@@ -656,27 +656,31 @@ async function executeStoryWithSubTasks(
       totalAttempts++;
       subTask.attempts = attempt;
 
-      console.log(`[${story.id}/${subTask.id}] BUILD: Starting (attempt ${attempt})...`);
-      await runBuild(story, dirs, config, costTracker, roleReportsDir, {
-        sourceFiles: getSourceFilePaths(subTask.sourceFiles),
-        title: subTask.title,
-      }, moduleCwd);
+      try {
+        console.log(`[${story.id}/${subTask.id}] BUILD: Starting (attempt ${attempt})...`);
+        await runBuild(story, dirs, config, costTracker, roleReportsDir, {
+          sourceFiles: getSourceFilePaths(subTask.sourceFiles),
+          title: subTask.title,
+        }, moduleCwd);
 
-      appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
-        storyId: `${story.id}/${subTask.id}`,
-      }));
+        appendLogEntry(logPath, createLogEntry("BUILD_COMPLETE", {
+          storyId: `${story.id}/${subTask.id}`,
+        }));
 
-      console.log(`[${story.id}/${subTask.id}] VERIFY: Starting...`);
-      const verifyResult = await runVerify(story, dirs, undefined, config, costTracker, roleReportsDir, {
-        sourceFiles: getSourceFilePaths(subTask.sourceFiles),
-        title: subTask.title,
-      }, moduleCwd);
+        console.log(`[${story.id}/${subTask.id}] VERIFY: Starting...`);
+        const verifyResult = await runVerify(story, dirs, undefined, config, costTracker, roleReportsDir, {
+          sourceFiles: getSourceFilePaths(subTask.sourceFiles),
+          title: subTask.title,
+        }, moduleCwd);
 
-      if (verifyResult.passed) {
-        console.log(`[${story.id}/${subTask.id}] PASSED`);
-        subTask.status = "passed";
-        passed = true;
-        break;
+        if (verifyResult.passed) {
+          console.log(`[${story.id}/${subTask.id}] PASSED`);
+          subTask.status = "passed";
+          passed = true;
+          break;
+        }
+      } catch (err) {
+        console.warn(`[${story.id}/${subTask.id}] attempt ${attempt} error: ${err instanceof Error ? err.message : String(err)}`);
       }
 
       if (attempt >= subTask.maxAttempts) {
