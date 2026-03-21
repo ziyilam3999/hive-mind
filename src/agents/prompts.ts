@@ -112,7 +112,7 @@ const AGENT_RULES: Record<string, string[]> = {
   ],
   "reporter": [
     "ELI5-SECTION: Every major section must start with a > **ELI5:** blockquote using a plain-language analogy. [Wrong: jumping straight into technical findings] [Right: '> **ELI5:** Think of this report as...']",
-    "SOURCE-OF-TRUTH: Use execution-plan.json story 'status' field as the AUTHORITATIVE pass/fail source. A story is PASS only if status === 'passed'. Impl-report status reflects task completion, not story outcome. [Wrong: 'Impl-report says PASS so story passed'] [Right: 'execution-plan.json shows status: failed']",
+    "SOURCE-OF-TRUTH: The file story-status-summary.md contains AUTHORITATIVE pass/fail counts computed directly from execution-plan.json. Your summary table MUST match these exact numbers. A story is PASS only if status === 'passed'. Do NOT count stories from impl-reports — some stories failed at VERIFY/EVAL even though impl completed. [Wrong: counting impl-report PASS as story PASS] [Right: using story-status-summary.md totals verbatim]",
     "COMPLETENESS: Cover every story outcome. Do not omit failed or skipped stories.",
     "EVIDENCE: Cite specific file paths, test counts, and status values from the execution plan.",
     "STRUCTURE: Use ## headings for each story, a summary table at top, and a conclusion.",

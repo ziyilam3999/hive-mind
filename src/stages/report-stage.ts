@@ -17,7 +17,7 @@ import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import type { ExecutionPlan } from "../types/execution-plan.js";
 import { getSourceFilePaths } from "../types/execution-plan.js";
 import { join } from "node:path";
-import { readdirSync } from "node:fs";
+import { readdirSync, writeFileSync } from "node:fs";
 
 export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig): Promise<void> {
   const reportsDir = join(dirs.workingDir, "reports");
@@ -62,7 +62,16 @@ export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig)
 
   // Batch 2: reporter + retrospective (after batch 1 completes)
   console.log("Running reporter + retrospective agents in parallel...");
-  const reporterInputs = [...reportFiles];
+
+  // Build authoritative status summary from execution-plan.json (deterministic, no LLM)
+  const statusSummaryPath = join(dirs.workingDir, "story-status-summary.md");
+  const summaryBuilt = buildStatusSummary(planPath, statusSummaryPath);
+
+  const reporterInputs: string[] = [];
+  if (summaryBuilt) {
+    reporterInputs.push(statusSummaryPath);
+  }
+  reporterInputs.push(...reportFiles);
   if (fileExists(planPath)) {
     reporterInputs.push(planPath);
   }
@@ -87,6 +96,10 @@ export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig)
       outputFile: consolidatedPath,
       rules: getAgentRules("reporter"),
       memoryContent,
+      instructionBlocks: summaryBuilt ? [{
+        heading: "AUTHORITATIVE STATUS DATA",
+        content: "The file story-status-summary.md was computed by the pipeline (not an LLM). Its pass/fail totals are CORRECT. Your Executive Summary MUST use these exact numbers. Do not derive totals from individual impl-reports.",
+      }] : undefined,
     },
     {
       type: "retrospective",
@@ -276,6 +289,58 @@ export function collectChangedSourceFiles(planPath: string): string[] {
     return [...uniqueFiles];
   } catch {
     return [];
+  }
+}
+
+/**
+ * Parse execution-plan.json and write a deterministic story-status-summary.md.
+ * Returns true if the summary was written successfully.
+ */
+export function buildStatusSummary(planPath: string, outputPath: string): boolean {
+  if (!fileExists(planPath)) return false;
+  const content = readFileSafe(planPath);
+  if (!content) return false;
+
+  try {
+    const plan: ExecutionPlan = JSON.parse(content);
+    const stories = plan.stories;
+    const total = stories.length;
+
+    const counts: Record<string, number> = {};
+    for (const story of stories) {
+      counts[story.status] = (counts[story.status] ?? 0) + 1;
+    }
+
+    const passed = counts["passed"] ?? 0;
+    const failed = counts["failed"] ?? 0;
+    const pct = total > 0 ? ((passed / total) * 100).toFixed(1) : "0.0";
+
+    const rows = stories
+      .map((s) => `| ${s.id} | ${s.status} | ${s.attempts} |`)
+      .join("\n");
+
+    const statusBreakdown = Object.entries(counts)
+      .map(([status, count]) => `- ${status}: ${count}`)
+      .join("\n");
+
+    const md = `# Story Status Summary (AUTHORITATIVE — computed from execution-plan.json)
+
+| Story | Status | Attempts |
+|-------|--------|----------|
+${rows}
+
+## Totals
+- Total stories: ${total}
+- Passed: ${passed} (${pct}%)
+${statusBreakdown}
+`;
+
+    writeFileSync(outputPath, md, "utf-8");
+    console.log(`Wrote authoritative status summary: ${passed}/${total} passed (${pct}%)`);
+    return true;
+  } catch (err) {
+    console.warn(`Warning: Failed to build status summary: ${err}`);
+    return false;
   }
 }
 
