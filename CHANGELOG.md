@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.7](https://github.com/ziyilam3999/hive-mind/compare/v0.8.6...v0.8.7) (2026-03-21)
+
+
+### Bug Fixes
+
+* **ci:** use --body-file for PR comment to avoid newline security block ([7a69c9b](https://github.com/ziyilam3999/hive-mind/commit/7a69c9b6ef9268842a2a4fb725fbf28dce21a9d4))
+* **ci:** use --body-file for PR review comment posting ([f393756](https://github.com/ziyilam3999/hive-mind/commit/f3937565da9237c17ce6e1e1cd74f3fdfbea625c))
+
 ## [0.8.6](https://github.com/ziyilam3999/hive-mind/compare/v0.8.5...v0.8.6) (2026-03-20)
 
 
