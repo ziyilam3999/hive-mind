@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.11](https://github.com/ziyilam3999/hive-mind/compare/v0.8.10...v0.8.11) (2026-03-21)
+
+
+### Bug Fixes
+
+* inject authoritative status summary into reporter agent ([#45](https://github.com/ziyilam3999/hive-mind/issues/45)) ([7bd6f56](https://github.com/ziyilam3999/hive-mind/commit/7bd6f562ec3d7d96022f6ae41b0b20dac5bc03e7))
+
 ## [0.8.10](https://github.com/ziyilam3999/hive-mind/compare/v0.8.9...v0.8.10) (2026-03-21)
 
 
