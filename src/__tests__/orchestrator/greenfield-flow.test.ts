@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
@@ -67,9 +67,11 @@ vi.mock("../../stages/baseline-check.js", () => ({
 const config = getDefaultConfig();
 
 describe("greenfield flow", () => {
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
     spawnCalls.length = 0;
   });
+  afterEach(() => { cwdSpy?.mockRestore(); });
 
   it("greenfield skips baseline at approve-plan", async () => {
     const { resumeFromCheckpoint } = await import("../../orchestrator.js");
@@ -78,6 +80,7 @@ describe("greenfield flow", () => {
 
     const testDir = join(process.cwd(), ".test-greenfield-baseline");
     mkdirSync(testDir, { recursive: true });
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(testDir);
 
     // Write a PIPELINE_START with greenfield=true
     const logEntry = JSON.stringify({
@@ -117,6 +120,7 @@ describe("greenfield flow", () => {
 
     const testDir = join(process.cwd(), ".test-greenfield-spec");
     mkdirSync(testDir, { recursive: true });
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(testDir);
     const prdPath = join(testDir, "PRD.md");
     writeFileSync(prdPath, "# Test PRD\nBuild a thing.");
     const dirs: PipelineDirs = { workingDir: join(testDir, ".hive-mind"), knowledgeDir: join(testDir, ".hive-mind"), labDir: join(testDir, ".hive-mind") };
@@ -144,6 +148,7 @@ describe("greenfield flow", () => {
 
     const testDir = join(process.cwd(), ".test-greenfield-plan");
     mkdirSync(testDir, { recursive: true });
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(testDir);
     const prdPath = join(testDir, "PRD.md");
     writeFileSync(prdPath, "# Test PRD\nBuild a thing.");
     const dirs: PipelineDirs = { workingDir: join(testDir, ".hive-mind"), knowledgeDir: join(testDir, ".hive-mind"), labDir: join(testDir, ".hive-mind") };

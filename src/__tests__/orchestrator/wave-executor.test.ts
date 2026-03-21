@@ -416,6 +416,7 @@ describe("wave executor", () => {
 describe("executeOneStory", () => {
   const testDir = join(process.cwd(), ".test-exec-one");
   const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
+  let cwdSpy2: ReturnType<typeof vi.spyOn>;
 
   function setup(story: Story) {
     rmSync(testDir, { recursive: true, force: true });
@@ -425,9 +426,11 @@ describe("executeOneStory", () => {
       join(testDir, story.stepFile),
       `# ${story.id}\n## ACCEPTANCE CRITERIA\n- AC-1: test\n## EVALUATION CRITERIA\n- EC-1: eval`,
     );
+    cwdSpy2 = vi.spyOn(process, "cwd").mockReturnValue(testDir);
   }
 
   function cleanup() {
+    cwdSpy2?.mockRestore();
     rmSync(testDir, { recursive: true, force: true });
   }
 
