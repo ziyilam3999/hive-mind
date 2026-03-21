@@ -1,4 +1,5 @@
 import type { Story } from "../types/execution-plan.js";
+import { getSourceFilePaths } from "../types/execution-plan.js";
 import { spawnAgentWithRetry } from "../agents/spawner.js";
 import { getAgentRules, buildRoleReportContents } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
@@ -11,8 +12,9 @@ import { appendLogEntry, createLogEntry } from "../state/manager-log.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
-import { join } from "node:path";
-import { copyFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { copyFileSync, readdirSync, readFileSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import type { StoryCheckpoint } from "../types/checkpoint.js";
 import { writeFileAtomic } from "../utils/file-io.js";
 import { isoTimestamp } from "../utils/timestamp.js";
@@ -118,9 +120,10 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.4 / E.4a+E.4b: Fix AC failures
+      const preFixHashesAc = captureFileHashes(story, moduleCwd ?? dirs.workingDir);
       await runFixPipeline(story, dirs.workingDir, attempt, "ac", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
-      // K5: Post-fix verification gate
-      if (!verifyFixApplied(dirs.workingDir, story.id, attempt)) {
+      // K5: Post-fix verification gate (hash-based)
+      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesAc, story, moduleCwd ?? dirs.workingDir)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
         appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
       }
@@ -178,9 +181,10 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.6 / E.6a+E.6b: Fix EC failures
+      const preFixHashesEc = captureFileHashes(story, moduleCwd ?? dirs.workingDir);
       await runFixPipeline(story, dirs.workingDir, attempt, "ec", memoryContent, config, roleReportsDir, moduleCwd, scratchDir);
-      // K5: Post-fix verification gate
-      if (!verifyFixApplied(dirs.workingDir, story.id, attempt)) {
+      // K5: Post-fix verification gate (hash-based)
+      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesEc, story, moduleCwd ?? dirs.workingDir)) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
         appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
       }
@@ -230,6 +234,16 @@ async function runFixPipeline(
     ? buildRoleReportContents("fixer", story.rolesUsed, roleReportsDir)
     : undefined;
 
+  // Fix 4: Enrich diagnosis context — add step file + source files + existence summary
+  const targetDir = moduleCwd ?? process.cwd();
+  const sourceFilePaths = getSourceFilePaths(story.sourceFiles).map((f) => resolve(targetDir, f));
+  const existingSourceFiles = sourceFilePaths.filter((f) => existsSync(f));
+  const missingSourceFiles = sourceFilePaths.filter((f) => !existsSync(f));
+  const fileExistenceSummary = [
+    existingSourceFiles.length > 0 ? `Files present: ${existingSourceFiles.map(f => f.replace(targetDir + "/", "").replace(targetDir + "\\", "")).join(", ")}` : "",
+    missingSourceFiles.length > 0 ? `Files MISSING: ${missingSourceFiles.map(f => f.replace(targetDir + "/", "").replace(targetDir + "\\", "")).join(", ")}` : "",
+  ].filter(Boolean).join("; ");
+
   // K5: Always run diagnostician → fixer (no fast-path)
   console.log(`E.${failureType === "ac" ? "4a" : "6a"}: Running diagnostician for ${story.id} (attempt ${attempt})...`);
   const diagReportPath = join(reportsDir, `diagnosis-report-${attempt}.md`);
@@ -241,11 +255,15 @@ async function runFixPipeline(
   await spawnAgentWithRetry({
     type: "diagnostician",
     model: "sonnet",
-    inputFiles: [failReportPath, ...priorFixReports, ...priorDiagReports],
+    inputFiles: [stepFilePath, failReportPath, ...existingSourceFiles, ...priorFixReports, ...priorDiagReports],
     outputFile: diagReportPath,
     rules: getAgentRules("diagnostician"),
     memoryContent,
     roleReportContents: diagRoleContents,
+    instructionBlocks: fileExistenceSummary ? [{
+      heading: "FILE EXISTENCE STATUS",
+      content: fileExistenceSummary,
+    }] : undefined,
     cwd: moduleCwd,
     scratchDir,
   }, config);
@@ -260,7 +278,7 @@ async function runFixPipeline(
   await spawnAgentWithRetry({
     type: "fixer",
     model: "sonnet",
-    inputFiles: [stepFilePath, diagReportPath, failReportPath, ...priorFixReports, ...priorDiagReports],
+    inputFiles: [stepFilePath, diagReportPath, failReportPath, ...existingSourceFiles, ...priorFixReports, ...priorDiagReports],
     outputFile: fixReportPath,
     rules: getAgentRules("fixer"),
     memoryContent,
@@ -286,22 +304,65 @@ function collectPriorReports(
   return paths;
 }
 
+/** Capture SHA-256 hashes of a story's source files for pre/post-fix comparison. */
+export function captureFileHashes(
+  story: Story,
+  targetDir: string,
+): Map<string, string | "absent"> {
+  const hashes = new Map<string, string | "absent">();
+  const paths = getSourceFilePaths(story.sourceFiles);
+  for (const relPath of paths) {
+    const absPath = resolve(targetDir, relPath);
+    if (existsSync(absPath)) {
+      const content = readFileSync(absPath);
+      hashes.set(relPath, createHash("sha256").update(content).digest("hex"));
+    } else {
+      hashes.set(relPath, "absent");
+    }
+  }
+  return hashes;
+}
+
 /**
- * K5: Post-fix verification gate.
- * Checks that the fixer agent's fix-report indicates PASS and lists changed files.
- * Returns false if the fix-report is missing, unparseable, or doesn't list file changes.
+ * K5: Post-fix verification gate (enhanced with hash-based file change detection).
+ * Uses file content hashing to verify the fixer actually modified source files,
+ * falling back to text-based report parsing when sourceFiles is empty.
  */
 export function verifyFixApplied(
   hiveMindDir: string,
   storyId: string,
   attempt: number,
+  preFixerHashes?: Map<string, string | "absent">,
+  story?: Story,
+  targetDir?: string,
 ): boolean {
+  // Hash-based verification: compare pre-fixer hashes to current file state
+  if (preFixerHashes && preFixerHashes.size > 0 && story && targetDir) {
+    const paths = getSourceFilePaths(story.sourceFiles);
+    for (const relPath of paths) {
+      const absPath = resolve(targetDir, relPath);
+      const prevHash = preFixerHashes.get(relPath);
+      if (prevHash === undefined) continue;
+
+      if (prevHash === "absent") {
+        // File was absent before — if it now exists, the fix created it
+        if (existsSync(absPath)) return true;
+      } else {
+        // File existed before — check if content changed
+        if (!existsSync(absPath)) return true; // deleted = modification
+        const currentHash = createHash("sha256").update(readFileSync(absPath)).digest("hex");
+        if (currentHash !== prevHash) return true;
+      }
+    }
+    return false; // no files changed
+  }
+
+  // Fallback: text-based check (for empty sourceFiles or missing hash data)
   const fixReportPath = join(hiveMindDir, getReportPath(storyId, `fix-report-${attempt}.md`));
   const content = readFileSafe(fixReportPath) ?? "";
 
   if (!content) return false;
 
-  // Parse STATUS block from fix-report
   const statusMatch = content.match(/<!-- STATUS: ({.*?}) -->/);
   if (!statusMatch) return false;
 
@@ -312,15 +373,11 @@ export function verifyFixApplied(
     return false;
   }
 
-  // Check "Files Changed" section exists and lists real files
   const filesChangedMatch = content.match(/\*\*Files Changed:\*\*\s*(.+)/);
   if (!filesChangedMatch) return false;
 
   const filesStr = filesChangedMatch[1].trim();
-  // "None" is valid for fixes that only change EC commands (no source files)
   if (filesStr.toLowerCase() === "none") return true;
-
-  // At least one file path listed — basic sanity check
   return filesStr.length > 0;
 }
 

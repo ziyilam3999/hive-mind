@@ -121,6 +121,7 @@ const AGENT_RULES: Record<string, string[]> = {
     "ELI5-DIAGNOSIS: Start the diagnosis with a > **ELI5:** blockquote explaining the bug in plain language. [Wrong: 'The regex failed to match Unicode'] [Right: '> **ELI5:** The grade scanner couldn't read emoji checkmarks']",
     "FILE-ARTIFACT: Write diagnosis-report.md BEFORE any fix is attempted. No 'mentally noted' diagnoses. [Wrong: 'I think the issue is...'] [Right: wrote diagnosis-report.md with root cause]",
     "ROOT-CAUSE: Identify the actual root cause, not just the symptom.",
+    "CHECK-FILES: Review all source files provided in your input for the actual code state. Compare against the step file's acceptance criteria to identify which ACs are met and which are missing or broken. If the FILE EXISTENCE STATUS block reports missing files, diagnose WHY they are missing (never created? wrong path? deleted?).",
     "EVIDENCE: Cite specific file:line, error messages, or logic chains as evidence.",
     "PREVIOUS-ATTEMPTS: Review all previous fix attempts to avoid repeating failed approaches.",
   ],

@@ -4,10 +4,10 @@ import type { Story } from "../../types/execution-plan.js";
 // Track spawned agents
 const spawnCalls: Array<{ type: string; outputFile: string }> = [];
 
-async function defaultMockSpawn(config: { type: string; outputFile: string }) {
+async function defaultMockSpawn(config: { type: string; outputFile: string; cwd?: string }) {
   spawnCalls.push({ type: config.type, outputFile: config.outputFile });
   const { writeFileSync, mkdirSync } = await import("node:fs");
-  const { dirname } = await import("node:path");
+  const { dirname, join } = await import("node:path");
   mkdirSync(dirname(config.outputFile), { recursive: true });
 
   if (config.type === "tester-exec") {
@@ -18,6 +18,16 @@ async function defaultMockSpawn(config: { type: string; outputFile: string }) {
     writeFileSync(config.outputFile, `<!-- STATUS: {"result": "PASS", "done": 3, "missing": 0, "uncertain": 0} -->\n# Compliance Report`);
   } else {
     writeFileSync(config.outputFile, `# Mock ${config.type} report`);
+  }
+  // Simulate implementer creating source files on disk
+  if (config.type === "implementer") {
+    const targetDir = config.cwd ?? dirname(dirname(config.outputFile));
+    const srcDir = join(targetDir, "src");
+    mkdirSync(srcDir, { recursive: true });
+    // Create all likely source files
+    for (const f of ["a.ts", "b.ts", "c.ts"]) {
+      writeFileSync(join(srcDir, f), `// mock ${f}`);
+    }
   }
   return { success: true, outputFile: config.outputFile };
 }
@@ -88,6 +98,11 @@ describe("sub-task execution (FW-01)", () => {
     mkdirSync(join(testDir, "plans", "steps"), { recursive: true });
     mkdirSync(join(testDir, "reports", "US-01"), { recursive: true });
     mkdirSync(join(testDir, "reports", "US-02"), { recursive: true });
+    // Pre-create source files so the post-BUILD file existence gate passes
+    mkdirSync(join(testDir, "src"), { recursive: true });
+    writeFileSync(join(testDir, "src/a.ts"), "// mock");
+    writeFileSync(join(testDir, "src/b.ts"), "// mock");
+    writeFileSync(join(testDir, "src/c.ts"), "// mock");
     writeFileSync(join(testDir, "plans/steps/US-01.md"), "# US-01\n## ACCEPTANCE CRITERIA\n- AC-1\n## EXIT CRITERIA\n- EC-1");
     writeFileSync(join(testDir, "plans/steps/US-02.md"), "# US-02\n## ACCEPTANCE CRITERIA\n- AC-1\n## EXIT CRITERIA\n- EC-1");
     writeFileSync(join(testDir, "manager-log.jsonl"), "");
@@ -252,9 +267,10 @@ describe("sub-task execution (FW-01)", () => {
       warnSpy.mockRestore();
 
       expect(result.passed).toBe(false);
-      // Sub-task T1 should have exhausted maxAttempts (3)
-      expect(result.attempts).toBe(3);
+      // Fix 3: Both sub-tasks now execute — T1 exhausts 3 attempts, T2 also exhausts 3 = 6 total
+      expect(result.attempts).toBe(6);
       expect(result.errorMessage).toContain("T1");
+      expect(result.errorMessage).toContain("T2");
       // Compliance should NOT have run since sub-tasks failed
       const complianceCalls = spawnCalls.filter((c) => c.type === "compliance-reviewer");
       expect(complianceCalls.length).toBe(0);

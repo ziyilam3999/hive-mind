@@ -11,7 +11,9 @@ import { getReportPath } from "../reports/templates.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 
 export interface SubTaskScope {
   sourceFiles: string[];
@@ -80,6 +82,52 @@ export async function runBuild(
     cwd: moduleCwd,
   }, config);
   costTracker?.recordAgentCost(story.id, "refactorer", refactorResult.costUsd, refactorResult.durationMs);
+
+  // Fix 1: Post-BUILD file existence gate — verify all sourceFiles exist on disk
+  const effectiveSourceFilePaths = getSourceFilePaths(
+    subTaskScope ? subTaskScope.sourceFiles : story.sourceFiles,
+  );
+  const targetDir = moduleCwd ?? dirs.workingDir;
+
+  if (effectiveSourceFilePaths.length === 0) {
+    console.warn(`[${story.id}] Warning: sourceFiles is empty — skipping file existence check`);
+  } else {
+    const missingFiles = effectiveSourceFilePaths.filter(
+      (f) => !existsSync(resolve(targetDir, f)),
+    );
+    if (missingFiles.length > 0) {
+      console.warn(`[${story.id}] BUILD file existence check failed. Missing files: ${missingFiles.join(", ")}`);
+      throw new Error(`BUILD file existence check failed: missing files: ${missingFiles.join(", ")}`);
+    }
+  }
+
+  // Fix 2: Pipeline-level tsc gate — catch type errors before VERIFY
+  const pkgJsonPath = resolve(targetDir, "package.json");
+  if (existsSync(pkgJsonPath)) {
+    try {
+      const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+      const hasTsc = pkgJson.dependencies?.typescript || pkgJson.devDependencies?.typescript;
+      if (hasTsc) {
+        const tscResult = spawnSync("npx", ["tsc", "--noEmit"], {
+          cwd: targetDir,
+          timeout: 120_000,
+          encoding: "utf-8",
+          shell: process.platform === "win32",
+        });
+        if (tscResult.status !== 0) {
+          const tscOutput = (tscResult.stderr || tscResult.stdout || "").slice(0, 2000);
+          console.warn(`[${story.id}] tsc --noEmit failed after BUILD:\n${tscOutput}`);
+          throw new Error(`BUILD type-check gate failed:\n${tscOutput}`);
+        }
+      } else {
+        console.debug(`[${story.id}] Target project has no typescript dependency, skipping tsc gate`);
+      }
+    } catch (e) {
+      // Re-throw tsc gate failures, but swallow package.json parse errors
+      if (e instanceof Error && e.message.startsWith("BUILD type-check gate failed")) throw e;
+      console.debug(`[${story.id}] Could not read package.json for tsc gate check, skipping`);
+    }
+  }
 
   // RD-07: Write mid-story checkpoint after BUILD completes (flush to disk before next sub-stage)
   const checkpoint: StoryCheckpoint = {

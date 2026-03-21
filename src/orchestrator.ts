@@ -645,6 +645,8 @@ async function executeStoryWithSubTasks(
 
   console.log(`[${story.id}] SUB-TASK EXECUTION: ${story.subTasks!.length} sub-tasks`);
 
+  const failedSubTasks: string[] = [];
+
   for (const subTask of story.subTasks!) {
     if (subTask.status === "passed") continue; // already done (resume case)
 
@@ -683,14 +685,20 @@ async function executeStoryWithSubTasks(
       }
     }
 
+    // Fix 3: Continue to next sub-task instead of returning immediately on failure
     if (!passed) {
-      return {
-        storyId: story.id,
-        passed: false,
-        attempts: totalAttempts,
-        errorMessage: `Sub-task ${subTask.id} failed after max attempts`,
-      };
+      failedSubTasks.push(`${subTask.id} (after ${subTask.attempts} attempts)`);
     }
+  }
+
+  // If any sub-task failed, skip compliance and return aggregated failure
+  if (failedSubTasks.length > 0) {
+    return {
+      storyId: story.id,
+      passed: false,
+      attempts: totalAttempts,
+      errorMessage: `Sub-tasks failed: ${failedSubTasks.join(", ")}`,
+    };
   }
 
   // All sub-tasks passed — run compliance on the whole story

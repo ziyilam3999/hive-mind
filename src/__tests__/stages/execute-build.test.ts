@@ -2,11 +2,18 @@ import { describe, it, expect, vi } from "vitest";
 import type { Story } from "../../types/execution-plan.js";
 
 vi.mock("../../agents/spawner.js", () => ({
-  spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string }) => {
+  spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string; cwd?: string }) => {
     const { writeFileSync, mkdirSync } = await import("node:fs");
-    const { dirname } = await import("node:path");
+    const { dirname, join } = await import("node:path");
     mkdirSync(dirname(config.outputFile), { recursive: true });
     writeFileSync(config.outputFile, `# Mock ${config.type} report`);
+    // Simulate implementer creating source files on disk
+    if (config.type === "implementer") {
+      const targetDir = config.cwd ?? dirname(dirname(config.outputFile));
+      const srcDir = join(targetDir, "src");
+      mkdirSync(srcDir, { recursive: true });
+      writeFileSync(join(srcDir, "test.ts"), "// mock source file");
+    }
     return { success: true, outputFile: config.outputFile };
   }),
 }));
@@ -42,6 +49,9 @@ describe("execute-build", () => {
 
   function setup() {
     mkdirSync(join(testDir, "plans", "steps"), { recursive: true });
+    // Pre-create source files so the post-BUILD file existence gate passes
+    mkdirSync(join(testDir, "src"), { recursive: true });
+    writeFileSync(join(testDir, "src", "test.ts"), "// mock source");
     writeFileSync(
       join(testDir, testStory.stepFile),
       "# US-99: Test Story\n## OUTPUT\nsrc/test.ts\n## ACCEPTANCE CRITERIA\n- AC-0: lint",
@@ -140,18 +150,21 @@ describe("execute-build", () => {
 
   it("moduleCwd forwarded to agent configs", async () => {
     setup();
+    const extDir = join(process.cwd(), ".test-exec-build-ext");
+    mkdirSync(extDir, { recursive: true });
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runBuild(testStory, dirs, config, undefined, undefined, undefined, "/external/repo");
+      await runBuild(testStory, dirs, config, undefined, undefined, undefined, extDir);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
       const implCall = calls.find((c) => c[0].type === "implementer");
       const refactorCall = calls.find((c) => c[0].type === "refactorer");
-      expect(implCall![0].cwd).toBe("/external/repo");
-      expect(refactorCall![0].cwd).toBe("/external/repo");
+      expect(implCall![0].cwd).toBe(extDir);
+      expect(refactorCall![0].cwd).toBe(extDir);
     } finally {
       cleanup();
+      rmSync(extDir, { recursive: true, force: true });
     }
   });
 
@@ -172,17 +185,20 @@ describe("execute-build", () => {
 
   it("sourceFiles resolved against moduleCwd when present", async () => {
     setup();
+    const extDir = join(process.cwd(), ".test-exec-build-ext2");
+    mkdirSync(extDir, { recursive: true });
     try {
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await runBuild(testStory, dirs, config, undefined, undefined, undefined, "/external/repo");
+      await runBuild(testStory, dirs, config, undefined, undefined, undefined, extDir);
       consoleSpy.mockRestore();
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
       const refactorCall = calls.find((c) => c[0].type === "refactorer");
       // sourceFiles should be joined with moduleCwd, not hiveMindDir
-      expect(refactorCall![0].inputFiles[0]).toBe(join("/external/repo", "src/test.ts"));
+      expect(refactorCall![0].inputFiles[0]).toBe(join(extDir, "src/test.ts"));
     } finally {
       cleanup();
+      rmSync(extDir, { recursive: true, force: true });
     }
   });
 });

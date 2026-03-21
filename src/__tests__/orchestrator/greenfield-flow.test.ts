@@ -8,10 +8,16 @@ import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 const spawnCalls: Array<{ type: string; rules?: string[]; instructionBlocks?: Array<{ heading: string }> }> = [];
 
 vi.mock("../../agents/spawner.js", () => ({
-  spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string; rules?: string[]; instructionBlocks?: Array<{ heading: string }> }) => {
+  spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string; rules?: string[]; instructionBlocks?: Array<{ heading: string }>; cwd?: string }) => {
     const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
-    const { dirname } = await import("node:path");
+    const { dirname, join } = await import("node:path");
     md(dirname(config.outputFile), { recursive: true });
+
+    // Simulate implementer creating source files on disk (Fix 1 gate)
+    if (config.type === "implementer") {
+      const targetDir = config.cwd ?? dirname(dirname(config.outputFile));
+      wf(join(targetDir, "package.json"), '{"name": "mock"}');
+    }
 
     // For planner, produce valid execution-plan JSON
     if (config.type === "planner") {
