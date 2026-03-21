@@ -92,7 +92,7 @@ export async function runVerify(
       rules: getAgentRules("tester-exec"),
       memoryContent,
       roleReportContents: testerRoleContents,
-      cwd: moduleCwd,
+      cwd: projectRoot,
       scratchDir,
     }, config);
     costTracker?.recordAgentCost(story.id, "tester-exec", testerResult.costUsd, testerResult.durationMs);
@@ -125,10 +125,10 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.4 / E.4a+E.4b: Fix AC failures
-      const preFixHashesAc = captureFileHashes(effectiveSourceFiles, moduleCwd ?? dirs.workingDir);
+      const preFixHashesAc = captureFileHashes(effectiveSourceFiles, moduleCwd ?? process.cwd());
       await runFixPipeline(story, dirs.workingDir, attempt, "ac", memoryContent, config, roleReportsDir, moduleCwd, scratchDir, effectiveSourceFiles);
       // K5: Post-fix verification gate (hash-based)
-      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesAc, effectiveSourceFiles, moduleCwd ?? dirs.workingDir)) {
+      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesAc, effectiveSourceFiles, moduleCwd ?? process.cwd())) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
         appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
       }
@@ -149,7 +149,7 @@ export async function runVerify(
       rules: getAgentRules("evaluator"),
       memoryContent,
       roleReportContents: evalRoleContents,
-      cwd: moduleCwd,
+      cwd: projectRoot,
       scratchDir,
     }, config);
     costTracker?.recordAgentCost(story.id, "evaluator", evalSpawnResult.costUsd, evalSpawnResult.durationMs);
@@ -186,10 +186,10 @@ export async function runVerify(
       if (attempt >= maxAttempts) break; // exhausted
 
       // E.6 / E.6a+E.6b: Fix EC failures
-      const preFixHashesEc = captureFileHashes(effectiveSourceFiles, moduleCwd ?? dirs.workingDir);
+      const preFixHashesEc = captureFileHashes(effectiveSourceFiles, moduleCwd ?? process.cwd());
       await runFixPipeline(story, dirs.workingDir, attempt, "ec", memoryContent, config, roleReportsDir, moduleCwd, scratchDir, effectiveSourceFiles);
       // K5: Post-fix verification gate (hash-based)
-      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesEc, effectiveSourceFiles, moduleCwd ?? dirs.workingDir)) {
+      if (!verifyFixApplied(dirs.workingDir, story.id, attempt, preFixHashesEc, effectiveSourceFiles, moduleCwd ?? process.cwd())) {
         console.warn(`Warning: Fix for ${story.id} (attempt ${attempt}) may not have applied changes.`);
         appendLogEntry(logPath, createLogEntry("FIX_UNVERIFIED", { storyId: story.id, attempt }));
       }
@@ -241,7 +241,7 @@ async function runFixPipeline(
     : undefined;
 
   // Fix 4: Enrich diagnosis context — add step file + source files + existence summary
-  const targetDir = moduleCwd ?? hiveMindDir;
+  const targetDir = moduleCwd ?? process.cwd();
   const sourceFilePaths = getSourceFilePaths(sourceFilesOverride ?? story.sourceFiles).map((f) => resolve(targetDir, f));
   const existingSourceFiles = sourceFilePaths.filter((f) => existsSync(f));
   const missingSourceFiles = sourceFilePaths.filter((f) => !existsSync(f));
@@ -270,7 +270,7 @@ async function runFixPipeline(
       heading: "FILE EXISTENCE STATUS",
       content: fileExistenceSummary,
     }] : undefined,
-    cwd: moduleCwd,
+    cwd: targetDir,
     scratchDir,
   }, config);
 
@@ -289,7 +289,7 @@ async function runFixPipeline(
     rules: getAgentRules("fixer"),
     memoryContent,
     roleReportContents: fixerRoleContents,
-    cwd: moduleCwd,
+    cwd: targetDir,
     scratchDir,
   }, config);
 }

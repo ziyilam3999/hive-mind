@@ -88,6 +88,7 @@ function makeStoryWithoutSubTasks(): Story {
 describe("sub-task execution (FW-01)", () => {
   const testDir = join(process.cwd(), ".test-subtask-exec");
   const dirs: PipelineDirs = { workingDir: testDir, knowledgeDir: testDir, labDir: testDir };
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
 
   async function setup() {
     spawnCalls.length = 0;
@@ -107,9 +108,11 @@ describe("sub-task execution (FW-01)", () => {
     writeFileSync(join(testDir, "plans/steps/US-02.md"), "# US-02\n## ACCEPTANCE CRITERIA\n- AC-1\n## EXIT CRITERIA\n- EC-1");
     writeFileSync(join(testDir, "manager-log.jsonl"), "");
     writeFileSync(join(testDir, "memory.md"), "");
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(testDir);
   }
 
   function cleanup() {
+    cwdSpy?.mockRestore();
     rmSync(testDir, { recursive: true, force: true });
   }
 

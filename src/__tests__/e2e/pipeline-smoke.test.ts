@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
@@ -122,7 +122,9 @@ describe("pipeline smoke test (e2e)", () => {
   const prdPath = join(testDir, "PRD.md");
 
   let consoleSpy: ReturnType<typeof vi.spyOn>;
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
+    cwdSpy?.mockRestore();
     vi.clearAllMocks();
     spawnCalls.length = 0;
     callIdx = 0;
@@ -134,9 +136,13 @@ describe("pipeline smoke test (e2e)", () => {
 
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(testDir);
   });
 
+  afterEach(() => { cwdSpy?.mockRestore(); });
+
   afterAll(() => {
+    cwdSpy?.mockRestore();
     rmSync(testDir, { recursive: true, force: true });
   });
 

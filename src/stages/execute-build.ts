@@ -60,7 +60,7 @@ export async function runBuild(
     rules: getAgentRules("implementer"),
     memoryContent,
     roleReportContents: implRoleContents,
-    cwd: moduleCwd,
+    cwd: moduleCwd ?? process.cwd(),
   }, config);
   costTracker?.recordAgentCost(story.id, "implementer", implResult.costUsd, implResult.durationMs);
 
@@ -69,7 +69,7 @@ export async function runBuild(
   console.log(`E.2: Running refactorer for ${story.id}...`);
 
   const effectiveSourceFiles = subTaskScope ? subTaskScope.sourceFiles : story.sourceFiles;
-  const sourceFiles = getSourceFilePaths(effectiveSourceFiles).map((f) => join(moduleCwd ?? dirs.workingDir, f));
+  const sourceFiles = getSourceFilePaths(effectiveSourceFiles).map((f) => join(moduleCwd ?? process.cwd(), f));
   const refactorRoleContents = roleReportsDir
     ? buildRoleReportContents("refactorer", story.rolesUsed, roleReportsDir)
     : undefined;
@@ -82,14 +82,14 @@ export async function runBuild(
     rules: getAgentRules("refactorer"),
     memoryContent,
     roleReportContents: refactorRoleContents,
-    cwd: moduleCwd,
+    cwd: moduleCwd ?? process.cwd(),
   }, config);
   costTracker?.recordAgentCost(story.id, "refactorer", refactorResult.costUsd, refactorResult.durationMs);
 
   // Fix 1: Post-BUILD file existence gate — verify all sourceFiles exist on disk
   // This gate means "BUILD didn't complete" so it must run BEFORE the checkpoint.
   const effectiveSourceFilePaths = getSourceFilePaths(effectiveSourceFiles);
-  const targetDir = moduleCwd ?? dirs.workingDir;
+  const targetDir = moduleCwd ?? process.cwd();
 
   if (effectiveSourceFilePaths.length === 0) {
     console.warn(`[${story.id}] Warning: sourceFiles is empty — skipping file existence check`);

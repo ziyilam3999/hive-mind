@@ -45,7 +45,7 @@ export async function runComplianceCheck(
   const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
 
-  const sourceFiles = getSourceFilePaths(story.sourceFiles).map((f) => join(moduleCwd ?? dirs.workingDir, f));
+  const sourceFiles = getSourceFilePaths(story.sourceFiles).map((f) => join(moduleCwd ?? process.cwd(), f));
 
   const reviewerRoleContents = roleReportsDir
     ? buildRoleReportContents("compliance-reviewer", story.rolesUsed, roleReportsDir)
@@ -54,7 +54,7 @@ export async function runComplianceCheck(
   // Run initial compliance review
   const reviewResult = await spawnComplianceReviewer(
     story, stepFilePath, implReportPath, sourceFiles, reportPath,
-    memoryContent, reviewerRoleContents, config, costTracker,
+    memoryContent, reviewerRoleContents, config, costTracker, moduleCwd,
   );
 
   if (reviewResult.skipped || reviewResult.passed) {
@@ -65,7 +65,7 @@ export async function runComplianceCheck(
   for (let fixAttempt = 1; fixAttempt <= MAX_COMPLIANCE_FIX_ATTEMPTS; fixAttempt++) {
     const fixResult = await runComplianceFixer(
       story, dirs.workingDir, stepFilePath, reportPath, implReportPath, sourceFiles,
-      memoryContent, fixAttempt, config, costTracker, roleReportsDir,
+      memoryContent, fixAttempt, config, costTracker, roleReportsDir, moduleCwd,
     );
 
     if (fixResult.skipped) {
@@ -83,7 +83,7 @@ export async function runComplianceCheck(
     // Re-run compliance reviewer after fix
     const reReviewResult = await spawnComplianceReviewer(
       story, stepFilePath, implReportPath, sourceFiles, reportPath,
-      memoryContent, reviewerRoleContents, config, costTracker,
+      memoryContent, reviewerRoleContents, config, costTracker, moduleCwd,
     );
 
     if (reReviewResult.skipped || reReviewResult.passed) {
@@ -112,6 +112,7 @@ async function spawnComplianceReviewer(
   reviewerRoleContents: string | undefined,
   config: HiveMindConfig,
   costTracker?: CostTracker,
+  moduleCwd?: string,
 ): Promise<ComplianceCheckResult> {
   try {
     console.log(`[${story.id}] COMPLIANCE: Running compliance-reviewer...`);
@@ -124,6 +125,7 @@ async function spawnComplianceReviewer(
       rules: getAgentRules("compliance-reviewer"),
       memoryContent,
       roleReportContents: reviewerRoleContents,
+      cwd: moduleCwd ?? process.cwd(),
     }, config);
     costTracker?.recordAgentCost(story.id, "compliance-reviewer", spawnResult.costUsd, spawnResult.durationMs);
 
@@ -179,6 +181,7 @@ async function runComplianceFixer(
   config: HiveMindConfig,
   costTracker?: CostTracker,
   roleReportsDir?: string,
+  moduleCwd?: string,
 ): Promise<ComplianceFixStepResult> {
   const fixReportPath = join(hiveMindDir, getReportPath(story.id, `compliance-fix-report-${attempt}.md`));
 
@@ -197,6 +200,7 @@ async function runComplianceFixer(
       rules: getAgentRules("compliance-fixer"),
       memoryContent,
       roleReportContents: fixerRoleContents,
+      cwd: moduleCwd ?? process.cwd(),
     }, config);
     costTracker?.recordAgentCost(story.id, "compliance-fixer", spawnResult.costUsd, spawnResult.durationMs);
 
