@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.8](https://github.com/ziyilam3999/hive-mind/compare/v0.8.7...v0.8.8) (2026-03-21)
+
+
+### Bug Fixes
+
+* **ci:** add Write permission and remove show_full_output debug flag ([44c5309](https://github.com/ziyilam3999/hive-mind/commit/44c53095289d761fa0bf5fc6a04965664974eec7))
+* **ci:** add Write permission to code review action ([6297051](https://github.com/ziyilam3999/hive-mind/commit/62970516d62a6b26de531fc8eb157743d4c964a2))
+
 ## [0.8.7](https://github.com/ziyilam3999/hive-mind/compare/v0.8.6...v0.8.7) (2026-03-21)
 
 
