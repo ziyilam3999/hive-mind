@@ -47,4 +47,4 @@ jobs:
             Be specific and actionable. Only flag issues with high confidence.
             After completing your review, write it to /tmp/review.md using the Write tool,
             then post it with: gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/review.md
-          claude_args: "--max-turns 10"
+          claude_args: "--max-turns 15"
