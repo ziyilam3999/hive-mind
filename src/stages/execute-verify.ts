@@ -12,7 +12,7 @@ import { appendLogEntry, createLogEntry } from "../state/manager-log.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
-import { join, resolve } from "node:path";
+import { join, resolve, relative } from "node:path";
 import { copyFileSync, readdirSync, readFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import type { StoryCheckpoint } from "../types/checkpoint.js";
@@ -246,8 +246,8 @@ async function runFixPipeline(
   const existingSourceFiles = sourceFilePaths.filter((f) => existsSync(f));
   const missingSourceFiles = sourceFilePaths.filter((f) => !existsSync(f));
   const fileExistenceSummary = [
-    existingSourceFiles.length > 0 ? `Files present: ${existingSourceFiles.map(f => f.replace(targetDir + "/", "").replace(targetDir + "\\", "")).join(", ")}` : "",
-    missingSourceFiles.length > 0 ? `Files MISSING: ${missingSourceFiles.map(f => f.replace(targetDir + "/", "").replace(targetDir + "\\", "")).join(", ")}` : "",
+    existingSourceFiles.length > 0 ? `Files present: ${existingSourceFiles.map(f => relative(targetDir, f)).join(", ")}` : "",
+    missingSourceFiles.length > 0 ? `Files MISSING: ${missingSourceFiles.map(f => relative(targetDir, f)).join(", ")}` : "",
   ].filter(Boolean).join("; ");
 
   // K5: Always run diagnostician → fixer (no fast-path)
