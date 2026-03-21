@@ -103,18 +103,6 @@ export async function runBuild(
     }
   }
 
-  // RD-07: Write mid-story checkpoint after file existence gate passes.
-  // Positioned after file gate (missing files = BUILD incomplete, must re-run)
-  // but before tsc gate (type errors = BUILD ran, just needs tsc retry).
-  const checkpoint: StoryCheckpoint = {
-    storyId: story.id,
-    lastCompletedSubStage: "BUILD",
-    completedSubStages: ["BUILD"],
-    timestamp: isoTimestamp(),
-  };
-  const checkpointPath = join(dirs.workingDir, getReportPath(story.id, "checkpoint.json"));
-  writeFileAtomic(checkpointPath, JSON.stringify(checkpoint, null, 2) + "\n");
-
   // Fix 2: Pipeline-level tsc gate — catch type errors before VERIFY (async)
   const pkgJsonPath = resolve(targetDir, "package.json");
   let hasTsc = false;
@@ -146,6 +134,18 @@ export async function runBuild(
   } else if (existsSync(pkgJsonPath)) {
     console.debug(`[${story.id}] Target project has no typescript dependency, skipping tsc gate`);
   }
+
+  // RD-07: Write mid-story checkpoint after ALL gates pass.
+  // Must be after both file existence gate and tsc gate so that crash-restart
+  // re-runs BUILD when either gate failed (not just file existence).
+  const checkpoint: StoryCheckpoint = {
+    storyId: story.id,
+    lastCompletedSubStage: "BUILD",
+    completedSubStages: ["BUILD"],
+    timestamp: isoTimestamp(),
+  };
+  const checkpointPath = join(dirs.workingDir, getReportPath(story.id, "checkpoint.json"));
+  writeFileAtomic(checkpointPath, JSON.stringify(checkpoint, null, 2) + "\n");
 
   return { implReportPath, refactorReportPath };
 }

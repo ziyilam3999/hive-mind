@@ -680,7 +680,11 @@ async function executeStoryWithSubTasks(
           break;
         }
       } catch (err) {
-        console.warn(`[${story.id}/${subTask.id}] attempt ${attempt} error: ${err instanceof Error ? err.message : String(err)}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        const isPipelineError = msg.startsWith("BUILD file existence check failed")
+          || msg.startsWith("BUILD type-check gate failed");
+        if (!isPipelineError) throw err;
+        console.warn(`[${story.id}/${subTask.id}] attempt ${attempt} error: ${msg}`);
       }
 
       if (attempt >= subTask.maxAttempts) {

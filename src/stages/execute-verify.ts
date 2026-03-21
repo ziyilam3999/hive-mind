@@ -360,7 +360,8 @@ export function verifyFixApplied(
         if (currentHash !== prevHash) return true;
       }
     }
-    return false; // no files changed
+    // No source files changed — fall through to text-based check.
+    // EC-only fixes may modify test commands rather than source files.
   }
 
   // Fallback: text-based check (for empty sourceFiles or missing hash data)
