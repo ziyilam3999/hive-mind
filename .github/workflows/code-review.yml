@@ -36,6 +36,7 @@ jobs:
                   "Bash(gh api:*)",
                   "Bash(git:*)",
                   "Read",
+                  "Write",
                   "Glob",
                   "Grep"
                 ]
