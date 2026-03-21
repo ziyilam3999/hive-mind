@@ -1,6 +1,6 @@
 {
   "name": "hive-mind",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "description": "PRD-driven orchestrator with multi-chain reasoning and closed feedback loop",
   "type": "module",
   "main": "dist/index.js",
