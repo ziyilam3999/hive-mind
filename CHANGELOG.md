@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.9](https://github.com/ziyilam3999/hive-mind/compare/v0.8.8...v0.8.9) (2026-03-21)
+
+
+### Bug Fixes
+
+* pipeline reliability gates from monday-bot failure analysis ([#37](https://github.com/ziyilam3999/hive-mind/issues/37)) ([0686151](https://github.com/ziyilam3999/hive-mind/commit/068615182c5f1fecadd3a6a289baa4e1caae77a6))
+
 ## [0.8.8](https://github.com/ziyilam3999/hive-mind/compare/v0.8.7...v0.8.8) (2026-03-21)
 
 
