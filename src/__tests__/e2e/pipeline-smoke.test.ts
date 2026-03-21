@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDefaultConfig } from "../../config/loader.js";
@@ -138,6 +138,8 @@ describe("pipeline smoke test (e2e)", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(testDir);
   });
+
+  afterEach(() => { cwdSpy?.mockRestore(); });
 
   afterAll(() => {
     cwdSpy?.mockRestore();

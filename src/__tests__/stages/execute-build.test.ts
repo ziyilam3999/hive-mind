@@ -183,6 +183,8 @@ describe("execute-build", () => {
       const implCall = calls.find((c) => c[0].type === "implementer");
       const refactorCall = calls.find((c) => c[0].type === "refactorer");
       // With fix: cwd falls back to process.cwd() (spied to testDir), not undefined
+      expect(implCall).toBeDefined();
+      expect(refactorCall).toBeDefined();
       expect(implCall![0].cwd).toBe(testDir);
       expect(refactorCall![0].cwd).toBe(testDir);
     } finally {

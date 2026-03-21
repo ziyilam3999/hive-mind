@@ -92,7 +92,7 @@ export async function runVerify(
       rules: getAgentRules("tester-exec"),
       memoryContent,
       roleReportContents: testerRoleContents,
-      cwd: moduleCwd,
+      cwd: projectRoot,
       scratchDir,
     }, config);
     costTracker?.recordAgentCost(story.id, "tester-exec", testerResult.costUsd, testerResult.durationMs);
@@ -149,7 +149,7 @@ export async function runVerify(
       rules: getAgentRules("evaluator"),
       memoryContent,
       roleReportContents: evalRoleContents,
-      cwd: moduleCwd,
+      cwd: projectRoot,
       scratchDir,
     }, config);
     costTracker?.recordAgentCost(story.id, "evaluator", evalSpawnResult.costUsd, evalSpawnResult.durationMs);
@@ -270,7 +270,7 @@ async function runFixPipeline(
       heading: "FILE EXISTENCE STATUS",
       content: fileExistenceSummary,
     }] : undefined,
-    cwd: moduleCwd,
+    cwd: targetDir,
     scratchDir,
   }, config);
 
@@ -289,7 +289,7 @@ async function runFixPipeline(
     rules: getAgentRules("fixer"),
     memoryContent,
     roleReportContents: fixerRoleContents,
-    cwd: moduleCwd,
+    cwd: targetDir,
     scratchDir,
   }, config);
 }

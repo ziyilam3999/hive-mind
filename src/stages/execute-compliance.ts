@@ -54,7 +54,7 @@ export async function runComplianceCheck(
   // Run initial compliance review
   const reviewResult = await spawnComplianceReviewer(
     story, stepFilePath, implReportPath, sourceFiles, reportPath,
-    memoryContent, reviewerRoleContents, config, costTracker,
+    memoryContent, reviewerRoleContents, config, costTracker, moduleCwd,
   );
 
   if (reviewResult.skipped || reviewResult.passed) {
@@ -83,7 +83,7 @@ export async function runComplianceCheck(
     // Re-run compliance reviewer after fix
     const reReviewResult = await spawnComplianceReviewer(
       story, stepFilePath, implReportPath, sourceFiles, reportPath,
-      memoryContent, reviewerRoleContents, config, costTracker,
+      memoryContent, reviewerRoleContents, config, costTracker, moduleCwd,
     );
 
     if (reReviewResult.skipped || reReviewResult.passed) {
@@ -112,6 +112,7 @@ async function spawnComplianceReviewer(
   reviewerRoleContents: string | undefined,
   config: HiveMindConfig,
   costTracker?: CostTracker,
+  moduleCwd?: string,
 ): Promise<ComplianceCheckResult> {
   try {
     console.log(`[${story.id}] COMPLIANCE: Running compliance-reviewer...`);
@@ -124,6 +125,7 @@ async function spawnComplianceReviewer(
       rules: getAgentRules("compliance-reviewer"),
       memoryContent,
       roleReportContents: reviewerRoleContents,
+      cwd: moduleCwd ?? process.cwd(),
     }, config);
     costTracker?.recordAgentCost(story.id, "compliance-reviewer", spawnResult.costUsd, spawnResult.durationMs);
 

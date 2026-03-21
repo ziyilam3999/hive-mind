@@ -313,7 +313,7 @@ describe("execute-verify", () => {
     }
   });
 
-  it("undefined moduleCwd — no cwd in agent config", async () => {
+  it("undefined moduleCwd — cwd defaults to process.cwd()", async () => {
     setup();
     vi.mocked(spawnAgentWithRetry).mockClear();
     try {
@@ -323,7 +323,8 @@ describe("execute-verify", () => {
 
       const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
       const testerCall = calls.find((c) => c[0].type === "tester-exec");
-      expect(testerCall![0].cwd).toBeUndefined();
+      expect(testerCall).toBeDefined();
+      expect(testerCall![0].cwd).toBe(process.cwd());
     } finally {
       cleanup();
     }
