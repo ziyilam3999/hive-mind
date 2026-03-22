@@ -76,6 +76,10 @@ export function validateConfig(raw: unknown): ValidationResult {
     errors.push("skipNormalize must be a boolean");
   }
 
+  if ("liveReport" in obj && typeof obj.liveReport !== "boolean") {
+    errors.push("liveReport must be a boolean");
+  }
+
   for (const dirKey of ["workingDir", "knowledgeDir", "labDir"] as const) {
     if (dirKey in obj && typeof obj[dirKey] !== "string") {
       errors.push(`${dirKey} must be a string, got: ${JSON.stringify(obj[dirKey])}`);
@@ -181,6 +185,7 @@ export function loadConfig(projectRoot: string): HiveMindConfig {
     baselineBuildCommand: (obj.baselineBuildCommand as string | undefined) ?? defaults.baselineBuildCommand,
     baselineTestCommand: (obj.baselineTestCommand as string | undefined) ?? defaults.baselineTestCommand,
     skipNormalize: (obj.skipNormalize as boolean | undefined) ?? defaults.skipNormalize,
+    liveReport: (obj.liveReport as boolean | undefined) ?? defaults.liveReport,
     modelAssignments,
     workingDir: (obj.workingDir as string | undefined) ?? undefined,
     knowledgeDir: (obj.knowledgeDir as string | undefined) ?? undefined,

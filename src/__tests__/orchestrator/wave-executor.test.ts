@@ -159,7 +159,7 @@ describe("wave executor", () => {
       expect(result.stories[0].status).toBe("passed");
       expect(result.stories[1].status).toBe("passed");
 
-      const waveLogs = logs.filter((l) => l.includes("Wave:"));
+      const waveLogs = logs.filter((l) => /Wave \d+:/.test(l));
       expect(waveLogs.length).toBe(1);
       expect(waveLogs[0]).toContain("US-01");
       expect(waveLogs[0]).toContain("US-02");
@@ -187,7 +187,7 @@ describe("wave executor", () => {
       expect(result.stories[0].status).toBe("passed");
       expect(result.stories[1].status).toBe("passed");
 
-      const waveLogs = logs.filter((l) => l.includes("Wave:"));
+      const waveLogs = logs.filter((l) => /Wave \d+:/.test(l));
       expect(waveLogs.length).toBe(2);
     } finally {
       logSpy.mockRestore();
@@ -243,7 +243,7 @@ describe("wave executor", () => {
       expect(result.stories[0].status).toBe("passed");
       expect(result.stories[1].status).toBe("passed");
 
-      const waveLogs = logs.filter((l) => l.includes("Wave:"));
+      const waveLogs = logs.filter((l) => /Wave \d+:/.test(l));
       expect(waveLogs.length).toBe(2);
     } finally {
       logSpy.mockRestore();

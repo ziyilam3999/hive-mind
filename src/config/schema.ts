@@ -22,6 +22,7 @@ export interface HiveMindConfig {
   workingDir?: string;
   knowledgeDir?: string;
   skipNormalize: boolean;
+  liveReport: boolean;
   labDir?: string;
 }
 
@@ -86,5 +87,6 @@ export const DEFAULT_CONFIG: HiveMindConfig = {
   baselineBuildCommand: "npm run build",
   baselineTestCommand: "npm test",
   skipNormalize: false,
+  liveReport: true,
   modelAssignments: { ...DEFAULT_MODEL_ASSIGNMENTS },
 };

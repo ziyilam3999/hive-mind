@@ -22,7 +22,11 @@ export type LogAction =
   | "BUG_FIX_EXHAUSTED"
   | "BUILD_RETRY"
   | "BUILD_RETRY_EXHAUSTED"
-  | "PIPELINE_START";
+  | "PIPELINE_START"
+  | "WAVE_START"
+  | "WAVE_COMPLETE"
+  | "REGISTRY_GAP_FIXED"
+  | "PREFLIGHT_PAUSE";
 
 export interface ManagerLogEntry {
   timestamp: string;
@@ -59,4 +63,6 @@ export interface ManagerLogEntry {
   stopAfterPlan?: boolean;
   budget?: number;
   greenfield?: boolean;
+  waveNumber?: number;
+  registryFile?: string;
 }
