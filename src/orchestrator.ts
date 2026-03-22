@@ -1,5 +1,5 @@
 import type { Checkpoint } from "./types/checkpoint.js";
-import type { ExecutionPlan } from "./types/execution-plan.js";
+import type { ExecutionPlan, SourceFileEntry } from "./types/execution-plan.js";
 import { getSourceFilePaths } from "./types/execution-plan.js";
 import type { HiveMindConfig } from "./config/schema.js";
 import type { PipelineDirs } from "./types/pipeline-dirs.js";
@@ -26,7 +26,9 @@ import { runWithConcurrency } from "./utils/concurrency.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
 import { isoTimestamp } from "./utils/timestamp.js";
 import { join, resolve, dirname } from "node:path";
-import { rmSync, readdirSync, writeFileSync, copyFileSync } from "node:fs";
+import { rmSync, readdirSync, writeFileSync, copyFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { basename } from "node:path";
 import { HiveMindError } from "./utils/errors.js";
 import { notifyCheckpoint } from "./utils/notify.js";
 import { CostTracker, estimatePipelineCost } from "./utils/cost-tracker.js";
@@ -37,7 +39,7 @@ import { runVerify } from "./stages/execute-verify.js";
 import { runCommit } from "./stages/execute-commit.js";
 import { runLearn } from "./stages/execute-learn.js";
 import { runComplianceCheck } from "./stages/execute-compliance.js";
-import { parseRequiredTooling, detectAllTools } from "./tooling/detect.js";
+import { parseRequiredTooling, detectAllTools, scanStepFileForTools, detectToolBySpawn } from "./tooling/detect.js";
 import { runToolingSetup } from "./tooling/setup.js";
 import { runReportStage as reportStage } from "./stages/report-stage.js";
 import { runBaselineCheck } from "./stages/baseline-check.js";
@@ -580,10 +582,94 @@ async function executeWholeStory(
     } catch { /* ignore corrupt checkpoint */ }
   }
 
-  // BUILD sub-pipeline (US-13)
+  // BUILD sub-pipeline (US-13) — with retry loop
   if (!completedSubStages.has("BUILD")) {
-    console.log(`[${story.id}] BUILD: Starting...`);
-    await runBuild(story, dirs, config, costTracker, roleReportsDir, undefined, moduleCwd);
+    const maxBuildAttempts = config.maxBuildAttempts ?? 2;
+    let buildPassed = false;
+
+    for (let attempt = 1; attempt <= maxBuildAttempts; attempt++) {
+      try {
+        console.log(`[${story.id}] BUILD: Starting (attempt ${attempt}/${maxBuildAttempts})...`);
+        await runBuild(story, dirs, config, costTracker, roleReportsDir, undefined, moduleCwd);
+        buildPassed = true;
+        break;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isRetryable =
+          msg.startsWith("BUILD file existence check failed") ||
+          msg.startsWith("BUILD type-check gate failed");
+
+        if (!isRetryable || attempt === maxBuildAttempts) {
+          if (!isRetryable) {
+            // Non-retryable error — propagate immediately
+            throw err;
+          }
+          // Exhausted retries
+          appendLogEntry(logPath, createLogEntry("BUILD_RETRY_EXHAUSTED", {
+            storyId: story.id,
+            attempt,
+            error: msg,
+          }));
+          return {
+            storyId: story.id,
+            passed: false,
+            attempts: attempt,
+            errorMessage: `BUILD failed after ${attempt} attempts: ${msg}`,
+          };
+        }
+
+        // Retryable error — clean up and retry
+        console.warn(`[${story.id}] BUILD attempt ${attempt} failed: ${msg}`);
+        appendLogEntry(logPath, createLogEntry("BUILD_RETRY", {
+          storyId: story.id,
+          attempt,
+          error: msg,
+        }));
+
+        // Delete the mid-story checkpoint so BUILD re-runs from scratch
+        const cpPath = join(dirs.workingDir, getReportPath(story.id, "checkpoint.json"));
+        if (existsSync(cpPath)) {
+          unlinkSync(cpPath);
+        }
+
+        // Restore MODIFIED files via git checkout
+        const cwd = moduleCwd ?? dirs.workingDir;
+        const modifiedFiles = story.sourceFiles.filter(
+          (f): f is SourceFileEntry => typeof f !== "string" && f.changeType === "MODIFIED",
+        );
+        for (const f of modifiedFiles) {
+          try {
+            execSync(`git checkout -- "${f.path}"`, { cwd, stdio: "ignore" });
+          } catch {
+            console.warn(`[${story.id}] BUILD_RETRY: Could not restore ${f.path}`);
+          }
+        }
+
+        // Move ADDED files to .retry-trash/
+        const addedFiles = story.sourceFiles.filter(
+          (f): f is SourceFileEntry => typeof f !== "string" && f.changeType === "ADDED",
+        );
+        if (addedFiles.length > 0) {
+          const trashDir = join(cwd, ".retry-trash", `${story.id}-attempt${attempt}`);
+          mkdirSync(trashDir, { recursive: true });
+          for (const f of addedFiles) {
+            const fullPath = join(cwd, f.path);
+            if (existsSync(fullPath)) {
+              renameSync(fullPath, join(trashDir, basename(f.path)));
+            }
+          }
+        }
+      }
+    }
+
+    if (!buildPassed) {
+      return {
+        storyId: story.id,
+        passed: false,
+        attempts: maxBuildAttempts,
+        errorMessage: "BUILD failed after max attempts",
+      };
+    }
   } else {
     console.log(`[${story.id}] BUILD: Skipped (checkpoint)`);
   }
@@ -727,6 +813,41 @@ async function executeStoryWithSubTasks(
   };
 }
 
+/**
+ * Pre-flight tool check: scan all step files for CLI tool dependencies
+ * and verify they are available on PATH. Returns array of missing tool names.
+ */
+async function runPreFlightChecks(
+  plan: ExecutionPlan,
+  dirs: PipelineDirs,
+): Promise<string[]> {
+  const allTools = new Set<string>();
+
+  for (const story of plan.stories) {
+    if (story.status === "passed" || story.status === "failed" || story.status === "skipped") continue;
+
+    const stepPath = join(dirs.workingDir, "plans", story.stepFile);
+    const content = readFileSafe(stepPath);
+    if (!content) continue;
+
+    for (const tool of scanStepFileForTools(content)) {
+      allTools.add(tool);
+    }
+  }
+
+  if (allTools.size === 0) return [];
+
+  const missing: string[] = [];
+  for (const tool of allTools) {
+    const status = await detectToolBySpawn(tool);
+    if (status === "missing") {
+      missing.push(tool);
+    }
+  }
+
+  return missing;
+}
+
 export async function runExecuteStage(
   dirs: PipelineDirs,
   config: HiveMindConfig,
@@ -789,6 +910,21 @@ export async function runExecuteStage(
       // Non-interactive (CI/tests): auto-approve with log
       console.log("Non-interactive mode — auto-approved.");
     }
+  }
+
+  // Pre-flight tool check: scan step files for CLI tool dependencies
+  const preflightMissing = await runPreFlightChecks(plan, dirs);
+  if (preflightMissing.length > 0) {
+    const msg = `Missing tools: ${preflightMissing.join(", ")}. Install them and re-run.`;
+    console.error(`PRE-FLIGHT FAILED: ${msg}`);
+    writeCheckpoint(dirs.workingDir, {
+      awaiting: "approve-preflight",
+      message: getCheckpointMessage("approve-preflight"),
+      timestamp: isoTimestamp(),
+      feedback: null,
+    });
+    notifyCheckpoint(false);
+    return;
   }
 
   // Wave executor: process stories in waves of non-overlapping, dependency-ready stories

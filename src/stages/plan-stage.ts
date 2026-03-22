@@ -237,7 +237,28 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
 
   // Fallback heuristic: warn about registry gaps the validator may have missed
   const workspaceRoot = join(dirs.workingDir, "..");
-  warnRegistryGaps(planData.stories, workspaceRoot, parsedModules.length > 0);
+  const registryGaps = warnRegistryGaps(planData.stories, workspaceRoot, parsedModules.length > 0);
+
+  // Auto-fix registry gaps: add missing registry files to suggested owner's sourceFiles
+  if (registryGaps.length > 0) {
+    for (const gap of registryGaps) {
+      const ownerStory = stories.find(s => s.id === gap.suggestedOwner);
+      if (!ownerStory) continue;
+
+      const alreadyListed = ownerStory.sourceFiles.some(sf => {
+        const path = typeof sf === "string" ? sf : sf.path;
+        return path === gap.registryFile;
+      });
+      if (alreadyListed) continue;
+
+      const changeType = fileExists(join(workspaceRoot, gap.registryFile)) ? "MODIFIED" : "ADDED";
+      ownerStory.sourceFiles.push({ path: gap.registryFile, changeType });
+      console.log(`[PLAN] Auto-fixed registry gap: added ${gap.registryFile} to ${gap.suggestedOwner} sourceFiles`);
+    }
+    // Re-save execution plan with patched sourceFiles
+    planData.stories = stories;
+    writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
+  }
 
   // Write story skeletons for ac/ec generators
   for (const story of stories) {
@@ -526,8 +547,14 @@ export function extractCorrectedPlan(report: string): { stories: Story[] } | nul
   return null;
 }
 
-export function warnRegistryGaps(stories: Story[], workspaceRoot: string, hasModules: boolean): void {
-  if (hasModules) return;
+export interface RegistryGap {
+  registryFile: string;
+  addingStories: string[];
+  suggestedOwner: string;
+}
+
+export function warnRegistryGaps(stories: Story[], workspaceRoot: string, hasModules: boolean): RegistryGap[] {
+  if (hasModules) return [];
 
   const addedDirs = new Map<string, string[]>();
   const modifiedFiles = new Set<string>();
@@ -547,6 +574,7 @@ export function warnRegistryGaps(stories: Story[], workspaceRoot: string, hasMod
     }
   }
 
+  const gaps: RegistryGap[] = [];
   const REGISTRY_NAMES = ["index.ts", "index.js", "registry.ts", "mod.ts"];
   for (const [dir, storyIds] of addedDirs) {
     for (const name of REGISTRY_NAMES) {
@@ -556,7 +584,14 @@ export function warnRegistryGaps(stories: Story[], workspaceRoot: string, hasMod
           `[PLAN] Registry gap: stories ${storyIds.join(", ")} add files to ${dir}/ ` +
           `but no story modifies ${registryPath}`,
         );
+        gaps.push({
+          registryFile: registryPath,
+          addingStories: storyIds,
+          suggestedOwner: storyIds[storyIds.length - 1],
+        });
       }
     }
   }
+
+  return gaps;
 }

@@ -168,6 +168,7 @@ export function loadConfig(projectRoot: string): HiveMindConfig {
     toolingDetectTimeout: (obj.toolingDetectTimeout as number | undefined) ?? defaults.toolingDetectTimeout,
     maxRetries: (obj.maxRetries as number | undefined) ?? defaults.maxRetries,
     maxAttempts: (obj.maxAttempts as number | undefined) ?? defaults.maxAttempts,
+    maxBuildAttempts: (obj.maxBuildAttempts as number | undefined) ?? defaults.maxBuildAttempts,
     maxConcurrency: (obj.maxConcurrency as number | undefined) ?? defaults.maxConcurrency,
     retryBaseDelayMs: (obj.retryBaseDelayMs as number | undefined) ?? defaults.retryBaseDelayMs,
     retryMaxDelayMs: (obj.retryMaxDelayMs as number | undefined) ?? defaults.retryMaxDelayMs,
