@@ -86,6 +86,7 @@ const AGENT_RULES: Record<string, string[]> = {
     "SKIP-INVALID: If a critique finding is incorrect, explain why it is being skipped rather than silently ignoring it.",
     "NO-OVERCORRECT: Skip MINOR findings that do not materially improve the document. Focus on critical and major issues.",
     "CONSISTENCY-CHECK: After applying fixes, verify all sections still agree with each other. Cross-reference definitions, interfaces, and requirements.",
+    "EVIDENCE-GATED: When fixing a critique finding, cite the specific section you changed and quote the before/after. Format: 'FIXED: <finding #> — changed <section> from \"<before>\" to \"<after>\"'. This creates an audit trail.",
   ],
   "tester-exec": [
     "SHELL-EXEC: Run each AC via Bash. Report exact stdout. Code inspection alone is NOT testing. [Wrong: 'I can see the function exists'] [Right: 'Ran grep -q export... && echo PASS, got PASS']",
@@ -131,7 +132,7 @@ const AGENT_RULES: Record<string, string[]> = {
   ],
   "critic": [
     "INDEPENDENCE: You see ONLY the artifact. No shared context with drafter/researcher. [Wrong: 'Building on the research report...'] [Right: 'Reading only the SPEC draft, I find...']",
-    "CONCRETE: Every finding must cite a specific section, line, or statement.",
+    "EVIDENCE-GATED: Every finding must cite a specific section and quote evidence. Format: 'VERIFIED: <claim> found at <section/line> — \"<quoted text>\"' or 'UNVERIFIED: <claim> — no evidence found'. Do not assert something exists or is missing without citing where you looked.",
     "SEVERITY: Classify each finding as critical, major, or minor.",
     "NO-STYLE: Do not critique writing style, formatting, or word choice unless it causes ambiguity.",
     "ACTIONABLE: Every finding must include a specific recommendation for correction.",
