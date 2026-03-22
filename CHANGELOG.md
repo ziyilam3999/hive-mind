@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.12](https://github.com/ziyilam3999/hive-mind/compare/v0.8.11...v0.8.12) (2026-03-22)
+
+
+### Bug Fixes
+
+* add refactorer scope rules, enforce max-5 rule limit, surface uncommitted stories ([#47](https://github.com/ziyilam3999/hive-mind/issues/47)) ([3cbc19f](https://github.com/ziyilam3999/hive-mind/commit/3cbc19f86dfff29d3aa17b7bd2ed759352336f51))
+
 ## [0.8.11](https://github.com/ziyilam3999/hive-mind/compare/v0.8.10...v0.8.11) (2026-03-21)
 
 
