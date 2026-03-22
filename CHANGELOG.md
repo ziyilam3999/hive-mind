@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.13](https://github.com/ziyilam3999/hive-mind/compare/v0.8.12...v0.8.13) (2026-03-22)
+
+
+### Bug Fixes
+
+* add plan-validator agent, refactor salvage, artifact preservation ([#51](https://github.com/ziyilam3999/hive-mind/issues/51)) ([7be11a6](https://github.com/ziyilam3999/hive-mind/commit/7be11a60d06cc9eefabb0af323806cf44b9aa6f4))
+
 ## [0.8.12](https://github.com/ziyilam3999/hive-mind/compare/v0.8.11...v0.8.12) (2026-03-22)
 
 
