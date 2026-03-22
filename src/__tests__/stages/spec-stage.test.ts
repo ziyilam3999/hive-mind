@@ -379,6 +379,79 @@ describe("spec-stage", () => {
     }
   });
 
+  it("critic rules include EVIDENCE-GATED", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runSpecStage(prdPath, dirs, config);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const criticCalls = calls.filter((c) => c[0].type === "critic");
+      expect(criticCalls.length).toBe(2);
+
+      // Both critics should have EVIDENCE-GATED rule
+      for (const call of criticCalls) {
+        expect(call[0].rules.some((r: string) => r.includes("EVIDENCE-GATED"))).toBe(true);
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("spec-corrector rules include EVIDENCE-GATED", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runSpecStage(prdPath, dirs, config);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const correctorCalls = calls.filter((c) => c[0].type === "spec-corrector");
+      expect(correctorCalls.length).toBe(2);
+
+      for (const call of correctorCalls) {
+        expect(call[0].rules.some((r: string) => r.includes("EVIDENCE-GATED"))).toBe(true);
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("round-2 critic has REGRESSION-CHECK, round-1 does not", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runSpecStage(prdPath, dirs, config);
+      consoleSpy.mockRestore();
+
+      const calls = vi.mocked(spawnAgentWithRetry).mock.calls;
+      const criticCalls = calls.filter((c) => c[0].type === "critic");
+      expect(criticCalls.length).toBe(2);
+
+      // Round 1 should NOT have REGRESSION-CHECK
+      expect(criticCalls[0][0].rules.some((r: string) => r.includes("REGRESSION-CHECK"))).toBe(false);
+
+      // Round 2 should have REGRESSION-CHECK
+      expect(criticCalls[1][0].rules.some((r: string) => r.includes("REGRESSION-CHECK"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("critique-log.md is produced after pipeline completes", async () => {
+    setup();
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runSpecStage(prdPath, dirs, config);
+      consoleSpy.mockRestore();
+
+      expect(existsSync(join(hmDir, "spec", "critique-log.md"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
   it("getSpecSteps returns correct arrays", () => {
     const fullSteps = getSpecSteps(false);
     expect(fullSteps.length).toBe(9);

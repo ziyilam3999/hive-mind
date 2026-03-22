@@ -37,6 +37,7 @@ export async function runScorecard(
       maybeAdd(join(dirs.workingDir, "spec", "SPEC-v1.0.md"));
       maybeAdd(join(dirs.workingDir, "spec", "critique-round-1.md"));
       maybeAdd(join(dirs.workingDir, "spec", "critique-round-2.md"));
+      maybeAdd(join(dirs.workingDir, "spec", "critique-log.md"));
       break;
     case "plan":
       maybeAdd(planPath);

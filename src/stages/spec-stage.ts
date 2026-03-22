@@ -307,14 +307,17 @@ async function runCritiquePipeline(
 
   const specV02 = join(specDir, "SPEC-v0.2.md");
 
-  // S.7: Critic round 2 — ONLY receives SPEC-v0.2.md (isolation)
+  // S.7: Critic round 2 — ONLY receives SPEC-v0.2.md (isolation) + regression check
   console.log("S.7: Running critic (round 2)...");
   await spawnStep({
     type: "critic",
     model: "sonnet",
     inputFiles: [specV02],
     outputFile: join(specDir, "critique-2.md"),
-    rules: getAgentRules("critic"),
+    rules: [
+      ...getAgentRules("critic"),
+      "REGRESSION-CHECK: You are Round 2. The document you're reviewing was corrected after Round 1. Actively look for NEW problems introduced by the corrections — inconsistencies between fixed sections and untouched sections, broken cross-references, or overcorrections that lost important content. Flag regressions with severity CRITICAL and tag them [REGRESSION].",
+    ],
     memoryContent,
   }, config, constitutionContent, tracker);
 
@@ -331,6 +334,42 @@ async function runCritiquePipeline(
     instructionBlocks: [SELF_REVIEW_BLOCK],
     memoryContent,
   }, config, constitutionContent, tracker);
+
+  // Compile critique log from both rounds (non-agent, local file-write)
+  compileCritiqueLog(specDir);
+}
+
+function compileCritiqueLog(specDir: string): void {
+  const critique1 = readFileSafe(join(specDir, "critique-1.md")) ?? "";
+  const critique2 = readFileSafe(join(specDir, "critique-2.md")) ?? "";
+
+  const countSeverity = (text: string, pattern: string): number =>
+    (text.match(new RegExp(pattern, "gi")) || []).length;
+
+  const log = `# Critique Log
+
+## Round 1 Summary
+- Critical: ${countSeverity(critique1, "critical")}
+- Major: ${countSeverity(critique1, "major")}
+- Minor: ${countSeverity(critique1, "minor")}
+
+## Round 2 Summary
+- Critical: ${countSeverity(critique2, "critical")}
+- Major: ${countSeverity(critique2, "major")}
+- Minor: ${countSeverity(critique2, "minor")}
+- Regressions: ${countSeverity(critique2, "\\[REGRESSION\\]")}
+
+## Round 1 Findings
+${critique1 || "(empty)"}
+
+## Round 2 Findings
+${critique2 || "(empty)"}
+
+## Generated: ${new Date().toISOString()}
+`;
+
+  writeFileAtomic(join(specDir, "critique-log.md"), log);
+  console.log("Compiled critique-log.md");
 }
 
 const MODEL_MAX_TOKENS = 200_000;
