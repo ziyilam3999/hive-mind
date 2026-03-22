@@ -114,7 +114,7 @@ export async function runCommit(
 
   if (commitResult.exitCode !== 0) {
     // Pre-commit hook may have modified files — re-stage and retry once
-    console.log("Pre-commit hook may have modified files. Re-staging and retrying...");
+    console.log(`[${story.id}] COMMIT: Pre-commit hook may have modified files. Re-staging and retrying...`);
     await runShell(`git add ${fileList}`, shellOpts);
     commitResult = await runShell(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, shellOpts);
 

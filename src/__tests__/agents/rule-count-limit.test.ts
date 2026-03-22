@@ -8,13 +8,16 @@ const ALL_AGENT_TYPES: AgentType[] = [
   "tester-role", "synthesizer", "implementer", "refactorer", "tester-exec",
   "evaluator", "diagnostician", "fixer", "learner", "reporter", "retrospective",
   "planner", "ac-generator", "ec-generator", "code-reviewer", "log-summarizer", "enricher",
+  "compliance-reviewer", "compliance-fixer", "decomposer", "integration-verifier",
+  "diagnostician-bug", "workspace-cleanup", "normalizer", "relevance-scanner",
+  "codebase-analyzer", "feature-spec-drafter", "reconciler", "scorecard",
 ];
 
 describe("agent rule count limit", () => {
-  it("every agent has at most 7 rules", () => {
+  it("every agent has at most 5 rules", () => {
     for (const agentType of ALL_AGENT_TYPES) {
       const rules = getAgentRules(agentType);
-      expect(rules.length, `${agentType} has ${rules.length} rules`).toBeLessThanOrEqual(7);
+      expect(rules.length, `${agentType} has ${rules.length} rules`).toBeLessThanOrEqual(5);
     }
   });
 
