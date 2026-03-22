@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/ziyilam3999/hive-mind/compare/v0.8.13...v0.9.0) (2026-03-22)
+
+
+### Features
+
+* add evidence-gating, regression tracking, critique log to SPEC pipeline ([#56](https://github.com/ziyilam3999/hive-mind/issues/56)) ([07b35b6](https://github.com/ziyilam3999/hive-mind/commit/07b35b6153afa1e59cefb39ad9cf997580c0e339))
+
 ## [0.8.13](https://github.com/ziyilam3999/hive-mind/compare/v0.8.12...v0.8.13) (2026-03-22)
 
 
