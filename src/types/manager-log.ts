@@ -20,6 +20,8 @@ export type LogAction =
   | "VERIFY_COMPLETE"
   | "BUG_FIX_COMPLETE"
   | "BUG_FIX_EXHAUSTED"
+  | "BUILD_RETRY"
+  | "BUILD_RETRY_EXHAUSTED"
   | "PIPELINE_START";
 
 export interface ManagerLogEntry {

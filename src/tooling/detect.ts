@@ -88,6 +88,35 @@ export interface ToolingRequirement {
   detectCommand: string;
 }
 
+/**
+ * Scan step-file content for CLI tool invocations and return unique tool names.
+ * Only matches actual CLI usage patterns (e.g. `docker build`), not bare mentions.
+ */
+export function scanStepFileForTools(content: string): string[] {
+  const found = new Set<string>();
+
+  const patterns: { regex: RegExp; tool: string }[] = [
+    { regex: /\b(docker)\s+(build|run|compose|push|pull|exec|login|tag|network|volume)\b/gi, tool: "docker" },
+    { regex: /\b(redis-cli|redis-server)\b/gi, tool: "" }, // tool name extracted from match
+    { regex: /\b(psql|createdb|pg_dump)\b/gi, tool: "" },
+    { regex: /\b(docker-compose)\s/gi, tool: "docker-compose" },
+  ];
+
+  for (const { regex, tool } of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+      if (tool) {
+        found.add(tool);
+      } else {
+        // Use the captured group (the tool name itself)
+        found.add(match[1].toLowerCase());
+      }
+    }
+  }
+
+  return [...found];
+}
+
 export function parseRequiredTooling(specContent: string): ToolingRequirement[] {
   const requirements: ToolingRequirement[] = [];
 

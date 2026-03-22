@@ -1,5 +1,5 @@
 import type { Story } from "../types/execution-plan.js";
-import { getSourceFilePaths } from "../types/execution-plan.js";
+import { getSourceFilePaths, type SourceFileEntry } from "../types/execution-plan.js";
 import type { StoryCheckpoint } from "../types/checkpoint.js";
 import { writeFileAtomic } from "../utils/file-io.js";
 import { isoTimestamp } from "../utils/timestamp.js";
@@ -63,6 +63,15 @@ export async function runBuild(
     cwd: moduleCwd ?? process.cwd(),
   }, config);
   costTracker?.recordAgentCost(story.id, "implementer", implResult.costUsd, implResult.durationMs);
+
+  // Early file existence check — catch phantom files before wasting refactorer time
+  const earlyAddedFiles = (subTaskScope ? subTaskScope.sourceFiles : story.sourceFiles)
+    .filter((f): f is SourceFileEntry => typeof f !== "string" && f.changeType === "ADDED")
+    .map(f => join(moduleCwd ?? process.cwd(), f.path));
+  const missingAfterImpl = earlyAddedFiles.filter(f => !existsSync(f));
+  if (missingAfterImpl.length > 0) {
+    throw new Error(`BUILD file existence check failed (pre-refactor): missing: ${missingAfterImpl.join(", ")}`);
+  }
 
   // E.2: Refactorer — receives source code + impl-report + memory
   const refactorReportPath = join(dirs.workingDir, getReportPath(story.id, "refactor-report.md"));
