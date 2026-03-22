@@ -64,6 +64,7 @@ const AGENT_JOBS: Record<AgentType, string> = {
   "feature-spec-drafter": "Produce spec-new-features.md from research report + PRD in isolation — NO codebase files, design features from first principles to avoid anchoring on existing patterns",
   "reconciler": "Merge spec-existing.md (what exists) with spec-new-features.md (what's new) into SPEC-draft.md, categorizing each item as REUSE/MODIFY/CREATE with integration instructions",
   "scorecard": "Produce or update report-card.md with stage-specific metrics, cumulative progress, and (on final stage) an overall letter grade",
+  "plan-validator": "Read execution-plan.json + project source files, detect cross-story structural gaps (missing registry files, shared output conflicts, import chain breaks), produce corrected plan JSON + plan-validation-report.md",
 };
 
 const AGENT_RULES: Record<string, string[]> = {
@@ -279,6 +280,13 @@ const AGENT_RULES: Record<string, string[]> = {
     "STRUCTURE: Output must have these sections in order: Problem Statement, Fixed Architecture Decisions, Requirements, Success Criteria, Out of Scope, Constraints, Additional Context.",
     "NO-INVENTION: Do not add requirements, features, or decisions not present in the source document. You are reformatting, not designing.",
     "PRESERVE-DETAIL: Include ALL file paths, interface definitions, config values, code examples from the source. If the source has numbered sections, reference them in requirements (e.g., 'per Section 15'). After structuring, verify every concrete detail appears in the structured sections; if any cannot be categorized, add it to 'Additional Context'.",
+  ],
+  "plan-validator": [
+    "REGISTRY-DETECTION: For each story with changeType: ADDED files, check if the containing directory has a barrel/index file (index.ts, index.js, registry.ts, mod.ts). If so and no story lists that file as MODIFIED, add it to the creating story's sourceFiles as {path, changeType: 'MODIFIED'}.",
+    "SHARED-OUTPUT: If multiple stories list the same file in sourceFiles, verify they have a dependency chain (one depends on the other). If not, flag as a potential conflict.",
+    "IMPORT-CHAIN: When a story creates new exports, check if any existing file in the project imports from that module. If so and no story lists the importing file as MODIFIED, add it.",
+    "STRUCTURED-OUTPUT: Output must be the modified execution-plan.json in a ```json block, followed by a ## CHANGES section listing every modification made and why.",
+    "MINIMAL: Only add sourceFiles entries that are clearly necessary. Do not speculatively add files. When in doubt, leave the plan unchanged and log a warning.",
   ],
 };
 

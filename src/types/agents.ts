@@ -38,7 +38,8 @@ export type AgentType =
   | "codebase-analyzer"
   | "feature-spec-drafter"
   | "reconciler"
-  | "scorecard";
+  | "scorecard"
+  | "plan-validator";
 
 export interface AgentConfig {
   type: AgentType;

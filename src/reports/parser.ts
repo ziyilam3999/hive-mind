@@ -276,3 +276,22 @@ export function parseFixReport(
   }
   return { fixesApplied };
 }
+
+export function parseRefactorReport(
+  markdown: string,
+): { filesModified: string[] } {
+  const filesModified: string[] = [];
+  const changesSection = markdown.split(/^##\s+CHANGES/im)[1]?.split(/^##/m)[0];
+  if (changesSection) {
+    const rows = changesSection.match(/^\|[^|]+\|[^|]+\|[^|]+\|$/gm);
+    if (rows) {
+      for (const row of rows) {
+        const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
+        if (cells.length >= 1 && !cells[0].startsWith("File") && !/^-+$/.test(cells[0])) {
+          filesModified.push(cells[0].replace(/`/g, ""));
+        }
+      }
+    }
+  }
+  return { filesModified };
+}

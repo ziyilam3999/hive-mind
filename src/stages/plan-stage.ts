@@ -206,6 +206,37 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     console.log(`  Modules parsed: ${resolvedModules.map((m) => m.id).join(", ")}`);
   }
 
+  // Plan Validation — detect cross-story structural gaps
+  console.log("[PLAN] Validating execution plan structure...");
+  const validatorConfig: AgentConfig = {
+    type: "plan-validator",
+    model: "sonnet",
+    inputFiles: [planJsonPath, specPath],
+    outputFile: join(dirs.workingDir, "plans/plan-validation-report.md"),
+    rules: getAgentRules("plan-validator"),
+    memoryContent: feedbackMemory,
+    constitutionContent,
+  };
+
+  const validatorResult = await spawnAgentWithRetry(validatorConfig, config);
+  tracker?.recordAgentCost("PLAN", "plan-validator", validatorResult.costUsd, validatorResult.durationMs);
+
+  if (validatorResult.success) {
+    const validationReport = readFileSafe(validatorConfig.outputFile);
+    if (validationReport) {
+      const correctedPlan = extractCorrectedPlan(validationReport);
+      if (correctedPlan) {
+        planData = correctedPlan;
+        writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
+        console.log("[PLAN] Validator applied corrections to execution plan");
+      }
+    }
+  }
+
+  // Fallback heuristic: warn about registry gaps the validator may have missed
+  const workspaceRoot = join(dirs.workingDir, "..");
+  warnRegistryGaps(planData.stories, workspaceRoot, parsedModules.length > 0);
+
   // Write story skeletons for ac/ec generators
   for (const story of stories) {
     writeStorySkeleton(stepsDir, story);
@@ -477,4 +508,53 @@ ${ecsContent}
 
   const stepFilePath = join(stepsDir, `${story.id}.md`);
   writeFileAtomic(stepFilePath, stepFile);
+}
+
+export function extractCorrectedPlan(report: string): { stories: Story[] } | null {
+  const jsonMatch = report.match(/```json\n([\s\S]*?)\n```/);
+  if (!jsonMatch) return null;
+  try {
+    const parsed = JSON.parse(jsonMatch[1]) as Record<string, unknown>;
+    if (parsed.schemaVersion === "2.0.0" && Array.isArray(parsed.stories)) {
+      return parsed as unknown as { stories: Story[] };
+    }
+  } catch {
+    console.warn("[PLAN] Validator output contained invalid JSON — skipping corrections");
+  }
+  return null;
+}
+
+export function warnRegistryGaps(stories: Story[], workspaceRoot: string, hasModules: boolean): void {
+  if (hasModules) return;
+
+  const addedDirs = new Map<string, string[]>();
+  const modifiedFiles = new Set<string>();
+
+  for (const story of stories) {
+    for (const sf of story.sourceFiles) {
+      const entry = typeof sf === "string" ? { path: sf, changeType: "MODIFIED" as const } : sf;
+      const dir = entry.path.substring(0, entry.path.lastIndexOf("/"));
+      if (entry.changeType === "ADDED" && dir) {
+        const list = addedDirs.get(dir) ?? [];
+        list.push(story.id);
+        addedDirs.set(dir, list);
+      }
+      if (entry.changeType === "MODIFIED") {
+        modifiedFiles.add(entry.path);
+      }
+    }
+  }
+
+  const REGISTRY_NAMES = ["index.ts", "index.js", "registry.ts", "mod.ts"];
+  for (const [dir, storyIds] of addedDirs) {
+    for (const name of REGISTRY_NAMES) {
+      const registryPath = `${dir}/${name}`;
+      if (fileExists(join(workspaceRoot, registryPath)) && !modifiedFiles.has(registryPath)) {
+        console.warn(
+          `[PLAN] Registry gap: stories ${storyIds.join(", ")} add files to ${dir}/ ` +
+          `but no story modifies ${registryPath}`,
+        );
+      }
+    }
+  }
 }

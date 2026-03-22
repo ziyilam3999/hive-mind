@@ -108,4 +108,41 @@ describe("execute-commit", () => {
     expect(typeof runCommit).toBe("function");
     expect(runCommit.length).toBeGreaterThanOrEqual(4); // at least 4 required params
   });
+
+  it("TC-9: computeModifiedFiles with refactor report includes refactored files", () => {
+    const implReport = `# Implementation Report
+## FILES CREATED
+| File | Lines | Exports |
+|------|:-----:|---------|
+| src/types/index.ts | 50 | Story |
+`;
+    const refactorReport = `# Refactor Report
+## CHANGES
+| File | Change | Reason |
+|------|--------|--------|
+| src/stages/plan.ts | Extracted fn | DRY |
+| src/config/loader.ts | Renamed var | Clarity |
+`;
+    const files = computeModifiedFiles(testStory, implReport, [], refactorReport);
+    expect(files).toContain("src/stages/plan.ts");
+    expect(files).toContain("src/config/loader.ts");
+    // Also includes story sourceFiles and impl files
+    expect(files).toContain("src/types/index.ts");
+    expect(files).toContain("src/utils/file-io.ts");
+  });
+
+  it("TC-10: computeModifiedFiles without refactor report is backward compatible", () => {
+    const implReport = `# Implementation Report
+## FILES CREATED
+| File | Lines | Exports |
+|------|:-----:|---------|
+| src/new-file.ts | 30 | newFn |
+`;
+    const files = computeModifiedFiles(testStory, implReport, []);
+    expect(files).toContain("src/new-file.ts");
+    expect(files).toContain("src/types/index.ts");
+    expect(files).toContain("src/utils/file-io.ts");
+    // No refactor files should appear
+    expect(files).not.toContain("src/stages/plan.ts");
+  });
 });
