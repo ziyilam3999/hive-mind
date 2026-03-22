@@ -187,7 +187,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     throw new Error("execution-plan.json is not valid JSON");
   }
 
-  const stories = planData.stories;
+  let stories = planData.stories;
   if (!Array.isArray(stories) || stories.length === 0) {
     throw new Error("execution-plan.json contains no stories");
   }
@@ -226,7 +226,9 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     if (validationReport) {
       const correctedPlan = extractCorrectedPlan(validationReport);
       if (correctedPlan) {
-        planData = correctedPlan;
+        // Merge only stories — preserve modules, schemaVersion, and other top-level fields
+        planData = { ...planData, stories: correctedPlan.stories };
+        stories = planData.stories;
         writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
         console.log("[PLAN] Validator applied corrections to execution plan");
       }
