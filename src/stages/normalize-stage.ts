@@ -8,6 +8,24 @@ import { loadConstitution } from "../config/loader.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
 
+/**
+ * Detect if a PRD already follows the document-guidelines 10-section format.
+ * Checks for 5 distinctive section headers plus REQ-ID numbering.
+ * False positives are low-cost (additive mode still injects memory/constitution).
+ */
+export function detectCompliantFormat(prdContent: string): boolean {
+  const requiredSections = [
+    /^##?\s+1\.\s+Problem Statement/im,
+    /^##?\s+2\.\s+Objective/im,
+    /^##?\s+3\.\s+Requirements/im,
+    /^##?\s+6\.\s+Success Criteria/im,
+    /^##?\s+7\.\s+Out of Scope/im,
+  ];
+  const hasAllSections = requiredSections.every((re) => re.test(prdContent));
+  const hasReqIds = /REQ-\d{2,}/.test(prdContent);
+  return hasAllSections && hasReqIds;
+}
+
 export async function runNormalizeStage(
   prdPath: string,
   dirs: PipelineDirs,
@@ -27,6 +45,11 @@ export async function runNormalizeStage(
     ? `FEEDBACK FROM REVIEWER: ${feedback}. Address this feedback in your output.`
     : "";
 
+  const isCompliant = detectCompliantFormat(prdContent);
+  const complianceRule = isCompliant
+    ? "COMPLIANT-FORMAT: This PRD already follows document-guidelines format with numbered sections and REQ-IDs. PRESERVE all existing sections, headings, and content verbatim. Do NOT restructure into the 7-section format. Only ADD: (1) memory/constitution references as inline notes within relevant sections, (2) any missing testable success criteria derived from requirements. Do not rename, reorder, merge, or remove any existing section."
+    : "";
+
   const result = await spawnAgentWithRetry(
     {
       type: "normalizer",
@@ -36,6 +59,7 @@ export async function runNormalizeStage(
       rules: [
         ...getAgentRules("normalizer"),
         ...(feedbackRule ? [feedbackRule] : []),
+        ...(complianceRule ? [complianceRule] : []),
       ],
       memoryContent,
       constitutionContent,
