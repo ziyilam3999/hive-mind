@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/ziyilam3999/hive-mind/compare/v0.12.0...v0.12.1) (2026-03-22)
+
+
+### Bug Fixes
+
+* add missing updateLiveReport calls in feedback re-run paths ([#71](https://github.com/ziyilam3999/hive-mind/issues/71)) ([45281b7](https://github.com/ziyilam3999/hive-mind/commit/45281b7f0b6306dc0f71e87b9c7e255f91c7458c))
+
 ## [0.12.0](https://github.com/ziyilam3999/hive-mind/compare/v0.11.0...v0.12.0) (2026-03-22)
 
 
