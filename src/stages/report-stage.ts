@@ -315,8 +315,15 @@ export function buildStatusSummary(planPath: string, outputPath: string): boolea
     const failed = counts["failed"] ?? 0;
     const pct = total > 0 ? ((passed / total) * 100).toFixed(1) : "0.0";
 
+    const uncommittedPassed = stories.filter(s => s.status === "passed" && !s.committed).length;
+
     const rows = stories
-      .map((s) => `| ${s.id} | ${s.status} | ${s.attempts} |`)
+      .map((s) => {
+        const commitCol = s.status === "passed"
+          ? (s.committed ? "YES" : "**NO** (!)")
+          : "N/A";
+        return `| ${s.id} | ${s.status} | ${s.attempts} | ${commitCol} |`;
+      })
       .join("\n");
 
     const otherStatuses = Object.entries(counts)
@@ -326,14 +333,14 @@ export function buildStatusSummary(planPath: string, outputPath: string): boolea
 
     const md = `# Story Status Summary (AUTHORITATIVE — computed from execution-plan.json)
 
-| Story | Status | Attempts |
-|-------|--------|----------|
+| Story | Status | Attempts | Committed |
+|-------|--------|----------|-----------|
 ${rows}
 
 ## Totals
 - Total stories: ${total}
 - Passed: ${passed} (${pct}%)
-- Failed: ${failed}${otherStatuses ? "\n" + otherStatuses : ""}
+- Failed: ${failed}${otherStatuses ? "\n" + otherStatuses : ""}${uncommittedPassed > 0 ? `\n- **WARNING: ${uncommittedPassed} passed story(ies) NOT committed to git**` : ""}
 `;
 
     writeFileSync(outputPath, md, "utf-8");
