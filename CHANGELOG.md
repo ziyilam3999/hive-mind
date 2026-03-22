@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/ziyilam3999/hive-mind/compare/v0.11.0...v0.12.0) (2026-03-22)
+
+
+### Features
+
+* add live summary report with progress dashboard and infographics ([#66](https://github.com/ziyilam3999/hive-mind/issues/66)) ([5efddd8](https://github.com/ziyilam3999/hive-mind/commit/5efddd805ea7d3674959729f2c948a2c18d50f33))
+
 ## [0.11.0](https://github.com/ziyilam3999/hive-mind/compare/v0.10.0...v0.11.0) (2026-03-22)
 
 
