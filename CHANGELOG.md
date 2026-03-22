@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/ziyilam3999/hive-mind/compare/v0.10.0...v0.11.0) (2026-03-22)
+
+
+### Features
+
+* add NORMALIZE compliant-format detection for /prd-generated PRDs ([#64](https://github.com/ziyilam3999/hive-mind/issues/64)) ([3097c9d](https://github.com/ziyilam3999/hive-mind/commit/3097c9d78737d64bc68d64de18de01875c44235f))
+
 ## [0.10.0](https://github.com/ziyilam3999/hive-mind/compare/v0.9.0...v0.10.0) (2026-03-22)
 
 
