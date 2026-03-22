@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.0](https://github.com/ziyilam3999/hive-mind/compare/v0.9.0...v0.10.0) (2026-03-22)
+
+
+### Features
+
+* enhance /prd skill with gstack product diagnostic + double-critique reports ([#63](https://github.com/ziyilam3999/hive-mind/issues/63)) ([362d1c0](https://github.com/ziyilam3999/hive-mind/commit/362d1c079f90e00ab1a1b42d2ea1f465fd2f9b9e))
+* pipeline hardening for e2e execution (BUILD retry, pre-flight, early gate, registry enforcement) ([#61](https://github.com/ziyilam3999/hive-mind/issues/61)) ([a50fc51](https://github.com/ziyilam3999/hive-mind/commit/a50fc514020da9006028ebfc3cbbf3f8aedfafec))
+
 ## [0.9.0](https://github.com/ziyilam3999/hive-mind/compare/v0.8.13...v0.9.0) (2026-03-22)
 
 
