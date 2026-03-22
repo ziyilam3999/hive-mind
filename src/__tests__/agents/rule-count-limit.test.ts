@@ -11,6 +11,7 @@ const ALL_AGENT_TYPES: AgentType[] = [
   "compliance-reviewer", "compliance-fixer", "decomposer", "integration-verifier",
   "diagnostician-bug", "workspace-cleanup", "normalizer", "relevance-scanner",
   "codebase-analyzer", "feature-spec-drafter", "reconciler", "scorecard",
+  "plan-validator",
 ];
 
 describe("agent rule count limit", () => {

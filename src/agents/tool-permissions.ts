@@ -77,6 +77,9 @@ const AGENT_TOOL_MAP: Record<AgentType, string[]> = {
 
   // Scorecard — read artifacts + write report-card.md
   "scorecard": OUTPUT_TOOLS,
+
+  // Plan validator — read plan + codebase, write corrected plan + report
+  "plan-validator": OUTPUT_TOOLS,
 };
 
 export function getToolsForAgent(agentType: AgentType): string[] {

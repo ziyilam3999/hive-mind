@@ -3,7 +3,7 @@ import { getSourceFilePaths } from "../types/execution-plan.js";
 import type { VerifyResult } from "./execute-verify.js";
 import { runShell } from "../utils/shell.js";
 import { readFileSafe, fileExists } from "../utils/file-io.js";
-import { parseImplReport, parseFixReport } from "../reports/parser.js";
+import { parseImplReport, parseFixReport, parseRefactorReport } from "../reports/parser.js";
 import { getReportPath } from "../reports/templates.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import { join } from "node:path";
@@ -18,6 +18,7 @@ export function computeModifiedFiles(
   story: Story,
   implReportContent: string,
   fixReportContents: string[],
+  refactorReportContent?: string,
 ): string[] {
   const files = new Set<string>(getSourceFilePaths(story.sourceFiles));
 
@@ -32,6 +33,14 @@ export function computeModifiedFiles(
     const fixResult = parseFixReport(fixContent);
     for (const fix of fixResult.fixesApplied) {
       files.add(fix.file);
+    }
+  }
+
+  // Add files from refactor-report (if present)
+  if (refactorReportContent) {
+    const refactorResult = parseRefactorReport(refactorReportContent);
+    for (const f of refactorResult.filesModified) {
+      files.add(f);
     }
   }
 
@@ -74,8 +83,12 @@ export async function runCommit(
     if (content) fixContents.push(content);
   }
 
+  // Read refactor report (if exists)
+  const refactorReportPath = join(workingDir, getReportPath(story.id, "refactor-report.md"));
+  const refactorContent = readFileSafe(refactorReportPath) ?? undefined;
+
   const cwd = moduleCwd ?? process.cwd();
-  const modifiedFiles = computeModifiedFiles(story, implContent, fixContents)
+  const modifiedFiles = computeModifiedFiles(story, implContent, fixContents, refactorContent)
     .filter(f => f.includes("/") || f.includes("."));
 
   // Filter out files that don't exist on disk — log warnings for missing ones

@@ -63,6 +63,7 @@ export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
   "feature-spec-drafter": "opus",
   "reconciler": "opus",
   "scorecard": "haiku",
+  "plan-validator": "sonnet",
 };
 
 export const DEFAULT_CONFIG: HiveMindConfig = {

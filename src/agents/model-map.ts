@@ -39,6 +39,7 @@ export const AGENT_MODEL_MAP: Record<AgentType, ModelTier> = {
   "feature-spec-drafter": "opus",
   "reconciler": "opus",
   "scorecard": "haiku",
+  "plan-validator": "sonnet",
 };
 
 export function getModelForAgent(agentType: AgentType): ModelTier {

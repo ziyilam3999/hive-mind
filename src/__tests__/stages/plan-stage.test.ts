@@ -1,5 +1,20 @@
 import { describe, it, expect, vi } from "vitest";
 
+vi.mock("../../utils/file-io.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils/file-io.js")>();
+  return {
+    ...actual,
+    fileExists: vi.fn((p: string) => {
+      const normalized = p.replace(/\\/g, "/");
+      // Only src/commands/index.ts exists on disk for registry-gap tests
+      if (normalized.endsWith("src/commands/index.ts")) return true;
+      // Let plan-stage's own fileExists calls for execution-plan.json pass
+      if (normalized.endsWith("execution-plan.json")) return actual.fileExists(p);
+      return false;
+    }),
+  };
+});
+
 vi.mock("../../agents/spawner.js", () => {
   const mockPlanJson = JSON.stringify({
     schemaVersion: "2.0.0",
@@ -43,7 +58,13 @@ vi.mock("../../agents/spawner.js", () => {
   };
 });
 
-import { scanForRoleKeywords, shouldActivateRole, runPlanStage } from "../../stages/plan-stage.js";
+import {
+  scanForRoleKeywords,
+  shouldActivateRole,
+  runPlanStage,
+  warnRegistryGaps,
+  extractCorrectedPlan,
+} from "../../stages/plan-stage.js";
 import { spawnAgentWithRetry, spawnAgentsParallel } from "../../agents/spawner.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -176,5 +197,165 @@ describe("plan-stage role independence", () => {
     } finally {
       cleanup();
     }
+  });
+});
+
+describe("warnRegistryGaps", () => {
+  const workspaceRoot = "/fake/workspace";
+
+  it("TC-1: warns when stories add to dir with registry file but none modify it", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stories = [
+      {
+        id: "US-01",
+        title: "Add command",
+        specSections: ["§1"],
+        dependencies: [],
+        sourceFiles: [{ path: "src/commands/foo.ts", changeType: "ADDED" as const }],
+        complexity: "low" as const,
+        rolesUsed: ["analyst" as const],
+        stepFile: "plans/steps/US-01.md",
+        status: "not-started" as const,
+        attempts: 0,
+        maxAttempts: 3,
+        committed: false,
+        commitHash: null,
+      },
+    ];
+    warnRegistryGaps(stories, workspaceRoot, false);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Registry gap"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("src/commands/index.ts"),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("TC-2: no warning when another story modifies the registry file", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stories = [
+      {
+        id: "US-01",
+        title: "Add command",
+        specSections: ["§1"],
+        dependencies: [],
+        sourceFiles: [{ path: "src/commands/foo.ts", changeType: "ADDED" as const }],
+        complexity: "low" as const,
+        rolesUsed: ["analyst" as const],
+        stepFile: "plans/steps/US-01.md",
+        status: "not-started" as const,
+        attempts: 0,
+        maxAttempts: 3,
+        committed: false,
+        commitHash: null,
+      },
+      {
+        id: "US-02",
+        title: "Update registry",
+        specSections: ["§1"],
+        dependencies: [],
+        sourceFiles: [{ path: "src/commands/index.ts", changeType: "MODIFIED" as const }],
+        complexity: "low" as const,
+        rolesUsed: ["analyst" as const],
+        stepFile: "plans/steps/US-02.md",
+        status: "not-started" as const,
+        attempts: 0,
+        maxAttempts: 3,
+        committed: false,
+        commitHash: null,
+      },
+    ];
+    warnRegistryGaps(stories, workspaceRoot, false);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("TC-3: empty stories array causes no errors or warnings", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    warnRegistryGaps([], workspaceRoot, false);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("TC-4: no warning when registry file does not exist on disk", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stories = [
+      {
+        id: "US-01",
+        title: "Add util",
+        specSections: ["§1"],
+        dependencies: [],
+        sourceFiles: [{ path: "src/utils/helper.ts", changeType: "ADDED" as const }],
+        complexity: "low" as const,
+        rolesUsed: ["analyst" as const],
+        stepFile: "plans/steps/US-01.md",
+        status: "not-started" as const,
+        attempts: 0,
+        maxAttempts: 3,
+        committed: false,
+        commitHash: null,
+      },
+    ];
+    warnRegistryGaps(stories, workspaceRoot, false);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("TC-5: hasModules=true returns immediately with no warnings", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stories = [
+      {
+        id: "US-01",
+        title: "Add command",
+        specSections: ["§1"],
+        dependencies: [],
+        sourceFiles: [{ path: "src/commands/foo.ts", changeType: "ADDED" as const }],
+        complexity: "low" as const,
+        rolesUsed: ["analyst" as const],
+        stepFile: "plans/steps/US-01.md",
+        status: "not-started" as const,
+        attempts: 0,
+        maxAttempts: 3,
+        committed: false,
+        commitHash: null,
+      },
+    ];
+    warnRegistryGaps(stories, workspaceRoot, true);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe("extractCorrectedPlan", () => {
+  it("TC-24: valid JSON block with schemaVersion 2.0.0 and stories -> returns parsed plan", () => {
+    const plan = {
+      schemaVersion: "2.0.0",
+      stories: [
+        { id: "US-01", title: "Test", sourceFiles: [] },
+      ],
+    };
+    const report = `# Validation Report\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n\nDone.`;
+    const result = extractCorrectedPlan(report);
+    expect(result).not.toBeNull();
+    expect(result!.stories).toHaveLength(1);
+    expect(result!.stories[0].id).toBe("US-01");
+  });
+
+  it("TC-25: no JSON block -> returns null", () => {
+    const report = "# Validation Report\n\nAll looks good, no corrections needed.";
+    const result = extractCorrectedPlan(report);
+    expect(result).toBeNull();
+  });
+
+  it("TC-26: invalid JSON -> returns null and logs warning", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const report = "# Report\n\n```json\n{ invalid json !!!\n```\n";
+    const result = extractCorrectedPlan(report);
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("invalid JSON"),
+    );
+    warnSpy.mockRestore();
   });
 });

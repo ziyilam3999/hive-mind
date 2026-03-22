@@ -25,8 +25,8 @@ import {
 import { runWithConcurrency } from "./utils/concurrency.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
 import { isoTimestamp } from "./utils/timestamp.js";
-import { join } from "node:path";
-import { rmSync, readdirSync } from "node:fs";
+import { join, resolve, dirname } from "node:path";
+import { rmSync, readdirSync, writeFileSync, copyFileSync } from "node:fs";
 import { HiveMindError } from "./utils/errors.js";
 import { notifyCheckpoint } from "./utils/notify.js";
 import { CostTracker, estimatePipelineCost } from "./utils/cost-tracker.js";
@@ -43,7 +43,7 @@ import { runReportStage as reportStage } from "./stages/report-stage.js";
 import { runBaselineCheck } from "./stages/baseline-check.js";
 import { runNormalizeStage } from "./stages/normalize-stage.js";
 import { updateManifest } from "./manifest/generator.js";
-import { parseImplReport } from "./reports/parser.js";
+import { parseImplReport, parseRefactorReport } from "./reports/parser.js";
 import { getReportPath } from "./reports/templates.js";
 import { runIntegrateVerify, buildIntegrationCheckpointMessage } from "./stages/integrate-verify.js";
 import {
@@ -915,6 +915,84 @@ export async function runExecuteStage(
           storyId: story.id,
           reason: result.value.errorMessage ?? "Verification failed after max attempts",
         }));
+
+        // Issue 3: Preserve source files from failed stories to recoverable location
+        const artifactsDir = join(dirs.workingDir, "artifacts", story.id);
+        const preserveCwd = getModuleCwd(plan, story.moduleId) ?? process.cwd();
+        const sourcePaths = getSourceFilePaths(story.sourceFiles);
+        const safePaths = sourcePaths.filter((p) => {
+          if (p.startsWith("/") || p.startsWith("\\")) return false;
+          const resolved = resolve(artifactsDir, p);
+          return resolved.startsWith(resolve(artifactsDir));
+        });
+        let preserved = 0;
+        try {
+          for (const relPath of safePaths) {
+            const srcPath = join(preserveCwd, relPath);
+            if (fileExists(srcPath)) {
+              const destPath = join(artifactsDir, relPath);
+              ensureDir(dirname(destPath));
+              copyFileSync(srcPath, destPath);
+              preserved++;
+            }
+          }
+          if (preserved > 0) {
+            console.log(`[${story.id}] Preserved ${preserved} file(s) to ${artifactsDir}`);
+          }
+        } catch (preserveErr) {
+          console.warn(`[${story.id}] Artifact preservation failed (non-blocking): ${preserveErr instanceof Error ? preserveErr.message : String(preserveErr)}`);
+        }
+
+        // Issue 1: Salvage refactoring artifacts from failed stories
+        try {
+          const refactorPath = join(dirs.workingDir, getReportPath(story.id, "refactor-report.md"));
+          const refactorContent = readFileSafe(refactorPath);
+          if (refactorContent) {
+            const { filesModified } = parseRefactorReport(refactorContent);
+
+            // Overlap guard: exclude files touched by other wave stories
+            const otherStoryFiles = new Set<string>();
+            for (const otherStory of wave) {
+              if (otherStory.id !== story.id) {
+                const implPath = join(dirs.workingDir, getReportPath(otherStory.id, "impl-report.md"));
+                const implContent = readFileSafe(implPath);
+                if (implContent) {
+                  const parsed = parseImplReport(implContent);
+                  for (const f of parsed.filesCreated) otherStoryFiles.add(f);
+                }
+                for (const f of getSourceFilePaths(otherStory.sourceFiles)) {
+                  otherStoryFiles.add(f);
+                }
+                if (otherStory.subTasks) {
+                  for (const st of otherStory.subTasks) {
+                    for (const f of getSourceFilePaths(st.sourceFiles)) {
+                      otherStoryFiles.add(f);
+                    }
+                  }
+                }
+              }
+            }
+
+            const salvageCwd = getModuleCwd(plan, story.moduleId) ?? process.cwd();
+            const safeFiles = filesModified
+              .filter((f) => !otherStoryFiles.has(f))
+              .filter((f) => fileExists(join(salvageCwd, f)));
+
+            if (safeFiles.length > 0) {
+              // Use --pathspec-from-file to avoid shell injection (requires git 2.26+)
+              const pathspecFile = join(dirs.workingDir, `reports/${story.id}/.salvage-paths`);
+              writeFileSync(pathspecFile, safeFiles.join("\n"), "utf-8");
+              await runShell(`git add --pathspec-from-file="${pathspecFile}"`, { cwd: salvageCwd });
+              const status = await runShell("git diff --cached --quiet || echo HAS_CHANGES", { cwd: salvageCwd });
+              if (status.stdout.includes("HAS_CHANGES")) {
+                await runShell(`git commit -m "chore(${story.id}): salvage refactoring artifacts"`, { cwd: salvageCwd });
+                console.log(`[${story.id}] Salvaged ${safeFiles.length} refactored file(s)`);
+              }
+            }
+          }
+        } catch (salvageErr) {
+          console.warn(`[${story.id}] Refactor salvage failed (non-blocking): ${salvageErr instanceof Error ? salvageErr.message : String(salvageErr)}`);
+        }
       }
     }
 
