@@ -53,13 +53,17 @@ const GREENFIELD_PLAN_BLOCK = {
 - ALL other stories MUST depend on it.`,
 };
 
+export interface PlanStageResult {
+  registryGapsFixed: Array<{ registryFile: string; storyId: string }>;
+}
+
 export async function runPlanStage(
   dirs: PipelineDirs,
   config: HiveMindConfig,
   feedback?: string,
   greenfield?: boolean,
   tracker?: CostTracker,
-): Promise<void> {
+): Promise<PlanStageResult> {
   const plansDir = join(dirs.workingDir, "plans");
   const roleReportsDir = join(plansDir, "role-reports");
   const stepsDir = join(plansDir, "steps");
@@ -240,6 +244,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   const registryGaps = warnRegistryGaps(planData.stories, workspaceRoot, parsedModules.length > 0);
 
   // Auto-fix registry gaps: add missing registry files to suggested owner's sourceFiles
+  const registryGapsFixed: Array<{ registryFile: string; storyId: string }> = [];
   if (registryGaps.length > 0) {
     for (const gap of registryGaps) {
       const ownerStory = stories.find(s => s.id === gap.suggestedOwner);
@@ -253,6 +258,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
 
       const changeType = fileExists(join(workspaceRoot, gap.registryFile)) ? "MODIFIED" : "ADDED";
       ownerStory.sourceFiles.push({ path: gap.registryFile, changeType });
+      registryGapsFixed.push({ registryFile: gap.registryFile, storyId: gap.suggestedOwner });
       console.log(`[PLAN] Auto-fixed registry gap: added ${gap.registryFile} to ${gap.suggestedOwner} sourceFiles`);
     }
     // Re-save execution plan with patched sourceFiles
@@ -385,6 +391,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   tracker?.recordAgentCost("PLAN", "synthesizer", synthResult.costUsd, synthResult.durationMs);
 
   console.log("PLAN stage complete.");
+  return { registryGapsFixed };
 }
 
 export function writeStorySkeleton(stepsDir: string, story: Story): void {

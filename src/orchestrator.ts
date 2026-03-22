@@ -42,6 +42,7 @@ import { runComplianceCheck } from "./stages/execute-compliance.js";
 import { parseRequiredTooling, detectAllTools, scanStepFileForTools, detectToolBySpawn } from "./tooling/detect.js";
 import { runToolingSetup } from "./tooling/setup.js";
 import { runReportStage as reportStage } from "./stages/report-stage.js";
+import { updateLiveReport } from "./reports/live-report.js";
 import { runBaselineCheck } from "./stages/baseline-check.js";
 import { runNormalizeStage } from "./stages/normalize-stage.js";
 import { updateManifest } from "./manifest/generator.js";
@@ -131,6 +132,7 @@ export async function runPipeline(
   // Log original PRD path and flags for rejection-loop recovery
   const logPath0 = join(dirs.workingDir, "manager-log.jsonl");
   appendLogEntry(logPath0, createLogEntry("PIPELINE_START", { prdPath, stopAfterPlan: options?.stopAfterPlan ?? false, budget: options?.budget, greenfield: options?.greenfield }));
+  if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "Pipeline started");
 
   const skipNormalize = options?.skipNormalize ?? config.skipNormalize;
 
@@ -138,6 +140,7 @@ export async function runPipeline(
     console.log("Running NORMALIZE stage...");
     await runNormalizeStage(prdPath, dirs, config);
     await runScorecard("normalize", dirs, config);
+    if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "Normalize complete, awaiting approval");
     console.log("NORMALIZE stage complete. Awaiting approval.");
 
     writeCheckpoint(dirs.workingDir, {
@@ -178,15 +181,25 @@ async function runSpecThenCheckpoint(
   appendLogEntry(specLogPath, createLogEntry("SPEC_COMPLETE", {
     artifactCount: specFiles.length,
   }));
+  if (config.liveReport) updateLiveReport(dirs.workingDir, "SPEC", "Spec complete, awaiting approval");
 
   // --stop-after-plan: auto-approve SPEC, run PLAN, print summary, exit
   if (stopAfterPlan) {
-    await runPlanStage(dirs, config, undefined, greenfield, tracker);
+    const planResult = await runPlanStage(dirs, config, undefined, greenfield, tracker);
     await safeUpdateManifest(dirs.workingDir);
+
+    // Emit REGISTRY_GAP_FIXED log entries from plan-stage metadata
+    for (const gap of planResult.registryGapsFixed) {
+      appendLogEntry(specLogPath, createLogEntry("REGISTRY_GAP_FIXED", {
+        registryFile: gap.registryFile,
+        storyId: gap.storyId,
+      }));
+    }
 
     const planFilePath = join(dirs.workingDir, "plans", "execution-plan.json");
     if (fileExists(planFilePath)) {
       const planData = loadExecutionPlan(planFilePath);
+      if (config.liveReport) updateLiveReport(dirs.workingDir, "PLAN", `Plan complete — ${planData.stories.length} stories`);
       console.log("\n--- Plan Preview (--stop-after-plan) ---");
       console.log(`Stories: ${planData.stories.length}`);
       for (const s of planData.stories) {
@@ -195,6 +208,8 @@ async function runSpecThenCheckpoint(
       }
       console.log("\nPipeline stopped after PLAN. No EXECUTE agents were spawned.");
     }
+
+    if (config.liveReport) updateLiveReport(dirs.workingDir, "COMPLETE", "Pipeline stopped after PLAN");
 
     if (tracker) {
       printTimingSummary(tracker);
@@ -338,11 +353,20 @@ export async function resumeFromCheckpoint(
 
       const specCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const specTracker = CostTracker.loadFromDisk(specCostLogPath, startDataSpec.budget);
-      await runPlanStage(dirs, config, undefined, startDataSpec.greenfield, specTracker);
+      const planResult = await runPlanStage(dirs, config, undefined, startDataSpec.greenfield, specTracker);
       await safeUpdateManifest(dirs.workingDir);
 
       const planLogPath = join(dirs.workingDir, "manager-log.jsonl");
       const planFilePath = join(dirs.workingDir, "plans", "execution-plan.json");
+
+      // Emit REGISTRY_GAP_FIXED log entries from plan-stage metadata
+      for (const gap of planResult.registryGapsFixed) {
+        appendLogEntry(planLogPath, createLogEntry("REGISTRY_GAP_FIXED", {
+          registryFile: gap.registryFile,
+          storyId: gap.storyId,
+        }));
+      }
+
       if (fileExists(planFilePath)) {
         try {
           const planData = loadExecutionPlan(planFilePath);
@@ -350,6 +374,7 @@ export async function resumeFromCheckpoint(
             storyCount: planData.stories.length,
             storyIds: planData.stories.map((s) => s.id),
           }));
+          if (config.liveReport) updateLiveReport(dirs.workingDir, "PLAN", `Plan complete — ${planData.stories.length} stories`);
         } catch {
           console.warn("Warning: execution-plan.json is not valid JSON, skipping PLAN_COMPLETE log.");
         }
@@ -370,6 +395,7 @@ export async function resumeFromCheckpoint(
           console.log("\nPipeline stopped after PLAN. No EXECUTE agents were spawned.");
         }
 
+        if (config.liveReport) updateLiveReport(dirs.workingDir, "COMPLETE", "Pipeline stopped after PLAN");
         printTimingSummary(specTracker);
         writeTimingReport(specTracker, dirs.workingDir);
         break;
@@ -437,6 +463,7 @@ export async function resumeFromCheckpoint(
       await runReportStage(dirs, config);
       await safeUpdateManifest(dirs.workingDir);
       await runScorecard("report", dirs, config);
+      if (config.liveReport) updateLiveReport(dirs.workingDir, "REPORT", "Report stage complete");
 
       writeCheckpoint(dirs.workingDir, {
         awaiting: "verify",
@@ -467,6 +494,7 @@ export async function resumeFromCheckpoint(
       await runReportStage(dirs, config);
       await safeUpdateManifest(dirs.workingDir);
       await runScorecard("report", dirs, config);
+      if (config.liveReport) updateLiveReport(dirs.workingDir, "REPORT", "Report stage complete");
 
       writeCheckpoint(dirs.workingDir, {
         awaiting: "verify",
@@ -497,6 +525,7 @@ export async function resumeFromCheckpoint(
     }
     case "ship": {
       deleteCheckpoint(dirs.workingDir);
+      if (config.liveReport) updateLiveReport(dirs.workingDir, "COMPLETE", "Pipeline complete");
       console.log("Pipeline complete.");
       break;
     }
@@ -521,9 +550,9 @@ export async function runPlanStage(
   feedback?: string,
   greenfield?: boolean,
   tracker?: CostTracker,
-): Promise<void> {
+) {
   console.log("Running PLAN stage...");
-  await planStage(dirs, config, feedback, greenfield, tracker);
+  return planStage(dirs, config, feedback, greenfield, tracker);
 }
 
 export interface StoryExecutionResult {
@@ -854,6 +883,7 @@ export async function runExecuteStage(
   costTracker?: CostTracker,
 ): Promise<void> {
   console.log("Running EXECUTE stage...");
+  if (config.liveReport) updateLiveReport(dirs.workingDir, "EXECUTE", "Execute stage started");
 
   const planPath = join(dirs.workingDir, "plans", "execution-plan.json");
   if (!fileExists(planPath)) {
@@ -873,6 +903,10 @@ export async function runExecuteStage(
   }
 
   const roleReportsDir = join(dirs.workingDir, "plans", "role-reports");
+
+  // Wave counter: reconstruct from existing WAVE_START entries for resume support
+  const existingLog = readFileSafe(logPath) ?? "";
+  let waveNumber = existingLog.split("\n").filter(line => line.includes('"WAVE_START"')).length + 1;
 
   // Cost estimation gate: show estimated cost and prompt for approval
   const pendingStories = plan.stories.filter((s) => s.status === "not-started");
@@ -917,6 +951,7 @@ export async function runExecuteStage(
   if (preflightMissing.length > 0) {
     const msg = `Missing tools: ${preflightMissing.join(", ")}. Install them and re-run.`;
     console.error(`PRE-FLIGHT FAILED: ${msg}`);
+    appendLogEntry(logPath, createLogEntry("PREFLIGHT_PAUSE", { tool: preflightMissing.join(", ") }));
     writeCheckpoint(dirs.workingDir, {
       awaiting: "approve-preflight",
       message: getCheckpointMessage("approve-preflight"),
@@ -933,7 +968,10 @@ export async function runExecuteStage(
     const wave = filterNonOverlapping(ready, plan);
     if (wave.length === 0) break;
 
-    console.log(`\nWave: executing ${wave.map((s) => s.id).join(", ")}`);
+    const waveStoryIds = wave.map((s) => s.id);
+    console.log(`\nWave ${waveNumber}: executing ${waveStoryIds.join(", ")}`);
+    appendLogEntry(logPath, createLogEntry("WAVE_START", { storyIds: waveStoryIds, waveNumber }));
+    if (config.liveReport) updateLiveReport(dirs.workingDir, "EXECUTE", `Wave ${waveNumber} started: ${waveStoryIds.join(", ")}`);
 
     // Mark wave stories as in-progress
     for (const s of wave) {
@@ -996,6 +1034,7 @@ export async function runExecuteStage(
           storyId: story.id,
           reason: errorMessage,
         }));
+        if (config.liveReport) updateLiveReport(dirs.workingDir, "EXECUTE", `${story.id} FAILED (error)`);
       } else if (result.value.passed) {
         // COMMIT sub-pipeline (US-15) — serialized, no git races
         const storyModuleCwd = getModuleCwd(plan, story.moduleId);
@@ -1036,6 +1075,7 @@ export async function runExecuteStage(
           evalVerdict: "PASS",
           attempt: result.value.attempts,
         }));
+        if (config.liveReport) updateLiveReport(dirs.workingDir, "EXECUTE", `${story.id} PASSED`);
       } else {
         // Verification failed after max attempts
         plan = updateStoryStatus(plan, story.id, "failed");
@@ -1051,6 +1091,7 @@ export async function runExecuteStage(
           storyId: story.id,
           reason: result.value.errorMessage ?? "Verification failed after max attempts",
         }));
+        if (config.liveReport) updateLiveReport(dirs.workingDir, "EXECUTE", `${story.id} FAILED (verification)`);
 
         // Issue 3: Preserve source files from failed stories to recoverable location
         const artifactsDir = join(dirs.workingDir, "artifacts", story.id);
@@ -1143,6 +1184,9 @@ export async function runExecuteStage(
     }
 
     await runScorecard("execute-wave", dirs, config, `Wave completed.`);
+    appendLogEntry(logPath, createLogEntry("WAVE_COMPLETE", { waveNumber }));
+    if (config.liveReport) updateLiveReport(dirs.workingDir, "EXECUTE", `Wave ${waveNumber} complete`);
+    waveNumber++;
 
     // Budget warning after wave (informational only — no mid-pipeline kills)
     if (costTracker?.checkBudget()) {
