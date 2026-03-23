@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/ziyilam3999/hive-mind/compare/v0.12.2...v0.13.0) (2026-03-23)
+
+
+### Features
+
+* **dashboard:** notebook-style UI with fixed port ([#79](https://github.com/ziyilam3999/hive-mind/issues/79)) ([4e169d6](https://github.com/ziyilam3999/hive-mind/commit/4e169d6fc33512071da262bb19d180db4edbcd6e))
+
 ## [0.12.2](https://github.com/ziyilam3999/hive-mind/compare/v0.12.1...v0.12.2) (2026-03-23)
 
 
