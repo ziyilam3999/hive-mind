@@ -61,6 +61,7 @@ import { writeFileAtomic } from "./utils/file-io.js";
 import { spawnAgentWithRetry } from "./agents/spawner.js";
 import { getAgentRules } from "./agents/prompts.js";
 import { runScorecard } from "./stages/scorecard.js";
+import { startDashboard } from "./dashboard/server.js";
 
 function printTimingSummary(tracker: CostTracker): void {
   const timing = tracker.getTimingSummary();
@@ -112,7 +113,7 @@ export async function runPipeline(
   prdPath: string,
   dirs: PipelineDirs,
   config: HiveMindConfig,
-  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean },
+  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean },
 ): Promise<void> {
   if (!fileExists(prdPath)) {
     throw new HiveMindError(`PRD file not found: ${prdPath}`);
@@ -129,36 +130,55 @@ export async function runPipeline(
     createMemoryFromTemplate(memoryPath);
   }
 
-  // Log original PRD path and flags for rejection-loop recovery
-  const logPath0 = join(dirs.workingDir, "manager-log.jsonl");
-  appendLogEntry(logPath0, createLogEntry("PIPELINE_START", { prdPath, stopAfterPlan: options?.stopAfterPlan ?? false, budget: options?.budget, greenfield: options?.greenfield }));
-  if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "Pipeline started");
-
-  const skipNormalize = options?.skipNormalize ?? config.skipNormalize;
-
-  if (!skipNormalize) {
-    console.log("Running NORMALIZE stage...");
-    await runNormalizeStage(prdPath, dirs, config);
-    await runScorecard("normalize", dirs, config);
-    if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "Normalize complete, awaiting approval");
-    console.log("NORMALIZE stage complete. Awaiting approval.");
-
-    writeCheckpoint(dirs.workingDir, {
-      awaiting: "approve-normalize",
-      message: getCheckpointMessage("approve-normalize"),
-      timestamp: isoTimestamp(),
-      feedback: null,
-    });
-
-    console.log(getCheckpointMessage("approve-normalize"));
-    notifyCheckpoint(options?.silent ?? false);
-    return;
+  // Dashboard lifecycle — non-fatal observer (DESIGN-01)
+  let dashboardHandle: { stop: () => void; url: string; signalShutdown: (shutdownAt: number) => void } | null = null;
+  if (!options?.noDashboard) {
+    try {
+      dashboardHandle = await startDashboard(dirs, config);
+    } catch (err) {
+      process.stderr.write(`Dashboard server error: ${err instanceof Error ? err.message : String(err)}\n`);
+      dashboardHandle = null;
+    }
   }
 
-  // skipNormalize — proceed directly to SPEC with original PRD
-  const costLogPath = join(dirs.workingDir, "cost-log.jsonl");
-  const tracker = new CostTracker(options?.budget, costLogPath);
-  await runSpecThenCheckpoint(prdPath, dirs, config, options?.silent ?? false, options?.stopAfterPlan, options?.greenfield, tracker);
+  try {
+    // Log original PRD path and flags for rejection-loop recovery
+    const logPath0 = join(dirs.workingDir, "manager-log.jsonl");
+    appendLogEntry(logPath0, createLogEntry("PIPELINE_START", { prdPath, stopAfterPlan: options?.stopAfterPlan ?? false, budget: options?.budget, greenfield: options?.greenfield }));
+    if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "Pipeline started");
+
+    const skipNormalize = options?.skipNormalize ?? config.skipNormalize;
+
+    if (!skipNormalize) {
+      console.log("Running NORMALIZE stage...");
+      await runNormalizeStage(prdPath, dirs, config);
+      await runScorecard("normalize", dirs, config);
+      if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "Normalize complete, awaiting approval");
+      console.log("NORMALIZE stage complete. Awaiting approval.");
+
+      writeCheckpoint(dirs.workingDir, {
+        awaiting: "approve-normalize",
+        message: getCheckpointMessage("approve-normalize"),
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
+
+      console.log(getCheckpointMessage("approve-normalize"));
+      notifyCheckpoint(options?.silent ?? false);
+      return;
+    }
+
+    // skipNormalize — proceed directly to SPEC with original PRD
+    const costLogPath = join(dirs.workingDir, "cost-log.jsonl");
+    const tracker = new CostTracker(options?.budget, costLogPath);
+    await runSpecThenCheckpoint(prdPath, dirs, config, options?.silent ?? false, options?.stopAfterPlan, options?.greenfield, tracker);
+  } finally {
+    const handle = dashboardHandle;
+    if (handle) {
+      handle.signalShutdown(Date.now() + 60_000);
+      setTimeout(() => handle.stop(), 60_000);
+    }
+  }
 }
 
 async function runSpecThenCheckpoint(
@@ -267,7 +287,7 @@ export async function resumeFromCheckpoint(
   checkpoint: Checkpoint,
   dirs: PipelineDirs,
   config: HiveMindConfig,
-  options?: { silent?: boolean; skipBaseline?: boolean; stopAfterPlan?: boolean },
+  options?: { silent?: boolean; skipBaseline?: boolean; stopAfterPlan?: boolean; noDashboard?: boolean },
 ): Promise<void> {
   const silent = options?.silent ?? false;
   const feedback = checkpoint.feedback ?? undefined;
