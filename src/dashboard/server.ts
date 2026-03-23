@@ -9,7 +9,7 @@ const POLL_INTERVAL_MS = 2000;
 const PAGE_SIZE = 200;
 const REQUEST_TIMEOUT_MS = 5000;
 
-interface DashboardHandle {
+export interface DashboardHandle {
   stop: () => void;
   url: string;
   signalShutdown: (shutdownAt: number) => void;
