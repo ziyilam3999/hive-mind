@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.2](https://github.com/ziyilam3999/hive-mind/compare/v0.12.1...v0.12.2) (2026-03-23)
+
+
+### Bug Fixes
+
+* include stage name in feedback re-run message ([#72](https://github.com/ziyilam3999/hive-mind/issues/72)) ([#75](https://github.com/ziyilam3999/hive-mind/issues/75)) ([4c2fb96](https://github.com/ziyilam3999/hive-mind/commit/4c2fb96e2aacd78d3526e1998dc572d01d55c7a6))
+* unify break to return in NORMALIZE feedback path ([#73](https://github.com/ziyilam3999/hive-mind/issues/73)) ([#76](https://github.com/ziyilam3999/hive-mind/issues/76)) ([9fc4a90](https://github.com/ziyilam3999/hive-mind/commit/9fc4a907d4253d058797bc8bc4fc5c50e7fcb03d))
+
 ## [0.12.1](https://github.com/ziyilam3999/hive-mind/compare/v0.12.0...v0.12.1) (2026-03-22)
 
 
