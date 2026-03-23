@@ -5,7 +5,7 @@ import { HiveMindError } from "../utils/errors.js";
 describe("CLI start command", () => {
   it("parses start --prd correctly", () => {
     const result = parseArgs(["node", "cli", "start", "--prd", "./test.md"]);
-    expect(result).toEqual({ command: "start", prdPath: "./test.md", silent: false, budget: undefined, skipBaseline: false, stopAfterPlan: false, skipNormalize: false, greenfield: false });
+    expect(result).toEqual({ command: "start", prdPath: "./test.md", silent: false, budget: undefined, skipBaseline: false, stopAfterPlan: false, skipNormalize: false, greenfield: false, noDashboard: false });
   });
 
   it("parses start --prd --skip-normalize correctly", () => {

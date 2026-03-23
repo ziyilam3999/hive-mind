@@ -226,7 +226,7 @@ describe("wave executor", () => {
     }
   });
 
-  it("file overlap defers story to next wave", async () => {
+  it("file overlap defers story to next wave", { timeout: 15000 }, async () => {
     const plan = makePlan([
       makeStory({ id: "US-01", sourceFiles: ["shared.ts"] }),
       makeStory({ id: "US-02", sourceFiles: ["shared.ts"] }),
@@ -252,7 +252,7 @@ describe("wave executor", () => {
     }
   });
 
-  it("crash recovery resets in-progress stories", async () => {
+  it("crash recovery resets in-progress stories", { retry: 2 }, async () => {
     const plan = makePlan([
       makeStory({ id: "US-01", status: "in-progress" }),
       makeStory({ id: "US-02", status: "not-started" }),

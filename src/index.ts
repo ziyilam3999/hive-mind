@@ -9,9 +9,10 @@ import { loadConfig, resolvePipelineDirs } from "./config/loader.js";
 import { HiveMindError } from "./utils/errors.js";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
+import { approveCheckpoint, rejectCheckpoint } from "./state/checkpoint-ops.js";
 
 export type ParsedCommand =
-  | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean }
+  | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean }
   | { command: "bug"; reportPath: string; silent?: boolean; skipBaseline?: boolean }
   | { command: "approve"; silent?: boolean; skipBaseline?: boolean }
   | { command: "reject"; feedback: string; silent?: boolean }
@@ -60,7 +61,8 @@ export function parseArgs(argv: string[]): ParsedCommand {
       const stopAfterPlan = args.includes("--stop-after-plan");
       const skipNormalize = args.includes("--skip-normalize");
       const greenfield = args.includes("--greenfield");
-      return { command: "start", prdPath: args[prdIdx + 1], silent, budget, skipBaseline, stopAfterPlan, skipNormalize, greenfield };
+      const noDashboard = args.includes("--no-dashboard");
+      return { command: "start", prdPath: args[prdIdx + 1], silent, budget, skipBaseline, stopAfterPlan, skipNormalize, greenfield, noDashboard };
     }
     case "bug": {
       const reportIdx = args.indexOf("--report");
@@ -132,7 +134,7 @@ export async function main(): Promise<void> {
       if (claudeCheck.exitCode !== 0) {
         throw new HiveMindError("claude CLI not found on PATH");
       }
-      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan, skipNormalize: parsed.skipNormalize, greenfield: parsed.greenfield });
+      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan, skipNormalize: parsed.skipNormalize, greenfield: parsed.greenfield, noDashboard: parsed.noDashboard });
       break;
     }
     case "bug": {
@@ -158,6 +160,10 @@ export async function main(): Promise<void> {
       if (!checkpoint) {
         throw new HiveMindError("No active checkpoint");
       }
+      const approveResult = await approveCheckpoint(dirs.workingDir);
+      if (!approveResult.success) {
+        throw new HiveMindError(approveResult.error ?? "Checkpoint approval failed");
+      }
       await resumeFromCheckpoint(checkpoint, dirs, config, { silent: parsed.silent, skipBaseline: parsed.skipBaseline });
       break;
     }
@@ -165,6 +171,10 @@ export async function main(): Promise<void> {
       const checkpoint = readCheckpointFile(dirs);
       if (!checkpoint) {
         throw new HiveMindError("No active checkpoint");
+      }
+      const rejectResult = await rejectCheckpoint(dirs.workingDir, parsed.feedback);
+      if (!rejectResult.success) {
+        throw new HiveMindError(rejectResult.error ?? "Checkpoint rejection failed");
       }
       checkpoint.feedback = parsed.feedback;
       await resumeFromCheckpoint(checkpoint, dirs, config, { silent: parsed.silent });
@@ -301,6 +311,7 @@ Options:
   --stop-after-plan      Run SPEC + PLAN only, then exit (start only)
   --skip-normalize       Skip normalize stage (start only)
   --greenfield           New project with no existing code (start only)
+  --no-dashboard         Disable the real-time dashboard (start only)
   --from <storyId>       Resume from specific story (resume only)
   --skip-failed          Skip failed stories on resume (resume only)
   --retry-failed         Reset failed stories and retry them (resume only)
