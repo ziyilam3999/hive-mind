@@ -10,6 +10,8 @@ import { HiveMindError } from "./utils/errors.js";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
 import { approveCheckpoint, rejectCheckpoint } from "./state/checkpoint-ops.js";
+import { startDashboard } from "./dashboard/server.js";
+import type { DashboardHandle } from "./dashboard/server.js";
 
 export type ParsedCommand =
   | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean }
@@ -114,6 +116,19 @@ export async function main(): Promise<void> {
   const config = loadConfig(process.cwd());
   const dirs = resolvePipelineDirs(config, process.cwd());
 
+  // Start dashboard for commands that run pipeline stages
+  const dashboardCommands = new Set(["start", "approve", "reject", "resume", "retry"]);
+  const wantsDashboard = dashboardCommands.has(parsed.command) && !("noDashboard" in parsed && parsed.noDashboard);
+  let dashboardHandle: DashboardHandle | null = null;
+  if (wantsDashboard) {
+    try {
+      dashboardHandle = await startDashboard(dirs, config);
+    } catch (err) {
+      process.stderr.write(`Dashboard: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+  }
+
+  try {
   switch (parsed.command) {
     case "help": {
       printHelp();
@@ -134,7 +149,7 @@ export async function main(): Promise<void> {
       if (claudeCheck.exitCode !== 0) {
         throw new HiveMindError("claude CLI not found on PATH");
       }
-      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan, skipNormalize: parsed.skipNormalize, greenfield: parsed.greenfield, noDashboard: parsed.noDashboard });
+      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan, skipNormalize: parsed.skipNormalize, greenfield: parsed.greenfield, noDashboard: true });
       break;
     }
     case "bug": {
@@ -284,6 +299,12 @@ export async function main(): Promise<void> {
       await runExecuteStage(dirs, config);
       await runReportStage(dirs, config);
       break;
+    }
+  }
+  } finally {
+    if (dashboardHandle) {
+      dashboardHandle.signalShutdown(Date.now() + 60_000);
+      setTimeout(() => dashboardHandle!.stop(), 60_000);
     }
   }
 }
