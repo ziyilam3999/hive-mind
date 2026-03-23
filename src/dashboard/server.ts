@@ -1833,6 +1833,7 @@ elapsedTimerHandle = setInterval(updateElapsed, 1000);
 export async function startDashboard(
   dirs: PipelineDirs,
   _config: HiveMindConfig,
+  portOverride?: number,
 ): Promise<DashboardHandle> {
   const workingDir = dirs.workingDir;
 
@@ -1947,5 +1948,26 @@ export async function startDashboard(
     });
   }
 
+  if (portOverride !== undefined) {
+    // Direct port (used by tests with port 0 for random assignment)
+    return new Promise<DashboardHandle>((resolvePromise, rejectPromise) => {
+      server.on("error", (err) => {
+        clearInterval(pollTimer);
+        rejectPromise(new Error(`Dashboard failed to bind port: ${err.message}`));
+      });
+      server.listen(portOverride, () => {
+        const address = server.address();
+        const boundPort = typeof address === "object" && address ? address.port : portOverride;
+        const url = `http://localhost:${boundPort}`;
+        console.log(`Dashboard: ${url}`);
+        openBrowserFireAndForget(url);
+        resolvePromise({
+          stop: () => { clearInterval(pollTimer); server.close(); },
+          url,
+          signalShutdown: (shutdownAt: number) => { cached.shutdownAt = shutdownAt; },
+        });
+      });
+    });
+  }
   return tryListen(DEFAULT_PORT, 1);
 }

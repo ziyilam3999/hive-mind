@@ -63,7 +63,7 @@ describe("startDashboard", () => {
   });
 
   it("returns a handle with stop, url, and signalShutdown", async () => {
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
     expect(handle).toHaveProperty("stop");
     expect(handle).toHaveProperty("url");
     expect(handle).toHaveProperty("signalShutdown");
@@ -74,7 +74,7 @@ describe("startDashboard", () => {
   });
 
   it("GET / returns 200 with HTML", async () => {
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
     const { status, body } = await fetchRaw(handle.url, "/");
     expect(status).toBe(200);
     expect(body).toContain("<!DOCTYPE html>");
@@ -93,7 +93,7 @@ describe("startDashboard", () => {
       JSON.stringify({ timestamp: "2026-01-01T00:00:00Z", action: "PIPELINE_START", cycle: 0, storyId: null, reason: null }) + "\n",
     );
 
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
 
     // Wait for initial poll to complete
     await new Promise((r) => setTimeout(r, 100));
@@ -107,7 +107,7 @@ describe("startDashboard", () => {
   });
 
   it("signalShutdown stores shutdownAt in status response", async () => {
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
     const ts = Date.now() + 60000;
     handle.signalShutdown(ts);
 
@@ -116,7 +116,7 @@ describe("startDashboard", () => {
   });
 
   it("GET /api/story/:id/logs returns empty for non-existent story", async () => {
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
     const { status, body } = await fetchJson<LogsResponse>(handle.url, "/api/story/US-99/logs");
     expect(status).toBe(200);
     expect(body.lines).toEqual([]);
@@ -127,7 +127,7 @@ describe("startDashboard", () => {
     const lines = Array.from({ length: 201 }, (_, i) => `Line ${i + 1}`);
     makeStoryFile(workingDir, "US-01", "impl-report.md", lines.join("\n"));
 
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
 
     // First page
     const { body: data1 } = await fetchJson<LogsResponse>(handle.url, "/api/story/US-01/logs?offset=0");
@@ -146,7 +146,7 @@ describe("startDashboard", () => {
     makeStoryFile(workingDir, "US-02", "z-report.md", "Z-content");
     makeStoryFile(workingDir, "US-02", "a-report.md", "A-content");
 
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
     const { body } = await fetchJson<LogsResponse>(handle.url, "/api/story/US-02/logs");
     // a-report.md comes before z-report.md alphabetically
     expect(body.lines[0]).toBe("A-content");
@@ -154,7 +154,7 @@ describe("startDashboard", () => {
   });
 
   it("rejects path traversal in storyId with 400", async () => {
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
     const res = await fetch(`${handle.url}/api/story/..%2F..%2Fetc%2Fpasswd/logs`);
     expect(res.status).toBe(400);
   });
@@ -162,7 +162,7 @@ describe("startDashboard", () => {
   it("coerces invalid offset to 0", async () => {
     makeStoryFile(workingDir, "US-03", "report.md", "content");
 
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
 
     // Negative offset
     const { body: d1 } = await fetchJson<{ lines: string[] }>(handle.url, "/api/story/US-03/logs?offset=-1");
@@ -174,19 +174,19 @@ describe("startDashboard", () => {
   });
 
   it("returns 404 for unknown routes", async () => {
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
     const res = await fetch(`${handle.url}/unknown-path`);
     expect(res.status).toBe(404);
   });
 
   it("returns 405 for non-GET methods", async () => {
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
     const res = await fetch(`${handle.url}/api/status`, { method: "POST" });
     expect(res.status).toBe(405);
   });
 
   it("stop() shuts down the server", async () => {
-    handle = await startDashboard(makeDirs(workingDir), makeConfig());
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
     const url = handle.url;
     handle.stop();
     handle = null;
