@@ -298,7 +298,7 @@ export async function resumeFromCheckpoint(
           feedback: null,
         });
 
-        if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "Re-run with feedback complete, awaiting approval");
+        if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "NORMALIZE re-run with feedback complete, awaiting approval");
         console.log("NORMALIZE stage updated. Review again.");
         console.log(getCheckpointMessage("approve-normalize"));
         notifyCheckpoint(silent);
@@ -329,7 +329,7 @@ export async function resumeFromCheckpoint(
           timestamp: isoTimestamp(),
           feedback: null,
         });
-        if (config.liveReport) updateLiveReport(dirs.workingDir, "SPEC", "Re-run with feedback complete, awaiting approval");
+        if (config.liveReport) updateLiveReport(dirs.workingDir, "SPEC", "SPEC re-run with feedback complete, awaiting approval");
         console.log("SPEC stage updated with feedback. Review again.");
         notifyCheckpoint(silent);
         return;
