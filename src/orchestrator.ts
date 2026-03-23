@@ -302,7 +302,7 @@ export async function resumeFromCheckpoint(
         console.log("NORMALIZE stage updated. Review again.");
         console.log(getCheckpointMessage("approve-normalize"));
         notifyCheckpoint(silent);
-        break;
+        return;
       }
 
       // Approved — proceed to SPEC with normalized PRD
