@@ -164,7 +164,7 @@ export async function runPipeline(
       });
 
       console.log(getCheckpointMessage("approve-normalize"));
-      notifyCheckpoint(options?.silent ?? false);
+      notifyCheckpoint(options?.silent ?? false, "Normalize complete. Review and approve to continue.");
       return;
     }
 
