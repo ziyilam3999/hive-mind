@@ -7,9 +7,11 @@ import { fileExists, ensureDir, readFileSafe } from "./utils/file-io.js";
 import { createMemoryFromTemplate } from "./memory/memory-manager.js";
 import {
   writeCheckpoint,
+  readCheckpoint,
   deleteCheckpoint,
   getCheckpointMessage,
 } from "./state/checkpoint.js";
+import { UsageLimitError, usageLimitTracker } from "./utils/usage-limit.js";
 import type { Story } from "./types/execution-plan.js";
 import {
   loadExecutionPlan,
@@ -41,7 +43,7 @@ import { runLearn } from "./stages/execute-learn.js";
 import { runComplianceCheck } from "./stages/execute-compliance.js";
 import { parseRequiredTooling, detectAllTools, scanStepFileForTools, detectToolBySpawn } from "./tooling/detect.js";
 import { runToolingSetup } from "./tooling/setup.js";
-import { runReportStage as reportStage } from "./stages/report-stage.js";
+import { runReportStage as reportStage, type ReportStageResult } from "./stages/report-stage.js";
 import { updateLiveReport } from "./reports/live-report.js";
 import { runBaselineCheck } from "./stages/baseline-check.js";
 import { runNormalizeStage } from "./stages/normalize-stage.js";
@@ -485,21 +487,91 @@ export async function resumeFromCheckpoint(
         break;
       }
 
-      await runReportStage(dirs, config);
+      const reportResult1 = await runReportStage(dirs, config);
       await safeUpdateManifest(dirs.workingDir);
       await runScorecard("report", dirs, config);
       if (config.liveReport) updateLiveReport(dirs.workingDir, "REPORT", "Report stage complete");
 
-      writeCheckpoint(dirs.workingDir, {
-        awaiting: "verify",
-        message: getCheckpointMessage("verify"),
-        timestamp: isoTimestamp(),
-        feedback: null,
-      });
+      {
+        const verifyMsg = reportResult1.valid
+          ? getCheckpointMessage("verify")
+          : `REPORT stage incomplete — missing: ${reportResult1.missingFiles.join(", ")}. Review and approve to continue.`;
+        if (!reportResult1.valid) {
+          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("USAGE_LIMIT_HIT", {
+            reason: `REPORT stage missing files: ${reportResult1.missingFiles.join(", ")}`,
+          }));
+        }
+        writeCheckpoint(dirs.workingDir, {
+          awaiting: "verify",
+          message: verifyMsg,
+          timestamp: isoTimestamp(),
+          feedback: null,
+        });
+        console.log("EXECUTE + REPORT stages complete. Awaiting verification.");
+        console.log(verifyMsg);
+        notifyCheckpoint(silent);
+      }
+      break;
+    }
+    case "approve-usage-limit": {
+      deleteCheckpoint(dirs.workingDir);
+      usageLimitTracker.reset();
 
-      console.log("EXECUTE + REPORT stages complete. Awaiting verification.");
-      console.log(getCheckpointMessage("verify"));
-      notifyCheckpoint(silent);
+      const startDataLimit = getPipelineStartData(dirs.workingDir);
+      const limitCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+      const limitTracker = CostTracker.loadFromDisk(limitCostLogPath, startDataLimit.budget);
+
+      console.log("Usage limit checkpoint approved. Resuming EXECUTE stage...");
+      await runExecuteStage(dirs, config, limitTracker);
+
+      const limitSummary = limitTracker.getSummary();
+      if (limitSummary.totalCostUsd > 0) {
+        console.log(`\nCost summary: $${limitSummary.totalCostUsd.toFixed(4)} total`);
+      }
+
+      printTimingSummary(limitTracker);
+      writeTimingReport(limitTracker, dirs.workingDir);
+
+      // Continue to integration + report + verify (same as approve-plan)
+      const limitPlanPath = join(dirs.workingDir, "plans", "execution-plan.json");
+      const limitPlan = loadExecutionPlan(limitPlanPath);
+      const limitIntegResult = await runIntegrateVerify(limitPlan, dirs, config, limitTracker);
+      if (!limitIntegResult.skipped) {
+        const limitIntegMessage = buildIntegrationCheckpointMessage(limitIntegResult);
+        console.log(limitIntegMessage);
+        writeCheckpoint(dirs.workingDir, {
+          awaiting: "approve-integration",
+          message: limitIntegMessage,
+          timestamp: isoTimestamp(),
+          feedback: null,
+        });
+        notifyCheckpoint(silent);
+        break;
+      }
+
+      const reportResult2 = await runReportStage(dirs, config);
+      await safeUpdateManifest(dirs.workingDir);
+      await runScorecard("report", dirs, config);
+
+      {
+        const verifyMsg = reportResult2.valid
+          ? getCheckpointMessage("verify")
+          : `REPORT stage incomplete — missing: ${reportResult2.missingFiles.join(", ")}. Review and approve to continue.`;
+        if (!reportResult2.valid) {
+          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("USAGE_LIMIT_HIT", {
+            reason: `REPORT stage missing files: ${reportResult2.missingFiles.join(", ")}`,
+          }));
+        }
+        writeCheckpoint(dirs.workingDir, {
+          awaiting: "verify",
+          message: verifyMsg,
+          timestamp: isoTimestamp(),
+          feedback: null,
+        });
+        console.log("EXECUTE + REPORT stages complete. Awaiting verification.");
+        console.log(verifyMsg);
+        notifyCheckpoint(silent);
+      }
       break;
     }
     case "approve-diagnosis": {
@@ -516,21 +588,30 @@ export async function resumeFromCheckpoint(
     case "approve-integration": {
       deleteCheckpoint(dirs.workingDir);
 
-      await runReportStage(dirs, config);
+      const reportResult3 = await runReportStage(dirs, config);
       await safeUpdateManifest(dirs.workingDir);
       await runScorecard("report", dirs, config);
       if (config.liveReport) updateLiveReport(dirs.workingDir, "REPORT", "Report stage complete");
 
-      writeCheckpoint(dirs.workingDir, {
-        awaiting: "verify",
-        message: getCheckpointMessage("verify"),
-        timestamp: isoTimestamp(),
-        feedback: null,
-      });
-
-      console.log("REPORT stage complete. Awaiting verification.");
-      console.log(getCheckpointMessage("verify"));
-      notifyCheckpoint(silent);
+      {
+        const verifyMsg = reportResult3.valid
+          ? getCheckpointMessage("verify")
+          : `REPORT stage incomplete — missing: ${reportResult3.missingFiles.join(", ")}. Review and approve to continue.`;
+        if (!reportResult3.valid) {
+          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("USAGE_LIMIT_HIT", {
+            reason: `REPORT stage missing files: ${reportResult3.missingFiles.join(", ")}`,
+          }));
+        }
+        writeCheckpoint(dirs.workingDir, {
+          awaiting: "verify",
+          message: verifyMsg,
+          timestamp: isoTimestamp(),
+          feedback: null,
+        });
+        console.log("REPORT stage complete. Awaiting verification.");
+        console.log(verifyMsg);
+        notifyCheckpoint(silent);
+      }
       break;
     }
     case "verify": {
@@ -1011,6 +1092,35 @@ export async function runExecuteStage(
     });
     const settled = await runWithConcurrency(tasks, config.maxConcurrency);
 
+    // Usage limit detection: if any task was rejected with UsageLimitError, pause pipeline
+    const usageLimitHit = settled.some(
+      (r) => r.status === "rejected" && r.reason instanceof UsageLimitError,
+    );
+    if (usageLimitHit) {
+      console.warn("\n[USAGE LIMIT] Claude API usage limit detected. Pausing pipeline.");
+      // Reset in-progress stories back to not-started so they can be retried after resume
+      for (const s of wave) {
+        const current = plan.stories.find((st) => st.id === s.id);
+        if (current?.status === "in-progress") {
+          plan = updateStoryStatus(plan, s.id, "not-started");
+        }
+      }
+      saveExecutionPlan(planPath, plan);
+      appendLogEntry(logPath, createLogEntry("USAGE_LIMIT_HIT", {
+        reason: `${wave.length} story/stories in wave ${waveNumber} hit usage limit`,
+        storyIds: waveStoryIds,
+        waveNumber,
+      }));
+      writeCheckpoint(dirs.workingDir, {
+        awaiting: "approve-usage-limit",
+        message: getCheckpointMessage("approve-usage-limit"),
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
+      notifyCheckpoint(false);
+      return;
+    }
+
     // Post-BUILD conflict detection: warn if actual files modified overlap between wave stories
     if (wave.length > 1) {
       const storyFiles = new Map<string, string[]>();
@@ -1236,9 +1346,9 @@ export async function runExecuteStage(
 export async function runReportStage(
   dirs: PipelineDirs,
   config: HiveMindConfig,
-): Promise<void> {
+): Promise<ReportStageResult> {
   console.log("Running REPORT stage...");
-  await reportStage(dirs, config);
+  return reportStage(dirs, config);
 }
 
 /**
