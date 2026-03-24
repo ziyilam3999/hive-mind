@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.0](https://github.com/ziyilam3999/hive-mind/compare/v0.14.0...v0.15.0) (2026-03-24)
+
+
+### Features
+
+* three-layer checkpoint notification system ([#95](https://github.com/ziyilam3999/hive-mind/issues/95)) ([cdcf05a](https://github.com/ziyilam3999/hive-mind/commit/cdcf05acbadcdf7beff4945f688c9880579ab65b))
+
+
+### Bug Fixes
+
+* prevent command injection in notify.ts ([08bd9a9](https://github.com/ziyilam3999/hive-mind/commit/08bd9a9752f0fb6fe8a6a8e92d70bf0f760f79ba))
+
 ## [0.14.0](https://github.com/ziyilam3999/hive-mind/compare/v0.13.3...v0.14.0) (2026-03-24)
 
 
