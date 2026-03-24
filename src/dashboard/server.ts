@@ -1190,10 +1190,10 @@ function statusToCssStatus(status) {
 
 /* Pipeline stages derived from managerLog */
 var STAGE_DEFS = [
-  { key: 'spec',    label: 'Spec',    startAction: 'PIPELINE_START', endAction: 'SPEC_COMPLETE' },
-  { key: 'plan',    label: 'Plan',    startAction: 'SPEC_COMPLETE',  endAction: 'PLAN_COMPLETE' },
-  { key: 'execute', label: 'Execute', startAction: 'PLAN_COMPLETE',  endAction: 'EXECUTE_COMPLETE' },
-  { key: 'report',  label: 'Report',  startAction: 'EXECUTE_COMPLETE', endAction: 'REPORT_COMPLETE' }
+  { key: 'spec',    label: 'Spec',    startAction: 'SPEC_START',    fallbackStart: 'PIPELINE_START', endAction: 'SPEC_COMPLETE' },
+  { key: 'plan',    label: 'Plan',    startAction: 'PLAN_START',    fallbackStart: 'SPEC_COMPLETE',  endAction: 'PLAN_COMPLETE' },
+  { key: 'execute', label: 'Execute', startAction: 'EXECUTE_START', fallbackStart: 'PLAN_COMPLETE',  endAction: 'EXECUTE_COMPLETE' },
+  { key: 'report',  label: 'Report',  startAction: 'EXECUTE_COMPLETE', fallbackStart: null, endAction: 'REPORT_COMPLETE' }
 ];
 
 function deriveStages(managerLog) {
@@ -1261,10 +1261,27 @@ function deriveStages(managerLog) {
     pausedStageKey = cpToStage[checkpoint.awaiting] || null;
   }
 
+  /* Find first WAVE_START as EXECUTE fallback (for runs without EXECUTE_START) */
+  var firstWaveStart = null;
+  for (var fw = 0; fw < managerLog.length; fw++) {
+    if ((managerLog[fw].action || '') === 'WAVE_START') {
+      firstWaveStart = new Date(managerLog[fw].timestamp).getTime();
+      break;
+    }
+  }
+
   var stages = [];
   for (var s = 0; s < STAGE_DEFS.length; s++) {
     var def = STAGE_DEFS[s];
+    /* Resolve startTs: prefer _START action, then WAVE_START for execute, then fallback */
     var startTs = actionTimestamps[def.startAction];
+    if (!startTs) {
+      if (def.key === 'execute' && firstWaveStart) {
+        startTs = firstWaveStart;
+      } else if (def.fallbackStart) {
+        startTs = actionTimestamps[def.fallbackStart];
+      }
+    }
     var endTs = actionTimestamps[def.endAction];
     var stageStatus = 'pending';
     var durationMs = null;
@@ -1375,6 +1392,17 @@ function deriveActiveAgents(stories, managerLog, costLog) {
         if (!startTsByStory[ce.storyId] || ts < startTsByStory[ce.storyId]) startTsByStory[ce.storyId] = ts;
       }
     }
+    /* Build waveStartByStory from WAVE_START entries for immediate elapsed display */
+    var waveStartByStory = {};
+    for (var ws = 0; ws < managerLog.length; ws++) {
+      if (managerLog[ws].action === 'WAVE_START' && managerLog[ws].storyIds) {
+        var wsTs = new Date(managerLog[ws].timestamp).getTime();
+        var wsIds = managerLog[ws].storyIds;
+        for (var wsi = 0; wsi < wsIds.length; wsi++) {
+          if (!waveStartByStory[wsIds[wsi]]) waveStartByStory[wsIds[wsi]] = wsTs;
+        }
+      }
+    }
     for (var si = 0; si < stories.length; si++) {
       var story = stories[si];
       if (story.status !== 'in-progress') continue;
@@ -1390,7 +1418,7 @@ function deriveActiveAgents(stories, managerLog, costLog) {
         if (latestAction.action === 'COMPLIANCE_CHECK') { agentType = 'compliance'; substage = 'VERIFY'; }
         if (latestAction.action === 'BUILD_RETRY') { agentType = 'implementer'; substage = 'RETRY'; }
       }
-      var startTs = startTsByStory[story.id] || (now - (story.durationMs || 0));
+      var startTs = startTsByStory[story.id] || waveStartByStory[story.id] || (now - (story.durationMs || 0));
       agents.push({ type: agentType, context: story.id, substage: substage, startTs: startTs, pipeline: false, wave: story.wave || currentWave });
     }
   }
@@ -1553,12 +1581,16 @@ function renderStoryCard(story, idx, costByStory) {
   var cssStatus = statusToCssStatus(story.status);
   var isExpanded = expandedStories[story.id] === true;
   var expandedCls = isExpanded ? ' expanded' : '';
-  /* Use costLog-derived duration if story.durationMs is null */
+  /* For in-progress: wall clock elapsed. For done: agent compute time. */
   var storyDur = story.durationMs;
   var storyCost = null;
   if (costByStory && costByStory[story.id]) {
     if (!storyDur) storyDur = costByStory[story.id].maxDuration;
     storyCost = costByStory[story.id].totalCost;
+    /* In-progress stories: show wall clock since first agent started */
+    if (story.status === 'in-progress' && costByStory[story.id].firstTs) {
+      storyDur = Date.now() - costByStory[story.id].firstTs;
+    }
   }
   var durationLabel = storyDur ? formatDuration(storyDur) : '--';
   if (storyCost && storyCost > 0) {
@@ -1620,9 +1652,13 @@ function buildCostByStory(costLog) {
     var entry = costLog[i];
     var sid = entry.storyId;
     if (!sid) continue;
-    if (!map[sid]) map[sid] = { totalCost: 0, maxDuration: 0 };
+    if (!map[sid]) map[sid] = { totalCost: 0, maxDuration: 0, firstTs: null };
     if (entry.costUsd) map[sid].totalCost += entry.costUsd;
     if (entry.durationMs && entry.durationMs > map[sid].maxDuration) map[sid].maxDuration = entry.durationMs;
+    if (entry.timestamp) {
+      var entryTs = new Date(entry.timestamp).getTime();
+      if (!map[sid].firstTs || entryTs < map[sid].firstTs) map[sid].firstTs = entryTs;
+    }
   }
   return map;
 }

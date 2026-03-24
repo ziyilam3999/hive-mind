@@ -190,6 +190,7 @@ async function runSpecThenCheckpoint(
   greenfield?: boolean,
   tracker?: CostTracker,
 ): Promise<void> {
+  appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("SPEC_START", {}));
   console.log("Running SPEC stage...");
   await specStage(prdPath, dirs, config, undefined, greenfield, tracker);
   await safeUpdateManifest(dirs.workingDir);
@@ -375,6 +376,7 @@ export async function resumeFromCheckpoint(
 
       const specCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const specTracker = CostTracker.loadFromDisk(specCostLogPath, startDataSpec.budget);
+      appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("PLAN_START", {}));
       const planResult = await runPlanStage(dirs, config, undefined, startDataSpec.greenfield, specTracker);
       await safeUpdateManifest(dirs.workingDir);
 
@@ -447,6 +449,7 @@ export async function resumeFromCheckpoint(
 
       const execCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const tracker = CostTracker.loadFromDisk(execCostLogPath, startDataPlan.budget);
+      appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("EXECUTE_START", {}));
       await runExecuteStage(dirs, config, tracker);
 
       const summary = tracker.getSummary();
