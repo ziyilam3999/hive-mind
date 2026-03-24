@@ -111,20 +111,42 @@ export function parseArgs(argv: string[]): ParsedCommand {
   }
 }
 
+async function isDashboardRunning(port: number): Promise<boolean> {
+  try {
+    const { request } = await import("node:http");
+    return new Promise((resolve) => {
+      const req = request({ hostname: "localhost", port, path: "/api/status", method: "GET", timeout: 1000 }, (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      });
+      req.on("error", () => resolve(false));
+      req.on("timeout", () => { req.destroy(); resolve(false); });
+      req.end();
+    });
+  } catch {
+    return false;
+  }
+}
+
 export async function main(): Promise<void> {
   const parsed = parseArgs(process.argv);
   const config = loadConfig(process.cwd());
   const dirs = resolvePipelineDirs(config, process.cwd());
 
-  // Start dashboard for commands that run pipeline stages
+  // Start dashboard for commands that run pipeline stages (skip if one is already running)
   const dashboardCommands = new Set(["start", "approve", "reject", "resume", "retry"]);
   const wantsDashboard = dashboardCommands.has(parsed.command) && !("noDashboard" in parsed && parsed.noDashboard);
   let dashboardHandle: DashboardHandle | null = null;
   if (wantsDashboard) {
-    try {
-      dashboardHandle = await startDashboard(dirs, config);
-    } catch (err) {
-      process.stderr.write(`Dashboard: ${err instanceof Error ? err.message : String(err)}\n`);
+    const dashboardAlive = await isDashboardRunning(4040);
+    if (dashboardAlive) {
+      // Existing dashboard is serving the same working directory — skip
+    } else {
+      try {
+        dashboardHandle = await startDashboard(dirs, config);
+      } catch (err) {
+        process.stderr.write(`Dashboard: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
     }
   }
 
