@@ -948,6 +948,50 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     margin-top: 2px;
   }
 
+  /* ===== CHECKPOINT BANNER ===== */
+  .checkpoint-banner {
+    background: var(--amber-bg);
+    border: 1px solid rgba(184,134,11,0.25);
+    border-left: 4px solid var(--amber);
+    border-radius: 2px 10px 10px 2px;
+    padding: 18px 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    animation: cpSlideDown 0.3s ease-out, cpGlow 3s ease-in-out infinite;
+  }
+  @keyframes cpSlideDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes cpGlow {
+    0%, 100% { box-shadow: inset 4px 0 0 0 var(--amber), 0 0 0 0 rgba(184,134,11,0); }
+    50% { box-shadow: inset 4px 0 0 0 var(--amber), -4px 0 12px -2px rgba(184,134,11,0.15); }
+  }
+  .checkpoint-hex {
+    width: 20px; height: 20px;
+    clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+    background: var(--amber);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .checkpoint-content { flex: 1; }
+  .checkpoint-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--amber); margin-bottom: 6px;
+  }
+  .checkpoint-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .checkpoint-msg { font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+  .checkpoint-cmd {
+    font-family: var(--font-mono); font-size: 12px; color: var(--green);
+    background: var(--green-bg); padding: 2px 10px; border-radius: 4px; display: inline-block;
+  }
+  .checkpoint-elapsed {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+    white-space: nowrap; margin-top: 2px;
+  }
+  .toast.warning { border-left-color: var(--amber); font-weight: 600; }
+
   /* ===== AWAITING DATA ===== */
   .awaiting-data {
     text-align: center;
@@ -1082,6 +1126,7 @@ var notificationsEnabled = true;
 var storyLogCache = {};   /* storyId -> { lines: [], nextOffset: number|null, loading: false } */
 var expandedStories = {};  /* storyId -> true */
 var previousStatuses = {}; /* storyId -> last known status */
+var previousCheckpoint = null; /* checkpoint key to detect new checkpoints */
 var shutdownCountdownHandle = null;
 
 /* ===== HELPERS ===== */
@@ -1352,6 +1397,25 @@ function renderActiveAgents(agents) {
 }
 
 /* ===== RENDERING ===== */
+
+function renderCheckpointBanner(checkpoint) {
+  if (!checkpoint || !checkpoint.awaiting) return '';
+  var elapsed = Date.now() - new Date(checkpoint.timestamp).getTime();
+  var agoLabel = formatDuration(elapsed) + ' ago';
+  var cmd = 'hive-mind approve';
+  if (checkpoint.awaiting === 'ship') cmd = 'hive-mind approve  (ships to git)';
+  var html = '<div class="checkpoint-banner">';
+  html += '<div class="checkpoint-hex"></div>';
+  html += '<div class="checkpoint-content">';
+  html += '<div class="checkpoint-label">Action Required</div>';
+  html += '<div class="checkpoint-title">Pipeline paused at ' + escapeHtml(checkpoint.awaiting) + '</div>';
+  html += '<div class="checkpoint-msg">' + escapeHtml(checkpoint.message || 'Review and approve to continue.') + '</div>';
+  html += '<span class="checkpoint-cmd">' + escapeHtml(cmd) + '</span>';
+  html += '</div>';
+  html += '<div class="checkpoint-elapsed">' + agoLabel + '</div>';
+  html += '</div>';
+  return html;
+}
 
 function renderAwaitingData() {
   return '<div class="awaiting-data">' +
@@ -1758,6 +1822,11 @@ function renderAll() {
     html += renderShutdownBanner(shutdownAt);
   }
 
+  /* Checkpoint banner */
+  if (state.checkpoint && state.checkpoint.awaiting) {
+    html += renderCheckpointBanner(state.checkpoint);
+  }
+
   if (!stories) {
     /* No execution plan yet -- show stepper only if we have log data */
     if (managerLog.length > 0) {
@@ -1967,8 +2036,25 @@ function pollStatus() {
         var stories = (data.executionPlan && data.executionPlan.stories) ? data.executionPlan.stories : null;
         detectChanges(stories);
 
+        /* Detect checkpoint for notification */
+        if (data.checkpoint && data.checkpoint.awaiting) {
+          var cpKey = data.checkpoint.awaiting + ':' + data.checkpoint.timestamp;
+          if (cpKey !== previousCheckpoint) {
+            previousCheckpoint = cpKey;
+            sendDesktopNotification(
+              'Hive Mind — Action Required',
+              'Pipeline paused at ' + data.checkpoint.awaiting + '. Run: hive-mind approve'
+            );
+            showToast('Checkpoint: ' + data.checkpoint.awaiting, 'warning');
+          }
+        } else {
+          previousCheckpoint = null;
+        }
+
         /* Update title */
-        if (data.shutdownAt) {
+        if (data.checkpoint && data.checkpoint.awaiting) {
+          document.title = 'ACTION REQUIRED — Hive Mind';
+        } else if (data.shutdownAt) {
           document.title = 'Hive Mind - Complete';
         } else {
           document.title = 'Hive Mind // Pipeline Dashboard';
