@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/ziyilam3999/hive-mind/compare/v0.15.0...v0.15.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* **dashboard:** smooth banner animation + correct stage timing at checkpoints ([#100](https://github.com/ziyilam3999/hive-mind/issues/100)) ([a02510f](https://github.com/ziyilam3999/hive-mind/commit/a02510fa72ab64c622896c406fc14a1c1c1a048e))
+
 ## [0.15.0](https://github.com/ziyilam3999/hive-mind/compare/v0.14.0...v0.15.0) (2026-03-24)
 
 
