@@ -493,6 +493,116 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     margin-top: 4px;
   }
 
+  /* ===== SWARM ACTIVITY ===== */
+  .swarm-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--green);
+    border-radius: 2px 10px 10px 2px;
+    box-shadow: var(--shadow-sm);
+    padding: 16px 20px;
+  }
+  .swarm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .swarm-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+  }
+  .swarm-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: swarmPulse 2s ease-in-out infinite;
+  }
+  @keyframes swarmPulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(22,163,74,0.4); }
+    50% { opacity: 0.6; box-shadow: 0 0 0 6px rgba(22,163,74,0); }
+  }
+  .swarm-wave {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--grey-light);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .swarm-rows { display: flex; flex-direction: column; gap: 6px; }
+  .swarm-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--amber-bg);
+    border: 1px solid rgba(184,134,11,0.12);
+  }
+  .swarm-hex {
+    width: 10px; height: 10px;
+    clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+    background: var(--amber);
+    flex-shrink: 0;
+  }
+  .swarm-row.pipeline-agent { background: var(--green-bg); border-color: rgba(22,163,74,0.12); }
+  .swarm-row.pipeline-agent .swarm-hex { background: var(--green); }
+  .swarm-agent-type {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    min-width: 100px;
+  }
+  .swarm-context { font-size: 12px; font-weight: 600; color: var(--amber); min-width: 60px; }
+  .swarm-row.pipeline-agent .swarm-context { color: var(--green); }
+  .swarm-substage {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 8px;
+    border-radius: 3px;
+    background: rgba(184,134,11,0.15);
+    color: var(--amber);
+  }
+  .swarm-dots {
+    flex: 1;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    animation: dotPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes dotPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .swarm-elapsed {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--amber);
+    min-width: 55px;
+    text-align: right;
+  }
+  .swarm-row.pipeline-agent .swarm-elapsed { color: var(--green); }
+  .swarm-footer {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+  }
+
   /* ===== TWO COLUMN LAYOUT ===== */
   .two-col {
     display: grid;
@@ -1152,6 +1262,95 @@ function deriveCostTotals(costLog) {
   return { totalCost: totalCost, agentCount: agentCount, totalDurationMs: totalDurationMs };
 }
 
+/* ===== SWARM ACTIVITY ===== */
+
+function deriveActiveAgents(stories, managerLog, costLog) {
+  var agents = [];
+  var now = Date.now();
+  var currentWave = null;
+
+  var hasRunningStory = stories && stories.some(function(s) { return s.status === 'in-progress'; });
+  if (!hasRunningStory && managerLog.length > 0) {
+    var hasSpecComplete = false, hasPlanComplete = false, pipelineStartTs = null, specCompleteTs = null;
+    for (var i = 0; i < managerLog.length; i++) {
+      var entry = managerLog[i];
+      if (entry.action === 'PIPELINE_START') pipelineStartTs = new Date(entry.timestamp).getTime();
+      if (entry.action === 'SPEC_COMPLETE') { hasSpecComplete = true; specCompleteTs = new Date(entry.timestamp).getTime(); }
+      if (entry.action === 'PLAN_COMPLETE') hasPlanComplete = true;
+    }
+    if (pipelineStartTs && !hasSpecComplete) {
+      agents.push({ type: 'spec-agent', context: 'SPEC', substage: '', startTs: pipelineStartTs, pipeline: true });
+    } else if (hasSpecComplete && !hasPlanComplete && specCompleteTs) {
+      agents.push({ type: 'planner', context: 'PLAN', substage: '', startTs: specCompleteTs, pipeline: true });
+    }
+  }
+
+  if (stories) {
+    for (var w = 0; w < managerLog.length; w++) {
+      if (managerLog[w].action === 'WAVE_START' && managerLog[w].waveNumber != null) currentWave = managerLog[w].waveNumber;
+    }
+    var latestActionByStory = {};
+    for (var la = 0; la < managerLog.length; la++) {
+      if (managerLog[la].storyId) latestActionByStory[managerLog[la].storyId] = managerLog[la];
+    }
+    var startTsByStory = {};
+    for (var cl = 0; cl < costLog.length; cl++) {
+      var ce = costLog[cl];
+      if (ce.storyId && ce.timestamp) {
+        var ts = new Date(ce.timestamp).getTime();
+        if (!startTsByStory[ce.storyId] || ts < startTsByStory[ce.storyId]) startTsByStory[ce.storyId] = ts;
+      }
+    }
+    for (var si = 0; si < stories.length; si++) {
+      var story = stories[si];
+      if (story.status !== 'in-progress') continue;
+      var substage = story.substage || 'BUILD';
+      var agentType = 'implementer';
+      if (substage === 'VERIFY') agentType = 'verifier';
+      else if (substage === 'COMMIT') agentType = 'committer';
+      else if (substage === 'TEST') agentType = 'tester';
+      var latestAction = latestActionByStory[story.id];
+      if (latestAction) {
+        if (latestAction.action === 'BUILD_COMPLETE') { agentType = 'refactorer'; substage = 'BUILD'; }
+        if (latestAction.action === 'VERIFY_ATTEMPT') { agentType = 'verifier'; substage = 'VERIFY'; }
+        if (latestAction.action === 'COMPLIANCE_CHECK') { agentType = 'compliance'; substage = 'VERIFY'; }
+        if (latestAction.action === 'BUILD_RETRY') { agentType = 'implementer'; substage = 'RETRY'; }
+      }
+      var startTs = startTsByStory[story.id] || (now - (story.durationMs || 0));
+      agents.push({ type: agentType, context: story.id, substage: substage, startTs: startTs, pipeline: false, wave: story.wave || currentWave });
+    }
+  }
+  agents.currentWave = currentWave;
+  return agents;
+}
+
+function renderActiveAgents(agents) {
+  if (!agents || agents.length === 0) return '';
+  var now = Date.now();
+  var waveHtml = agents.currentWave != null ? '<span class="swarm-wave">Wave ' + agents.currentWave + '</span>' : '';
+
+  var html = '<div class="swarm-card">';
+  html += '<div class="swarm-header"><div class="swarm-title"><span class="swarm-pulse"></span> Swarm Activity</div>' + waveHtml + '</div>';
+  html += '<div class="swarm-rows">';
+  for (var i = 0; i < agents.length; i++) {
+    var a = agents[i];
+    var elapsed = now - (a.startTs || now);
+    var rowClass = a.pipeline ? 'swarm-row pipeline-agent' : 'swarm-row';
+    html += '<div class="' + rowClass + '">';
+    html += '<span class="swarm-hex"></span>';
+    html += '<span class="swarm-agent-type">' + escapeHtml(a.type) + '</span>';
+    html += '<span class="swarm-context">' + escapeHtml(a.context) + '</span>';
+    if (a.substage) html += '<span class="swarm-substage">' + escapeHtml(a.substage) + '</span>';
+    html += '<span class="swarm-dots">&middot;&middot;&middot;</span>';
+    html += '<span class="swarm-elapsed">' + formatDuration(elapsed) + '</span>';
+    html += '</div>';
+  }
+  html += '</div>';
+  html += '<div class="swarm-footer"><span>' + agents.length + ' agent' + (agents.length !== 1 ? 's' : '') + ' active</span></div>';
+  html += '</div>';
+  return html;
+}
+
 /* ===== RENDERING ===== */
 
 function renderAwaitingData() {
@@ -1563,6 +1762,8 @@ function renderAll() {
     /* No execution plan yet -- show stepper only if we have log data */
     if (managerLog.length > 0) {
       html += renderStepper(stages, null);
+      var preExecAgents = deriveActiveAgents(null, managerLog, []);
+      html += renderActiveAgents(preExecAgents);
     }
     html += renderAwaitingData();
     main.innerHTML = html;
@@ -1575,6 +1776,10 @@ function renderAll() {
 
   /* Stats row */
   html += renderStatsRow(counts);
+
+  /* Active agents panel */
+  var activeAgents = deriveActiveAgents(stories, managerLog, costLog);
+  html += renderActiveAgents(activeAgents);
 
   /* Two-col: stories + sidebar */
   html += '<div class="two-col">';
