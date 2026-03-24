@@ -1414,14 +1414,14 @@ function deriveActiveAgents(stories, managerLog, costLog) {
       agents.push({ type: agentType, context: story.id, substage: substage, startTs: startTs, pipeline: false, wave: story.wave || currentWave });
     }
   }
-  agents.currentWave = currentWave;
-  return agents;
+  return { agents: agents, currentWave: currentWave };
 }
 
-function renderActiveAgents(agents) {
-  if (!agents || agents.length === 0) return '';
+function renderActiveAgents(result) {
+  if (!result || !result.agents || result.agents.length === 0) return '';
+  var agents = result.agents;
   var now = Date.now();
-  var waveHtml = agents.currentWave != null ? '<span class="swarm-wave">Wave ' + agents.currentWave + '</span>' : '';
+  var waveHtml = result.currentWave != null ? '<span class="swarm-wave">Wave ' + result.currentWave + '</span>' : '';
 
   var html = '<div class="swarm-card">';
   html += '<div class="swarm-header"><div class="swarm-title"><span class="swarm-pulse"></span> Swarm Activity</div>' + waveHtml + '</div>';
