@@ -1436,7 +1436,7 @@ function renderActiveAgents(agents) {
   html += '<div class="swarm-rows">';
   for (var i = 0; i < agents.length; i++) {
     var a = agents[i];
-    var elapsed = now - (a.startTs || now);
+    var elapsed = Math.max(0, now - (a.startTs || now));
     var rowClass = a.pipeline ? 'swarm-row pipeline-agent' : 'swarm-row';
     html += '<div class="' + rowClass + '">';
     html += '<span class="swarm-hex"></span>';
