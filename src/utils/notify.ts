@@ -1,9 +1,9 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 
 /**
  * Notify the user that a checkpoint has been reached.
- * Layer 1: BEL character to terminal (existing).
- * Layer 2: Platform-specific desktop notification (new).
+ * Layer 1: BEL character to terminal.
+ * Layer 2: Platform-specific desktop notification via execFile (safe from injection).
  * Suppressed in silent mode (--silent flag, CI environments).
  */
 export function notifyCheckpoint(silent: boolean, message?: string): void {
@@ -11,19 +11,19 @@ export function notifyCheckpoint(silent: boolean, message?: string): void {
   process.stdout.write("\x07");
 
   const title = "Hive Mind";
-  const body = (message || "Pipeline checkpoint reached").replace(/'/g, "'");
+  const body = message || "Pipeline checkpoint reached";
   const platform = process.platform;
-  let cmd: string | undefined;
 
   if (platform === "win32") {
-    cmd = `powershell -Command "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); $n=New-Object System.Windows.Forms.NotifyIcon; $n.Icon=[System.Drawing.SystemIcons]::Information; $n.Visible=$true; $n.ShowBalloonTip(5000,'${title}','${body}',[System.Windows.Forms.ToolTipIcon]::Warning); Start-Sleep -Seconds 6; $n.Dispose()"`;
+    // Use -File with a script block via -Command, passing title/body as env vars to avoid injection
+    const script = `[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); $n=New-Object System.Windows.Forms.NotifyIcon; $n.Icon=[System.Drawing.SystemIcons]::Information; $n.Visible=$true; $n.ShowBalloonTip(5000,$env:HM_TITLE,$env:HM_BODY,[System.Windows.Forms.ToolTipIcon]::Warning); Start-Sleep -Seconds 6; $n.Dispose()`;
+    execFile("powershell", ["-Command", script], { timeout: 10000, env: { ...process.env, HM_TITLE: title, HM_BODY: body } }, () => {});
   } else if (platform === "darwin") {
-    cmd = `osascript -e 'display notification "${body}" with title "${title}"'`;
+    // osascript receives the full AppleScript as a single -e argument — no shell interpolation
+    const escaped = body.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const titleEsc = title.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    execFile("osascript", ["-e", `display notification "${escaped}" with title "${titleEsc}"`], { timeout: 10000 }, () => {});
   } else {
-    cmd = `notify-send "${title}" "${body}"`;
-  }
-
-  if (cmd) {
-    exec(cmd, { timeout: 10000 }, () => {});
+    execFile("notify-send", [title, body], { timeout: 10000 }, () => {});
   }
 }
