@@ -1369,12 +1369,20 @@ function deriveActiveAgents(stories, managerLog, costLog) {
   }
 
   if (stories) {
-    for (var w = 0; w < managerLog.length; w++) {
-      if (managerLog[w].action === 'WAVE_START' && managerLog[w].waveNumber != null) currentWave = managerLog[w].waveNumber;
-    }
     var latestActionByStory = {};
-    for (var la = 0; la < managerLog.length; la++) {
-      if (managerLog[la].storyId) latestActionByStory[managerLog[la].storyId] = managerLog[la];
+    /* Build waveStartByStory from WAVE_START entries for immediate elapsed display */
+    var waveStartByStory = {};
+    for (var w = 0; w < managerLog.length; w++) {
+      var wEntry = managerLog[w];
+      if (wEntry.action === 'WAVE_START' && wEntry.waveNumber != null) currentWave = wEntry.waveNumber;
+      if (wEntry.storyId) latestActionByStory[wEntry.storyId] = wEntry;
+      if (wEntry.action === 'WAVE_START' && wEntry.storyIds) {
+        var wsTs = new Date(wEntry.timestamp).getTime();
+        var wsIds = wEntry.storyIds;
+        for (var wsi = 0; wsi < wsIds.length; wsi++) {
+          if (!waveStartByStory[wsIds[wsi]]) waveStartByStory[wsIds[wsi]] = wsTs;
+        }
+      }
     }
     var startTsByStory = {};
     for (var cl = 0; cl < costLog.length; cl++) {
@@ -1382,17 +1390,6 @@ function deriveActiveAgents(stories, managerLog, costLog) {
       if (ce.storyId && ce.timestamp) {
         var ts = new Date(ce.timestamp).getTime();
         if (!startTsByStory[ce.storyId] || ts < startTsByStory[ce.storyId]) startTsByStory[ce.storyId] = ts;
-      }
-    }
-    /* Build waveStartByStory from WAVE_START entries for immediate elapsed display */
-    var waveStartByStory = {};
-    for (var ws = 0; ws < managerLog.length; ws++) {
-      if (managerLog[ws].action === 'WAVE_START' && managerLog[ws].storyIds) {
-        var wsTs = new Date(managerLog[ws].timestamp).getTime();
-        var wsIds = managerLog[ws].storyIds;
-        for (var wsi = 0; wsi < wsIds.length; wsi++) {
-          if (!waveStartByStory[wsIds[wsi]]) waveStartByStory[wsIds[wsi]] = wsTs;
-        }
       }
     }
     for (var si = 0; si < stories.length; si++) {
