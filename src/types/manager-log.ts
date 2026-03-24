@@ -30,7 +30,8 @@ export type LogAction =
   | "WAVE_COMPLETE"
   | "REGISTRY_GAP_FIXED"
   | "PREFLIGHT_PAUSE"
-  | "USAGE_LIMIT_HIT";
+  | "USAGE_LIMIT_HIT"
+  | "REPORT_INCOMPLETE";
 
 export interface ManagerLogEntry {
   timestamp: string;

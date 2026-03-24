@@ -7,7 +7,6 @@ import { fileExists, ensureDir, readFileSafe } from "./utils/file-io.js";
 import { createMemoryFromTemplate } from "./memory/memory-manager.js";
 import {
   writeCheckpoint,
-  readCheckpoint,
   deleteCheckpoint,
   getCheckpointMessage,
 } from "./state/checkpoint.js";
@@ -497,7 +496,7 @@ export async function resumeFromCheckpoint(
           ? getCheckpointMessage("verify")
           : `REPORT stage incomplete — missing: ${reportResult1.missingFiles.join(", ")}. Review and approve to continue.`;
         if (!reportResult1.valid) {
-          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("USAGE_LIMIT_HIT", {
+          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("REPORT_INCOMPLETE", {
             reason: `REPORT stage missing files: ${reportResult1.missingFiles.join(", ")}`,
           }));
         }
@@ -558,7 +557,7 @@ export async function resumeFromCheckpoint(
           ? getCheckpointMessage("verify")
           : `REPORT stage incomplete — missing: ${reportResult2.missingFiles.join(", ")}. Review and approve to continue.`;
         if (!reportResult2.valid) {
-          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("USAGE_LIMIT_HIT", {
+          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("REPORT_INCOMPLETE", {
             reason: `REPORT stage missing files: ${reportResult2.missingFiles.join(", ")}`,
           }));
         }
@@ -598,7 +597,7 @@ export async function resumeFromCheckpoint(
           ? getCheckpointMessage("verify")
           : `REPORT stage incomplete — missing: ${reportResult3.missingFiles.join(", ")}. Review and approve to continue.`;
         if (!reportResult3.valid) {
-          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("USAGE_LIMIT_HIT", {
+          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("REPORT_INCOMPLETE", {
             reason: `REPORT stage missing files: ${reportResult3.missingFiles.join(", ")}`,
           }));
         }
