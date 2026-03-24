@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/ziyilam3999/hive-mind/compare/v0.15.1...v0.15.2) (2026-03-24)
+
+
+### Bug Fixes
+
+* accurate stage timing and story elapsed display ([#103](https://github.com/ziyilam3999/hive-mind/issues/103)) ([2fd062f](https://github.com/ziyilam3999/hive-mind/commit/2fd062f57b28a1094e092183b3d31539868a218e))
+
 ## [0.15.1](https://github.com/ziyilam3999/hive-mind/compare/v0.15.0...v0.15.1) (2026-03-24)
 
 
