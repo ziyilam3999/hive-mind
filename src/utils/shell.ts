@@ -76,6 +76,7 @@ export interface ClaudeSpawnResult {
   stdout: string;
   json?: ClaudeJsonResult;
   killedByOutputDetection?: boolean;
+  usageLimitHit?: boolean;
 }
 
 export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnResult> {
@@ -185,15 +186,22 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
 
       const durationMs = Date.now() - startTime;
 
-      // Diagnostic: warn on suspiciously fast completions
-      if (durationMs < 5000 && !killedByOutputDetection) {
+      // Detect usage limit: fast exit + no output + non-zero exit code
+      let usageLimitHit = false;
+      if (durationMs < 5000 && !killedByOutputDetection && exitCode !== 0) {
         const hasOutput = options.outputFile ? existsSync(options.outputFile) : stdout.length > 0;
         if (!hasOutput) {
-          console.warn(`[spawnClaude] DIAGNOSTIC: Agent completed in ${durationMs}ms with no output. exit=${exitCode} stderr=${stderr.slice(0, 200)}`);
+          const noCost = !json || json.cost_usd === undefined || json.cost_usd === 0;
+          if (noCost) {
+            usageLimitHit = true;
+            console.warn(`[spawnClaude] USAGE LIMIT: Agent completed in ${durationMs}ms with no output and no cost. exit=${exitCode} stderr=${stderr.slice(0, 200)}`);
+          } else {
+            console.warn(`[spawnClaude] DIAGNOSTIC: Agent completed in ${durationMs}ms with no output. exit=${exitCode} stderr=${stderr.slice(0, 200)}`);
+          }
         }
       }
 
-      resolve({ exitCode, stderr, stdout, json, killedByOutputDetection });
+      resolve({ exitCode, stderr, stdout, json, killedByOutputDetection, usageLimitHit });
     });
   });
 }

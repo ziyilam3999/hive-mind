@@ -61,6 +61,8 @@ export function getCheckpointMessage(type: CheckpointType): string {
       return "Review diagnosis report. Run: hive-mind approve (continue with fix) OR hive-mind reject --feedback '...'";
     case "approve-preflight":
       return "Missing tools detected. Install the listed tools, then run: hive-mind approve";
+    case "approve-usage-limit":
+      return "Claude API usage limit hit. Wait for your limit to reset, then run: hive-mind approve";
     case "verify":
       return "Review consolidated report and retrospective. Run: hive-mind approve OR hive-mind reject --feedback '...'";
     case "ship":

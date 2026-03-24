@@ -64,4 +64,5 @@ export interface AgentResult {
   sessionId?: string;
   durationMs?: number;
   killedByOutputDetection?: boolean;
+  usageLimitHit?: boolean;
 }

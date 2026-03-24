@@ -6,6 +6,7 @@ import { buildPrompt } from "./prompts.js";
 import { getToolsForAgent } from "./tool-permissions.js";
 import { calculateBackoffDelay, sleep } from "../utils/backoff.js";
 import { runWithConcurrency } from "../utils/concurrency.js";
+import { usageLimitTracker, UsageLimitError } from "../utils/usage-limit.js";
 
 export async function spawnAgent(
   config: AgentConfig,
@@ -41,6 +42,7 @@ export async function spawnAgent(
       sessionId: result.json?.session_id,
       durationMs: result.json?.duration_ms,
       killedByOutputDetection: result.killedByOutputDetection,
+      usageLimitHit: result.usageLimitHit,
     };
   }
 
@@ -53,8 +55,12 @@ export async function spawnAgent(
     sessionId: result.json?.session_id,
     durationMs: result.json?.duration_ms,
     killedByOutputDetection: result.killedByOutputDetection,
+    usageLimitHit: result.usageLimitHit,
   };
 }
+
+const USAGE_LIMIT_WAIT_MS = 30_000;
+const MAX_USAGE_LIMIT_RETRIES = 5;
 
 export async function spawnAgentWithRetry(
   config: AgentConfig,
@@ -63,7 +69,8 @@ export async function spawnAgentWithRetry(
 ): Promise<AgentResult> {
   const retries = maxRetries ?? hiveMindConfig.maxRetries;
   let lastResult: AgentResult | undefined;
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  let usageLimitRetries = 0;
+  for (let attempt = 0; attempt <= retries; ) {
     if (attempt > 0) {
       const delay = calculateBackoffDelay(
         attempt - 1,
@@ -73,7 +80,24 @@ export async function spawnAgentWithRetry(
       await sleep(delay);
     }
     lastResult = await spawnAgent(config, hiveMindConfig);
+
+    if (lastResult.usageLimitHit) {
+      usageLimitTracker.recordHit();
+      usageLimitTracker.enforceLimit(); // throws UsageLimitError if threshold reached
+      // Below threshold — wait and retry without consuming an attempt
+      usageLimitRetries++;
+      if (usageLimitRetries >= MAX_USAGE_LIMIT_RETRIES) {
+        console.warn(`[spawnAgentWithRetry] Usage limit retries exhausted (${MAX_USAGE_LIMIT_RETRIES}) for ${config.type}`);
+        return lastResult;
+      }
+      console.warn(`[spawnAgentWithRetry] Usage limit hit for ${config.type}, waiting ${USAGE_LIMIT_WAIT_MS / 1000}s before retry (${usageLimitRetries}/${MAX_USAGE_LIMIT_RETRIES})`);
+      await sleep(USAGE_LIMIT_WAIT_MS);
+      continue; // don't increment attempt
+    }
+
+    usageLimitTracker.recordSuccess();
     if (lastResult.success) return lastResult;
+    attempt++;
   }
   return lastResult!;
 }
@@ -88,6 +112,12 @@ export async function spawnAgentsParallel(
   const tasks = configs.map((config) => () => spawnAgentWithRetry(config, hiveMindConfig));
   const settled = await runWithConcurrency(tasks, limit);
 
-  // Extract values — spawnAgentWithRetry never throws (returns error result), so all are fulfilled
+  // Check for UsageLimitError — re-throw so callers (orchestrator) can pause
+  for (const r of settled) {
+    if (r.status === "rejected" && r.reason instanceof UsageLimitError) {
+      throw r.reason;
+    }
+  }
+
   return settled.map((r) => (r as PromiseFulfilledResult<AgentResult>).value);
 }

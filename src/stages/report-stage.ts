@@ -19,7 +19,12 @@ import { getSourceFilePaths } from "../types/execution-plan.js";
 import { join } from "node:path";
 import { readdirSync, writeFileSync } from "node:fs";
 
-export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig): Promise<void> {
+export interface ReportStageResult {
+  valid: boolean;
+  missingFiles: string[];
+}
+
+export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig): Promise<ReportStageResult> {
   const reportsDir = join(dirs.workingDir, "reports");
   const memoryPath = join(dirs.knowledgeDir, "memory.md");
   const memoryContent = readMemory(memoryPath);
@@ -188,7 +193,26 @@ export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig)
     );
   }
 
+  // Validate critical output files
+  const criticalFiles = [
+    { path: consolidatedPath, name: "consolidated-report.md" },
+    { path: codeReviewReportPath, name: "code-review-report.md" },
+    { path: retrospectivePath, name: "retrospective.md" },
+  ];
+  const missingFiles: string[] = [];
+  for (const { path, name } of criticalFiles) {
+    const content = readFileSafe(path);
+    if (!content || content.trim().length === 0) {
+      missingFiles.push(name);
+    }
+  }
+
+  if (missingFiles.length > 0) {
+    console.warn(`[REPORT] WARNING: Missing or empty critical files: ${missingFiles.join(", ")}`);
+  }
+
   console.log("REPORT stage complete.");
+  return { valid: missingFiles.length === 0, missingFiles };
 }
 
 function collectAllReportFiles(reportsDir: string): string[] {
