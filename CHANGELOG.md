@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.2](https://github.com/ziyilam3999/hive-mind/compare/v0.13.1...v0.13.2) (2026-03-23)
+
+
+### Bug Fixes
+
+* keep dashboard alive when pipeline pauses at checkpoint ([4ff86e3](https://github.com/ziyilam3999/hive-mind/commit/4ff86e34359fb1c412216930b8aa79b3f0729459))
+* keep dashboard alive when pipeline pauses at checkpoint ([bfeb305](https://github.com/ziyilam3999/hive-mind/commit/bfeb305ff17f29106251db168f5637271f5f410f))
+
 ## [0.13.1](https://github.com/ziyilam3999/hive-mind/compare/v0.13.0...v0.13.1) (2026-03-23)
 
 
