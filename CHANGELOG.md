@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.3](https://github.com/ziyilam3999/hive-mind/compare/v0.13.2...v0.13.3) (2026-03-24)
+
+
+### Bug Fixes
+
+* skip dashboard startup when one is already running ([54f814f](https://github.com/ziyilam3999/hive-mind/commit/54f814f3ada9474d464c690f5485a147c13475ef))
+* skip dashboard startup when one is already running ([0c09744](https://github.com/ziyilam3999/hive-mind/commit/0c0974406f297cb1980e5327bcba155a7b5fbe9f))
+
 ## [0.13.2](https://github.com/ziyilam3999/hive-mind/compare/v0.13.1...v0.13.2) (2026-03-23)
 
 
