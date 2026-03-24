@@ -1457,7 +1457,8 @@ function renderActiveAgents(agents) {
 
 function renderCheckpointBanner(checkpoint) {
   if (!checkpoint || !checkpoint.awaiting) return '';
-  var elapsed = Date.now() - new Date(checkpoint.timestamp).getTime();
+  var tsMs = checkpoint.timestamp ? new Date(checkpoint.timestamp).getTime() : NaN;
+  var elapsed = isNaN(tsMs) ? 0 : Date.now() - tsMs;
   var agoLabel = formatDuration(elapsed) + ' ago';
   var cmd = 'hive-mind approve';
   if (checkpoint.awaiting === 'ship') cmd = 'hive-mind approve  (ships to git)';
