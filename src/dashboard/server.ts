@@ -1570,7 +1570,7 @@ function renderStatsRow(counts) {
   '</div>';
 }
 
-function renderStoryCard(story, idx, costByStory) {
+function renderStoryCard(story, idx, costByStory, now) {
   var cssStatus = statusToCssStatus(story.status);
   var isExpanded = expandedStories[story.id] === true;
   var expandedCls = isExpanded ? ' expanded' : '';
@@ -1582,7 +1582,7 @@ function renderStoryCard(story, idx, costByStory) {
     storyCost = costByStory[story.id].totalCost;
     /* In-progress stories: show wall clock since first agent started */
     if (story.status === 'in-progress' && costByStory[story.id].firstTs) {
-      storyDur = Date.now() - costByStory[story.id].firstTs;
+      storyDur = now - costByStory[story.id].firstTs;
     }
   }
   var durationLabel = storyDur ? formatDuration(storyDur) : '--';
@@ -1656,7 +1656,7 @@ function buildCostByStory(costLog) {
   return map;
 }
 
-function renderStories(stories, costLog) {
+function renderStories(stories, costLog, now) {
   if (!stories || stories.length === 0) {
     return '<div class="card"><div class="card-header"><span class="card-title">Stories</span></div>' +
       '<div class="card-body"><div class="awaiting-data"><div class="awaiting-data-desc">No stories in execution plan yet.</div></div></div></div>';
@@ -1666,7 +1666,7 @@ function renderStories(stories, costLog) {
   var html = '<div class="card"><div class="card-header"><span class="card-title">Stories</span></div>';
   html += '<div class="card-body" style="padding:8px"><div class="story-list">';
   for (var i = 0; i < stories.length; i++) {
-    html += renderStoryCard(stories[i], i, costByStory);
+    html += renderStoryCard(stories[i], i, costByStory, now);
   }
   html += '</div></div></div>';
   return html;
@@ -1763,6 +1763,7 @@ function renderAll() {
     return;
   }
 
+  var now = Date.now();
   var stories = (state.executionPlan && state.executionPlan.stories) ? state.executionPlan.stories : null;
   var managerLog = state.managerLog || [];
   var costLog = state.costLog || [];
@@ -1856,7 +1857,7 @@ function renderAll() {
           if (logPanel) scrollTop = logPanel.scrollTop;
         }
         var tempCard = document.createElement('div');
-        tempCard.innerHTML = renderStoryCard(story, si, costByStory);
+        tempCard.innerHTML = renderStoryCard(story, si, costByStory, now);
         var newCard = tempCard.firstChild;
         if (newCard) {
           storyListEl.replaceChild(newCard, existingCards[si]);
@@ -1910,7 +1911,7 @@ function renderAll() {
 
   /* Two-col: stories + sidebar */
   html += '<div class="two-col">';
-  html += renderStories(stories, costLog);
+  html += renderStories(stories, costLog, now);
   html += '<div class="sidebar">';
   html += renderBudgetSidebar(costTotals, costLog);
   html += renderTokenTable(stories);
