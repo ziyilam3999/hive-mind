@@ -962,14 +962,6 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     animation: cpSlideDown 0.3s ease-out;
     box-shadow: -2px 0 8px -2px rgba(184,134,11,0.18);
   }
-  .checkpoint-banner::after {
-    content: '';
-    position: absolute;
-    left: 0; top: 8px; bottom: 8px;
-    width: 4px;
-    border-radius: 2px;
-    animation: cpEmberGlow 4s ease-in-out infinite;
-  }
   @keyframes cpSlideDown {
     from { opacity: 0; transform: translateY(-12px); }
     to { opacity: 1; transform: translateY(0); }
