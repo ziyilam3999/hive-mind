@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/ziyilam3999/hive-mind/compare/v0.15.2...v0.16.0) (2026-03-24)
+
+
+### Features
+
+* usage limit detection and REPORT stage validation ([#107](https://github.com/ziyilam3999/hive-mind/issues/107)) ([409072b](https://github.com/ziyilam3999/hive-mind/commit/409072b9d61160b1d36cdbe736b41406e7e9e996))
+
 ## [0.15.2](https://github.com/ziyilam3999/hive-mind/compare/v0.15.1...v0.15.2) (2026-03-24)
 
 
