@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/ziyilam3999/hive-mind/compare/v0.13.3...v0.14.0) (2026-03-24)
+
+
+### Features
+
+* **dashboard:** add Swarm Activity panel showing active agents ([#90](https://github.com/ziyilam3999/hive-mind/issues/90)) ([bd4ec44](https://github.com/ziyilam3999/hive-mind/commit/bd4ec44e5273da7a523722cf3e4076f79ff32229))
+
 ## [0.13.3](https://github.com/ziyilam3999/hive-mind/compare/v0.13.2...v0.13.3) (2026-03-24)
 
 
