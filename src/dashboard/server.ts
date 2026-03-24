@@ -958,15 +958,25 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     display: flex;
     align-items: flex-start;
     gap: 16px;
-    animation: cpSlideDown 0.3s ease-out, cpGlow 3s ease-in-out infinite;
+    position: relative;
+    animation: cpSlideDown 0.3s ease-out;
+    box-shadow: -2px 0 8px -2px rgba(184,134,11,0.18);
+  }
+  .checkpoint-banner::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px; bottom: 8px;
+    width: 4px;
+    border-radius: 2px;
+    animation: cpEmberGlow 4s ease-in-out infinite;
   }
   @keyframes cpSlideDown {
     from { opacity: 0; transform: translateY(-12px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  @keyframes cpGlow {
-    0%, 100% { box-shadow: inset 4px 0 0 0 var(--amber), 0 0 0 0 rgba(184,134,11,0); }
-    50% { box-shadow: inset 4px 0 0 0 var(--amber), -4px 0 12px -2px rgba(184,134,11,0.15); }
+  @keyframes cpEmberGlow {
+    0%, 100% { box-shadow: 0 0 6px 1px rgba(184,134,11,0.15); }
+    50% { box-shadow: 0 0 14px 3px rgba(184,134,11,0.35); }
   }
   .checkpoint-hex {
     width: 20px; height: 20px;
@@ -1236,6 +1246,21 @@ function deriveStages(managerLog) {
     }
   }
 
+  /* Map checkpoint to the stage it gates (the NEXT stage that hasn't started yet) */
+  var checkpoint = state ? state.checkpoint : null;
+  var pausedStageKey = null;
+  if (checkpoint && checkpoint.awaiting) {
+    var cpToStage = {
+      'approve-normalize': 'spec',
+      'approve-spec': 'plan',
+      'approve-plan': 'execute',
+      'approve-preflight': 'execute',
+      'approve-integration': 'report',
+      'approve-diagnosis': 'execute'
+    };
+    pausedStageKey = cpToStage[checkpoint.awaiting] || null;
+  }
+
   var stages = [];
   for (var s = 0; s < STAGE_DEFS.length; s++) {
     var def = STAGE_DEFS[s];
@@ -1259,8 +1284,12 @@ function deriveStages(managerLog) {
       stageStatus = 'done';
       durationMs = endTs - startTs;
     } else if (startTs) {
-      stageStatus = 'running';
-      durationMs = Date.now() - startTs;
+      if (def.key === pausedStageKey) {
+        stageStatus = 'pending';
+      } else {
+        stageStatus = 'running';
+        durationMs = Date.now() - startTs;
+      }
     }
 
     stages.push({
