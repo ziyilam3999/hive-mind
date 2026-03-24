@@ -1939,7 +1939,6 @@ export async function startDashboard(
         const address = server.address();
         const boundPort = typeof address === "object" && address ? address.port : portOverride;
         const url = `http://localhost:${boundPort}`;
-        console.log(`Dashboard: ${url}`);
         openBrowser(url);
         resolvePromise({
           stop: () => { clearInterval(pollTimer); server.close(); },
