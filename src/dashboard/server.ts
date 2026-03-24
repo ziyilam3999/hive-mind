@@ -1,9 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join, resolve, sep } from "node:path";
 import { readFile, readdir } from "node:fs/promises";
-import { exec } from "node:child_process";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import type { HiveMindConfig } from "../config/schema.js";
+import { openBrowser } from "./browser.js";
 
 const POLL_INTERVAL_MS = 2000;
 const PAGE_SIZE = 200;
@@ -95,23 +95,6 @@ function withTimeout(res: ServerResponse, handler: () => Promise<void>): void {
     .finally(() => {
       clearTimeout(timer);
     });
-}
-
-function openBrowserFireAndForget(url: string): void {
-  const platform = process.platform;
-  let cmd: string | undefined;
-
-  if (platform === "win32") {
-    cmd = `start "" "${url}"`;
-  } else if (platform === "darwin") {
-    cmd = `open "${url}"`;
-  } else if (platform === "linux") {
-    cmd = `xdg-open "${url}"`;
-  }
-
-  if (cmd) {
-    exec(cmd, { timeout: 5000 }, () => {});
-  }
 }
 
 async function handleLogsRoute(
@@ -1929,10 +1912,7 @@ export async function startDashboard(
         const boundPort = typeof address === "object" && address ? address.port : port;
         const url = `http://localhost:${boundPort}`;
 
-        console.log(`Dashboard: ${url}`);
-
-        // Fire-and-forget browser open
-        openBrowserFireAndForget(url);
+        openBrowser(url);
 
         resolvePromise({
           stop: () => {
@@ -1959,8 +1939,7 @@ export async function startDashboard(
         const address = server.address();
         const boundPort = typeof address === "object" && address ? address.port : portOverride;
         const url = `http://localhost:${boundPort}`;
-        console.log(`Dashboard: ${url}`);
-        openBrowserFireAndForget(url);
+        openBrowser(url);
         resolvePromise({
           stop: () => { clearInterval(pollTimer); server.close(); },
           url,
