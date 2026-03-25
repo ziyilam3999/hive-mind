@@ -545,10 +545,13 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 8px;
+    padding: 6px 8px 8px;
     border-radius: 6px;
     background: var(--amber-bg);
     border: 1px solid rgba(184,134,11,0.12);
+    flex-wrap: wrap;
+    position: relative;
+    overflow: hidden;
   }
   .swarm-hex {
     width: 10px; height: 10px;
@@ -604,6 +607,42 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     color: var(--text-dim);
     display: flex;
     justify-content: space-between;
+  }
+  .swarm-context .subtask-suffix {
+    font-weight: 400;
+    opacity: 0.7;
+  }
+  .swarm-description {
+    width: 100%;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--text-dim);
+    padding-left: 20px;
+    margin-top: -2px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .swarm-row::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--amber) 40%, var(--amber-light) 50%, var(--amber) 60%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmerSlide 2.5s ease-in-out infinite;
+    border-radius: 0 0 6px 6px;
+  }
+  .swarm-row.pipeline-agent::after {
+    background: linear-gradient(90deg, transparent 0%, var(--green) 40%, var(--green-light) 50%, var(--green) 60%, transparent 100%);
+    background-size: 200% 100%;
+  }
+  @keyframes shimmerSlide {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
   }
 
   /* ===== TWO COLUMN LAYOUT ===== */
@@ -1369,9 +1408,9 @@ function deriveActiveAgents(stories, managerLog, costLog) {
       if (entry.action === 'PLAN_COMPLETE') hasPlanComplete = true;
     }
     if (pipelineStartTs && !hasSpecComplete) {
-      agents.push({ type: 'spec-agent', context: 'SPEC', substage: '', startTs: pipelineStartTs, pipeline: true });
+      agents.push({ type: 'spec-agent', context: 'SPEC', substage: '', startTs: pipelineStartTs, pipeline: true, subtaskId: null, description: 'Generating specification from PRD' });
     } else if (hasSpecComplete && !hasPlanComplete && specCompleteTs) {
-      agents.push({ type: 'planner', context: 'PLAN', substage: '', startTs: specCompleteTs, pipeline: true });
+      agents.push({ type: 'planner', context: 'PLAN', substage: '', startTs: specCompleteTs, pipeline: true, subtaskId: null, description: 'Creating execution plan' });
     }
   }
 
@@ -1414,8 +1453,31 @@ function deriveActiveAgents(stories, managerLog, costLog) {
         if (latestAction.action === 'COMPLIANCE_CHECK') { agentType = 'compliance'; substage = 'VERIFY'; }
         if (latestAction.action === 'BUILD_RETRY') { agentType = 'implementer'; substage = 'RETRY'; }
       }
+      var subtaskId = null;
+      if (story.subTasks) {
+        for (var st = 0; st < story.subTasks.length; st++) {
+          if (story.subTasks[st].status === 'in-progress') { subtaskId = story.subTasks[st].id; break; }
+        }
+      }
+      var description = null;
+      if (latestAction) {
+        var act = latestAction.action;
+        var attemptSuffix = latestAction.attempt ? ' (attempt ' + latestAction.attempt + ')' : '';
+        if (act === 'BUILD_COMPLETE') description = 'Refactoring after build' + attemptSuffix;
+        else if (act === 'VERIFY_ATTEMPT') description = 'Running verification' + attemptSuffix;
+        else if (act === 'COMPLIANCE_CHECK') description = 'Running compliance checks';
+        else if (act === 'BUILD_RETRY') description = 'Retrying build' + attemptSuffix;
+        else if (act === 'FIX_UNVERIFIED') description = 'Fixing unverified items' + attemptSuffix;
+        else if (act === 'EVAL_ATTEMPT') description = 'Evaluating results' + attemptSuffix;
+        else description = 'Building implementation' + attemptSuffix;
+      } else {
+        if (substage === 'BUILD') description = 'Building implementation';
+        else if (substage === 'VERIFY') description = 'Running verification';
+        else if (substage === 'TEST') description = 'Running tests';
+        else if (substage === 'COMMIT') description = 'Preparing commit';
+      }
       var startTs = startTsByStory[story.id] || waveStartByStory[story.id] || (now - (story.durationMs || 0));
-      agents.push({ type: agentType, context: story.id, substage: substage, startTs: startTs, pipeline: false, wave: story.wave || currentWave });
+      agents.push({ type: agentType, context: story.id, substage: substage, startTs: startTs, pipeline: false, wave: story.wave || currentWave, subtaskId: subtaskId, description: description });
     }
   }
   return { agents: agents, currentWave: currentWave };
@@ -1437,10 +1499,16 @@ function renderActiveAgents(result) {
     html += '<div class="' + rowClass + '">';
     html += '<span class="swarm-hex"></span>';
     html += '<span class="swarm-agent-type">' + escapeHtml(a.type) + '</span>';
-    html += '<span class="swarm-context">' + escapeHtml(a.context) + '</span>';
+    var contextHtml = escapeHtml(a.context);
+    if (a.subtaskId && a.subtaskId !== a.context) {
+      var suffix = a.subtaskId.replace(a.context, '');
+      contextHtml = escapeHtml(a.context) + '<span class="subtask-suffix">' + escapeHtml(suffix) + '</span>';
+    }
+    html += '<span class="swarm-context">' + contextHtml + '</span>';
     if (a.substage) html += '<span class="swarm-substage">' + escapeHtml(a.substage) + '</span>';
     html += '<span class="swarm-dots">&middot;&middot;&middot;</span>';
     html += '<span class="swarm-elapsed">' + formatDuration(elapsed) + '</span>';
+    if (a.description) html += '<span class="swarm-description">' + escapeHtml(a.description) + '</span>';
     html += '</div>';
   }
   html += '</div>';
