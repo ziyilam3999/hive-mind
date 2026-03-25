@@ -165,7 +165,7 @@ export async function runPipeline(
       });
 
       console.log(getCheckpointMessage("approve-normalize"));
-      notifyCheckpoint(options?.silent ?? false, "Normalize complete. Review and approve to continue.");
+      notifyCheckpoint(options?.silent ?? false, getCheckpointMessage("approve-normalize"));
       return;
     }
 
@@ -249,7 +249,7 @@ async function runSpecThenCheckpoint(
 
   console.log("SPEC stage complete. Awaiting approval.");
   console.log(getCheckpointMessage("approve-spec"));
-  notifyCheckpoint(silent);
+  notifyCheckpoint(silent, getCheckpointMessage("approve-spec"));
 }
 
 function getPipelineStartData(workingDir: string): { prdPath: string; stopAfterPlan: boolean; budget?: number; greenfield?: boolean } {
@@ -323,7 +323,7 @@ export async function resumeFromCheckpoint(
         if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "NORMALIZE re-run with feedback complete, awaiting approval");
         console.log("NORMALIZE stage updated. Review again.");
         console.log(getCheckpointMessage("approve-normalize"));
-        notifyCheckpoint(silent);
+        notifyCheckpoint(silent, getCheckpointMessage("approve-normalize"));
         return;
       }
 
@@ -353,7 +353,7 @@ export async function resumeFromCheckpoint(
         });
         if (config.liveReport) updateLiveReport(dirs.workingDir, "SPEC", "SPEC re-run with feedback complete, awaiting approval");
         console.log("SPEC stage updated with feedback. Review again.");
-        notifyCheckpoint(silent);
+        notifyCheckpoint(silent, getCheckpointMessage("approve-spec"));
         return;
       }
 
@@ -435,7 +435,7 @@ export async function resumeFromCheckpoint(
 
       console.log("PLAN stage complete. Awaiting approval.");
       console.log(getCheckpointMessage("approve-plan"));
-      notifyCheckpoint(silent);
+      notifyCheckpoint(silent, getCheckpointMessage("approve-plan"));
       break;
     }
     case "approve-plan": {
@@ -482,7 +482,7 @@ export async function resumeFromCheckpoint(
 
         console.log("Integration verification complete. Awaiting approval.");
         console.log(getCheckpointMessage("approve-integration"));
-        notifyCheckpoint(silent);
+        notifyCheckpoint(silent, getCheckpointMessage("approve-integration"));
         break;
       }
 
@@ -508,7 +508,7 @@ export async function resumeFromCheckpoint(
         });
         console.log("EXECUTE + REPORT stages complete. Awaiting verification.");
         console.log(verifyMsg);
-        notifyCheckpoint(silent);
+        notifyCheckpoint(silent, getCheckpointMessage("verify"));
       }
       break;
     }
@@ -544,7 +544,7 @@ export async function resumeFromCheckpoint(
           timestamp: isoTimestamp(),
           feedback: null,
         });
-        notifyCheckpoint(silent);
+        notifyCheckpoint(silent, getCheckpointMessage("approve-integration"));
         break;
       }
 
@@ -569,7 +569,7 @@ export async function resumeFromCheckpoint(
         });
         console.log("EXECUTE + REPORT stages complete. Awaiting verification.");
         console.log(verifyMsg);
-        notifyCheckpoint(silent);
+        notifyCheckpoint(silent, getCheckpointMessage("verify"));
       }
       break;
     }
@@ -609,7 +609,7 @@ export async function resumeFromCheckpoint(
         });
         console.log("REPORT stage complete. Awaiting verification.");
         console.log(verifyMsg);
-        notifyCheckpoint(silent);
+        notifyCheckpoint(silent, getCheckpointMessage("verify"));
       }
       break;
     }
@@ -625,7 +625,7 @@ export async function resumeFromCheckpoint(
 
       console.log("Verification approved. Ready to ship.");
       console.log(getCheckpointMessage("ship"));
-      notifyCheckpoint(silent);
+      notifyCheckpoint(silent, getCheckpointMessage("ship"));
       break;
     }
     case "ship": {
@@ -1063,7 +1063,7 @@ export async function runExecuteStage(
       timestamp: isoTimestamp(),
       feedback: null,
     });
-    notifyCheckpoint(false);
+    notifyCheckpoint(false, getCheckpointMessage("approve-preflight"));
     return;
   }
 
@@ -1116,7 +1116,7 @@ export async function runExecuteStage(
         timestamp: isoTimestamp(),
         feedback: null,
       });
-      notifyCheckpoint(false);
+      notifyCheckpoint(false, getCheckpointMessage("approve-usage-limit"));
       return;
     }
 
@@ -1448,7 +1448,7 @@ export async function runBugFixPipeline(
 
       console.log("DIAGNOSE complete. Awaiting approval.");
       console.log(getCheckpointMessage("approve-diagnosis"));
-      notifyCheckpoint(options?.silent ?? false);
+      notifyCheckpoint(options?.silent ?? false, getCheckpointMessage("approve-diagnosis"));
       return 0; // Pipeline pauses here — resumed via approve command
     }
 
