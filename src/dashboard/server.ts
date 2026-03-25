@@ -1296,11 +1296,13 @@ function deriveStages(managerLog) {
       durationMs = endTs - startTs;
     } else if (startTs) {
       if (def.key === pausedStageKey) {
-        stageStatus = 'pending';
+        stageStatus = 'paused';
       } else {
         stageStatus = 'running';
         durationMs = Date.now() - startTs;
       }
+    } else if (def.key === pausedStageKey) {
+      stageStatus = 'paused';
     }
 
     stages.push({

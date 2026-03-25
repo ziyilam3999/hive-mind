@@ -155,6 +155,8 @@ export function deriveStages(input: DeriveStagesInput, now?: number): DerivedSta
         stageStatus = "running";
         durationMs = currentTime - startTs;
       }
+    } else if (def.key === pausedStageKey) {
+      stageStatus = "paused";
     }
 
     stages.push({ key: def.key, label: def.label, status: stageStatus, durationMs });

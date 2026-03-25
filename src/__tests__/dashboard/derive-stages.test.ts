@@ -82,7 +82,7 @@ describe("deriveStages", () => {
     expect(stages[2].status).toBe("pending");
   });
 
-  it("returns paused status for checkpoint-gated stage", () => {
+  it("returns paused status for checkpoint-gated stage with startTs", () => {
     const input = makeInput({
       managerLog: [
         logEntry("PIPELINE_START", "2026-03-25T09:00:00Z"),
@@ -94,6 +94,29 @@ describe("deriveStages", () => {
     const stages = deriveStages(input, NOW);
     expect(stages[0].status).toBe("done"); // spec done
     expect(stages[1].status).toBe("paused"); // plan is gated by approve-spec
+  });
+
+  it("returns paused status for checkpoint-gated stage even without startTs", () => {
+    const input = makeInput({
+      managerLog: [
+        logEntry("PIPELINE_START", "2026-03-25T09:00:00Z"),
+      ],
+      checkpoint: { awaiting: "approve-normalize" },
+    });
+    const stages = deriveStages(input, NOW);
+    // spec is gated by approve-normalize; SPEC_START not in log, PIPELINE_START is fallback
+    // so spec has startTs via fallback -- but let's test with no fallback either
+    expect(stages[0].status).toBe("paused");
+  });
+
+  it("returns paused when gated stage has zero log entries for its start", () => {
+    const input = makeInput({
+      managerLog: [],
+      checkpoint: { awaiting: "approve-plan" },
+    });
+    const stages = deriveStages(input, NOW);
+    // execute is gated by approve-plan, but no log entries at all
+    expect(stages[2].status).toBe("paused");
   });
 
   it("marks stage as done when start and end actions both present", () => {
