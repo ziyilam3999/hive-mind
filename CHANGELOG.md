@@ -1,3 +1,26 @@
+## [0.17.0](https://github.com/ziyilam3999/hive-mind/compare/v0.16.0...v0.17.0) (2026-03-25)
+
+### Features
+
+* **dashboard:** enhance swarm panel with subtask IDs, descriptions, and shimmer (#124)
+
+### Bug Fixes
+
+* generalize WAVE_START fallback into STAGE_DEFS with tests (#122)
+* add paused visual state for checkpoint-gated stages (#121)
+* add context-specific messages to all notifyCheckpoint call sites (#120)
+* consolidate managerLog scan passes in deriveActiveAgents (#118)
+* deriveActiveAgents returns structured object (#117)
+* capture Date.now() once per render pass in dashboard (#116)
+* simplify checkpoint banner left indicator (#115)
+* guard against NaN in checkpoint banner elapsed time (#114)
+* guard against negative elapsed time in swarm activity (#113)
+
+### Miscellaneous
+
+* update README to reflect v0.16.0 capabilities (#119)
+* remove release-please GitHub Action (#112)
+
 # Changelog
 
 ## [0.16.0](https://github.com/ziyilam3999/hive-mind/compare/v0.15.2...v0.16.0) (2026-03-24)
