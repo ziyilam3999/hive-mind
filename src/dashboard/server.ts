@@ -389,6 +389,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   .step.failed .step-hex { background: var(--red); }
   .step.failed .step-hex-inner { background: var(--red-light); color: var(--red); }
 
+  .step.paused .step-hex { background: transparent; border: 2px solid var(--amber); }
+  .step.paused .step-hex-inner { background: var(--amber-light); color: var(--amber); }
+
   .step-label {
     font-size: 13px;
     font-weight: 600;
@@ -1294,7 +1297,7 @@ function deriveStages(managerLog) {
       durationMs = endTs - startTs;
     } else if (startTs) {
       if (def.key === pausedStageKey) {
-        stageStatus = 'pending';
+        stageStatus = 'paused';
       } else {
         stageStatus = 'running';
         durationMs = Date.now() - startTs;
@@ -1521,7 +1524,7 @@ function renderStepper(stages, stories) {
   html += '<div class="stepper">';
   for (var s = 0; s < stages.length; s++) {
     var stage = stages[s];
-    var cls = stage.status === 'done' ? 'done' : (stage.status === 'running' ? 'running' : '');
+    var cls = stage.status === 'done' ? 'done' : (stage.status === 'running' ? 'running' : (stage.status === 'paused' ? 'paused' : ''));
     var inner = '';
     if (stage.status === 'done') {
       inner = '&#10003;';
@@ -1542,7 +1545,7 @@ function renderStepper(stages, stories) {
     if (s < stages.length - 1) {
       var connCls = '';
       if (stage.status === 'done' && stages[s + 1].status === 'done') connCls = 'done';
-      else if (stage.status === 'done' && stages[s + 1].status === 'running') connCls = 'active';
+      else if (stage.status === 'done' && (stages[s + 1].status === 'running' || stages[s + 1].status === 'paused')) connCls = 'active';
       html += '<div class="step-connector ' + connCls + '"></div>';
     }
   }
