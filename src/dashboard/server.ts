@@ -1185,10 +1185,10 @@ function statusToCssStatus(status) {
 
 /* Pipeline stages derived from managerLog */
 var STAGE_DEFS = [
-  { key: 'spec',    label: 'Spec',    startAction: 'SPEC_START',    fallbackStart: 'PIPELINE_START', endAction: 'SPEC_COMPLETE' },
-  { key: 'plan',    label: 'Plan',    startAction: 'PLAN_START',    fallbackStart: 'SPEC_COMPLETE',  endAction: 'PLAN_COMPLETE' },
-  { key: 'execute', label: 'Execute', startAction: 'EXECUTE_START', fallbackStart: 'PLAN_COMPLETE',  endAction: 'EXECUTE_COMPLETE' },
-  { key: 'report',  label: 'Report',  startAction: 'EXECUTE_COMPLETE', fallbackStart: null, endAction: 'REPORT_COMPLETE' }
+  { key: 'spec',    label: 'Spec',    startAction: 'SPEC_START',    fallbackStart: 'PIPELINE_START', endAction: 'SPEC_COMPLETE', secondaryFallback: null },
+  { key: 'plan',    label: 'Plan',    startAction: 'PLAN_START',    fallbackStart: 'SPEC_COMPLETE',  endAction: 'PLAN_COMPLETE', secondaryFallback: null },
+  { key: 'execute', label: 'Execute', startAction: 'EXECUTE_START', fallbackStart: 'PLAN_COMPLETE',  endAction: 'EXECUTE_COMPLETE', secondaryFallback: 'WAVE_START' },
+  { key: 'report',  label: 'Report',  startAction: 'EXECUTE_COMPLETE', fallbackStart: null, endAction: 'REPORT_COMPLETE', secondaryFallback: null }
 ];
 
 function deriveStages(managerLog) {
@@ -1256,23 +1256,25 @@ function deriveStages(managerLog) {
     pausedStageKey = cpToStage[checkpoint.awaiting] || null;
   }
 
-  /* Find first WAVE_START as EXECUTE fallback (for runs without EXECUTE_START) */
-  var firstWaveStart = null;
+  /* Find first occurrence of each secondaryFallback action */
+  var firstOccurrence = {};
   for (var fw = 0; fw < managerLog.length; fw++) {
-    if ((managerLog[fw].action || '') === 'WAVE_START') {
-      firstWaveStart = new Date(managerLog[fw].timestamp).getTime();
-      break;
+    var fwAct = (managerLog[fw].action || '');
+    for (var d = 0; d < STAGE_DEFS.length; d++) {
+      if (STAGE_DEFS[d].secondaryFallback === fwAct && firstOccurrence[fwAct] == null) {
+        firstOccurrence[fwAct] = new Date(managerLog[fw].timestamp).getTime();
+      }
     }
   }
 
   var stages = [];
   for (var s = 0; s < STAGE_DEFS.length; s++) {
     var def = STAGE_DEFS[s];
-    /* Resolve startTs: prefer _START action, then WAVE_START for execute, then fallback */
+    /* Resolve startTs: prefer _START action, then secondaryFallback first-occurrence, then fallback */
     var startTs = actionTimestamps[def.startAction];
     if (!startTs) {
-      if (def.key === 'execute' && firstWaveStart) {
-        startTs = firstWaveStart;
+      if (def.secondaryFallback && firstOccurrence[def.secondaryFallback]) {
+        startTs = firstOccurrence[def.secondaryFallback];
       } else if (def.fallbackStart) {
         startTs = actionTimestamps[def.fallbackStart];
       }
@@ -1302,6 +1304,8 @@ function deriveStages(managerLog) {
         stageStatus = 'running';
         durationMs = Date.now() - startTs;
       }
+    } else if (def.key === pausedStageKey) {
+      stageStatus = 'paused';
     }
 
     stages.push({
