@@ -486,30 +486,7 @@ export async function resumeFromCheckpoint(
         break;
       }
 
-      const reportResult1 = await runReportStage(dirs, config);
-      await safeUpdateManifest(dirs.workingDir);
-      await runScorecard("report", dirs, config);
-      if (config.liveReport) updateLiveReport(dirs.workingDir, "REPORT", "Report stage complete");
-
-      {
-        const verifyMsg = reportResult1.valid
-          ? getCheckpointMessage("verify")
-          : `REPORT stage incomplete — missing: ${reportResult1.missingFiles.join(", ")}. Review and approve to continue.`;
-        if (!reportResult1.valid) {
-          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("REPORT_INCOMPLETE", {
-            reason: `REPORT stage missing files: ${reportResult1.missingFiles.join(", ")}`,
-          }));
-        }
-        writeCheckpoint(dirs.workingDir, {
-          awaiting: "verify",
-          message: verifyMsg,
-          timestamp: isoTimestamp(),
-          feedback: null,
-        });
-        console.log("EXECUTE + REPORT stages complete. Awaiting verification.");
-        console.log(verifyMsg);
-        notifyCheckpoint(silent, getCheckpointMessage("verify"));
-      }
+      await writeReportAndCheckpoint(dirs, config, silent, "EXECUTE + REPORT stages complete. Awaiting verification.");
       break;
     }
     case "approve-usage-limit": {
@@ -548,29 +525,7 @@ export async function resumeFromCheckpoint(
         break;
       }
 
-      const reportResult2 = await runReportStage(dirs, config);
-      await safeUpdateManifest(dirs.workingDir);
-      await runScorecard("report", dirs, config);
-
-      {
-        const verifyMsg = reportResult2.valid
-          ? getCheckpointMessage("verify")
-          : `REPORT stage incomplete — missing: ${reportResult2.missingFiles.join(", ")}. Review and approve to continue.`;
-        if (!reportResult2.valid) {
-          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("REPORT_INCOMPLETE", {
-            reason: `REPORT stage missing files: ${reportResult2.missingFiles.join(", ")}`,
-          }));
-        }
-        writeCheckpoint(dirs.workingDir, {
-          awaiting: "verify",
-          message: verifyMsg,
-          timestamp: isoTimestamp(),
-          feedback: null,
-        });
-        console.log("EXECUTE + REPORT stages complete. Awaiting verification.");
-        console.log(verifyMsg);
-        notifyCheckpoint(silent, getCheckpointMessage("verify"));
-      }
+      await writeReportAndCheckpoint(dirs, config, silent, "EXECUTE + REPORT stages complete. Awaiting verification.");
       break;
     }
     case "approve-diagnosis": {
@@ -587,30 +542,7 @@ export async function resumeFromCheckpoint(
     case "approve-integration": {
       deleteCheckpoint(dirs.workingDir);
 
-      const reportResult3 = await runReportStage(dirs, config);
-      await safeUpdateManifest(dirs.workingDir);
-      await runScorecard("report", dirs, config);
-      if (config.liveReport) updateLiveReport(dirs.workingDir, "REPORT", "Report stage complete");
-
-      {
-        const verifyMsg = reportResult3.valid
-          ? getCheckpointMessage("verify")
-          : `REPORT stage incomplete — missing: ${reportResult3.missingFiles.join(", ")}. Review and approve to continue.`;
-        if (!reportResult3.valid) {
-          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("REPORT_INCOMPLETE", {
-            reason: `REPORT stage missing files: ${reportResult3.missingFiles.join(", ")}`,
-          }));
-        }
-        writeCheckpoint(dirs.workingDir, {
-          awaiting: "verify",
-          message: verifyMsg,
-          timestamp: isoTimestamp(),
-          feedback: null,
-        });
-        console.log("REPORT stage complete. Awaiting verification.");
-        console.log(verifyMsg);
-        notifyCheckpoint(silent, getCheckpointMessage("verify"));
-      }
+      await writeReportAndCheckpoint(dirs, config, silent, "REPORT stage complete. Awaiting verification.");
       break;
     }
     case "verify": {
@@ -1339,6 +1271,46 @@ export async function runExecuteStage(
   const allFailed = plan.stories.every((s) => s.status === "failed");
   if (allFailed) {
     console.error("All stories failed. Halting.");
+  }
+}
+
+/**
+ * Shared helper: run report stage, update manifest/scorecard/liveReport,
+ * then write a "verify" checkpoint and notify.
+ *
+ * Extracted from 3 duplicated blocks (approve-plan, approve-usage-limit,
+ * approve-integration) to fix a latent bug where the approve-usage-limit
+ * path was missing the config.liveReport guard.
+ */
+async function writeReportAndCheckpoint(
+  dirs: PipelineDirs,
+  config: HiveMindConfig,
+  silent: boolean,
+  consoleMessage: string,
+): Promise<void> {
+  const reportResult = await runReportStage(dirs, config);
+  await safeUpdateManifest(dirs.workingDir);
+  await runScorecard("report", dirs, config);
+  if (config.liveReport) updateLiveReport(dirs.workingDir, "REPORT", "Report stage complete");
+
+  {
+    const verifyMsg = reportResult.valid
+      ? getCheckpointMessage("verify")
+      : `REPORT stage incomplete — missing: ${reportResult.missingFiles.join(", ")}. Review and approve to continue.`;
+    if (!reportResult.valid) {
+      appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("REPORT_INCOMPLETE", {
+        reason: `REPORT stage missing files: ${reportResult.missingFiles.join(", ")}`,
+      }));
+    }
+    writeCheckpoint(dirs.workingDir, {
+      awaiting: "verify",
+      message: verifyMsg,
+      timestamp: isoTimestamp(),
+      feedback: null,
+    });
+    console.log(consoleMessage);
+    console.log(verifyMsg);
+    notifyCheckpoint(silent, getCheckpointMessage("verify"));
   }
 }
 
