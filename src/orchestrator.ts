@@ -794,12 +794,32 @@ async function executeStoryWithSubTasks(
   const logPath = join(dirs.workingDir, "manager-log.jsonl");
   let totalAttempts = 0;
 
+  // Checkpoint resume — skip sub-tasks that already completed before a crash
+  const checkpointPath = join(dirs.workingDir, getReportPath(story.id, "checkpoint.json"));
+  const checkpointContent = readFileSafe(checkpointPath);
+  const completedSubStages = new Set<string>();
+  if (checkpointContent) {
+    try {
+      const cp = JSON.parse(checkpointContent);
+      if (Array.isArray(cp.completedSubStages)) {
+        for (const s of cp.completedSubStages) completedSubStages.add(s);
+        console.log(`[${story.id}] Resuming from checkpoint — completed sub-tasks: ${[...completedSubStages].join(", ")}`);
+      }
+    } catch { /* ignore corrupt checkpoint */ }
+  }
+
   console.log(`[${story.id}] SUB-TASK EXECUTION: ${story.subTasks!.length} sub-tasks`);
 
   const failedSubTasks: string[] = [];
 
   for (const subTask of story.subTasks!) {
     if (subTask.status === "passed") continue; // already done (resume case)
+
+    if (completedSubStages.has(subTask.id)) {
+      console.log(`[${story.id}/${subTask.id}] Skipping -- already completed (checkpoint)`);
+      subTask.status = "passed";
+      continue;
+    }
 
     // Retry loop for this sub-task
     let passed = false;
