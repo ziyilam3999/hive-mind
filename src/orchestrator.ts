@@ -10,6 +10,7 @@ import {
   deleteCheckpoint,
   getCheckpointMessage,
 } from "./state/checkpoint.js";
+import { BuildPipelineError } from "./utils/errors.js";
 import { UsageLimitError, usageLimitTracker } from "./utils/usage-limit.js";
 import type { Story } from "./types/execution-plan.js";
 import {
@@ -729,9 +730,7 @@ async function executeWholeStory(
         break;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        const isRetryable =
-          msg.startsWith("BUILD file existence check failed") ||
-          msg.startsWith("BUILD type-check gate failed");
+        const isRetryable = err instanceof BuildPipelineError;
 
         if (!isRetryable || attempt === maxBuildAttempts) {
           if (!isRetryable) {
@@ -901,8 +900,7 @@ async function executeStoryWithSubTasks(
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const isPipelineError = msg.startsWith("BUILD file existence check failed")
-          || msg.startsWith("BUILD type-check gate failed");
+        const isPipelineError = err instanceof BuildPipelineError;
         if (!isPipelineError) throw err;
         console.warn(`[${story.id}/${subTask.id}] attempt ${attempt} error: ${msg}`);
       }
