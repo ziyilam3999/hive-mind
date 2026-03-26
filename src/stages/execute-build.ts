@@ -126,11 +126,7 @@ export async function runBuild(
   }
   if (hasTsc) {
     try {
-      const tscArgs = ["tsc", "--noEmit", "--incremental"];
-      if (subTaskScope?.sourceFiles?.length) {
-        tscArgs.push(...subTaskScope.sourceFiles.map(f => resolve(targetDir, f)));
-      }
-      await execFileAsync("npx", tscArgs, {
+      await execFileAsync("npx", ["tsc", "--noEmit", "--incremental"], {
         cwd: targetDir,
         timeout: 120_000,
         shell: process.platform === "win32",
