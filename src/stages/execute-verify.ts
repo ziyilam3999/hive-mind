@@ -355,7 +355,10 @@ export function verifyFixApplied(
         if (existsSync(absPath)) return true;
       } else {
         // File existed before — check if content changed
-        if (!existsSync(absPath)) return true; // deleted = modification
+        if (!existsSync(absPath)) {
+          console.warn(`[K5 gate] Source file deleted: ${relPath} -- treating as failure`);
+          return false;
+        }
         const currentHash = createHash("sha256").update(readFileSync(absPath)).digest("hex");
         if (currentHash !== prevHash) return true;
       }
