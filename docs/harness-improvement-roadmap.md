@@ -641,6 +641,643 @@ Current behavior (`hive-mind start --prd ./task.md`) maps to `standard` tier. No
 
 ---
 
+---
+
+## Part 2: Architecture Evolution -- 9 Strategic Questions
+
+### Q9: MCP Support
+
+**Current state:** Hive Mind has ZERO MCP integration. Agents are spawned via Claude CLI subprocess (`src/utils/shell.ts:82-207`). Tools are passed as `--allowedTools` comma-separated strings. There is no tool discovery, no persistent tool servers, no standardized tool protocol.
+
+**Why this matters:** MCP (Model Context Protocol) is now the industry standard for agent-tool integration, adopted by Claude, ChatGPT, Cursor, Gemini, VS Code, and Copilot. 10,000+ public MCP servers exist. By not supporting MCP, Hive Mind:
+- Cannot use any existing MCP server (databases, APIs, Slack, Jira, GitHub)
+- Cannot expose its own capabilities as MCP tools for other agents
+- Cannot benefit from MCP's tool discovery, state persistence, or resource primitives
+
+**ELI5:** Imagine every app store in the world uses one plug format, but your device uses a custom cable. You can't use any of the 10,000 apps, and nobody can connect to you.
+
+**Recommendation -- two phases:**
+
+**Phase 1: Consume MCP servers (agent tools)**
+- Allow `.hivemindrc.json` to declare MCP servers (like Claude Code's settings)
+- When spawning agents, start declared MCP servers and pass them via `--mcp-config`
+- Immediate value: agents can use SQLite MCP (for RAG memory Q7), GitHub MCP, filesystem MCP, etc.
+- Implementation: modify `src/utils/shell.ts:spawnClaude()` to accept `--mcp-config` flag
+
+```json
+// .hivemindrc.json
+{
+  "mcpServers": {
+    "sqlite": { "command": "npx", "args": ["-y", "@anthropic-ai/mcp-server-sqlite", "hive-mind.db"] },
+    "github": { "command": "npx", "args": ["-y", "@anthropic-ai/mcp-server-github"] }
+  }
+}
+```
+
+**Phase 2: Expose Hive Mind as MCP server**
+- Expose pipeline operations as MCP tools: `start_pipeline`, `check_status`, `approve`, `reject`, `get_report`
+- Enables other agents/orchestrators to drive Hive Mind programmatically
+- This is how Hive Mind becomes composable in a larger agent ecosystem (relevant to Q12 -- orchestration layer)
+
+**Priority:** HIGH. MCP is table stakes in 2026. Phase 1 is small effort, high value.
+
+---
+
+### Q10: Scalability -- Dynamic Agent Architecture
+
+**Current state:** Hive Mind has 33 hardcoded agent types (`src/types/agents.ts:3-42`), each with fixed jobs (`src/agents/prompts.ts:28-68`), fixed rules, and fixed model assignments. The pipeline shape is predetermined.
+
+**The problem with 3 fixed tiers (Quick/Standard/Thorough):** Still rigid. A 10-story PRD might need thorough SPEC but quick VERIFY. A frontend-heavy project needs Playwright but a CLI tool doesn't. Tiers are better than one-size-fits-all, but still limited.
+
+**Two approaches to dynamic agents:**
+
+#### Option A: Agents as `.agent/` definitions
+
+Each agent is a folder with its own definition:
+
+```
+.hive-mind-agents/
+  implementer/
+    agent.yaml          # job description, model, tools, rules
+    system-prompt.md    # full system prompt
+    eval-criteria.md    # how to evaluate this agent's output
+  tester/
+    agent.yaml
+    system-prompt.md
+    eval-criteria.md
+```
+
+**Pros:** Self-contained, versionable, forkable. Users can customize agents per project. New agent types can be added without code changes.
+
+**Cons:** Agents are passive definitions -- they don't "do" anything on their own. The orchestrator still decides when to invoke them.
+
+#### Option B: Agents as `.skill/` definitions
+
+Each capability is a skill that can be composed:
+
+```
+.hive-mind-skills/
+  spec-generation/
+    skill.yaml          # inputs, outputs, triggers
+    steps.md            # multi-agent workflow within this skill
+    eval.md             # success criteria
+  code-review/
+    skill.yaml
+    steps.md
+    eval.md
+```
+
+**Pros:** Skills are composable workflows, not just single agents. A skill can internally use multiple agents. Skills can be created/improved by a skill-creator meta-agent.
+
+**Cons:** More complex. Skills need an execution engine.
+
+#### Recommendation: Hybrid -- `.agent/` for agent definitions + orchestrator intelligence for composition
+
+**ELI5:** Think of agents like workers with resumes (`.agent/` files). The orchestrator is the project manager who reads the resumes and decides who to hire for each job. For a simple task, it hires 2 people. For a complex task, it hires 20. It doesn't follow a fixed org chart -- it staffs based on the work.
+
+**How it works:**
+1. Agent definitions live in `.hive-mind-agents/` (or bundled defaults)
+2. Each definition declares: capabilities, model tier, tools needed, input/output contracts
+3. The orchestrator has a **staffing agent** that reads the PRD/plan and decides which agents to invoke and in what order
+4. The staffing agent can also decide to SKIP agents (no compliance needed for a 2-story task) or ADD agents (spawn a security-reviewer for auth-related stories)
+
+```yaml
+# .hive-mind-agents/implementer/agent.yaml
+name: implementer
+description: "Implements a single user story from a step file"
+model: opus
+tools: [Read, Write, Edit, Bash, Glob, Grep]
+inputs:
+  - step-file.md
+  - source-files (from sourceFiles in story)
+outputs:
+  - impl-report.md
+  - modified source files
+rules:
+  - STEP-FILE-ONLY: Only implement what the step file specifies
+  - NO-STUBS: Every function must have a real implementation
+  - TYPE-SAFE: All TypeScript must compile without errors
+```
+
+**Scaling mechanism:** The orchestrator doesn't hardcode "run these 9 agents for SPEC". Instead, it asks the staffing agent: "Given this PRD complexity and project type, which agents should run for SPEC?" The staffing agent returns a dynamic agent graph.
+
+**This solves the fixed-tier problem:** Instead of Quick/Standard/Thorough presets, the pipeline shapes itself to the task. A 500-word frontend PRD gets: SPEC (with UI-focus), PLAN, EXECUTE (with Playwright verify), REPORT. A 2000-word backend PRD gets: NORMALIZE, BASELINE, SPEC (with security review), PLAN (with validator), EXECUTE (with compliance), REPORT, SCORECARD.
+
+**Migration path:**
+1. Extract current hardcoded agent definitions from `prompts.ts` into `.agent/` YAML files
+2. Load agent definitions at startup instead of importing from code
+3. Add a staffing agent that produces the agent execution graph
+4. Orchestrator executes the graph instead of hardcoded stage functions
+
+---
+
+### Q11: GAN Pattern -- Eval Evolution and Auto-Research
+
+**Current state:** Hive Mind's evals are binary AC/EC shell commands. They don't evolve. The same criteria run on every story regardless of what the agent struggled with last time.
+
+**Should evals evolve?** YES. Three levels of evolution:
+
+#### Level 1: Static evals (current)
+- AC/EC generated once per story by AC-gen/EC-gen agents
+- Never change during execution
+- Same criteria on every retry iteration
+
+#### Level 2: Adaptive evals (recommended)
+- After each GAN iteration, the evaluator analyzes what failed and WHY
+- On retry, the evaluator adds focused criteria targeting the specific failure mode
+- Example: if iteration 1 failed because of missing error handling, iteration 2 adds an error-handling-specific eval
+
+**Implementation:**
+```
+Iteration 1: Run 10 ECs -> 8 pass, 2 fail (missing null check, wrong status code)
+Iteration 2: Run 2 failed ECs + 2 NEW focused ECs (null safety check, HTTP status validation) + 3 regression sample from passing ECs
+```
+
+#### Level 3: Self-improving evals (future -- auto-research)
+- After each pipeline run, analyze which evals caught real bugs vs which were noise
+- Graduate high-value eval patterns to a knowledge base (reuse Hive Mind's existing graduation system)
+- Use an auto-research agent to generate new eval patterns from failure post-mortems
+
+**ELI5:** Level 1 is a fixed exam with the same questions every time. Level 2 is a teacher who notices you're bad at fractions and adds more fraction questions. Level 3 is a school that rewrites its entire curriculum every semester based on student outcomes.
+
+**Should the GAN loop be a skill?**
+
+YES. This is the best architectural choice because:
+1. The GAN loop pattern (generate -> evaluate -> fix -> re-evaluate) is reusable across SPEC, VERIFY, REPORT, and any future stage
+2. As a skill, it can be improved by a skill-creator without changing core pipeline code
+3. Different GAN configurations (max iterations, stopping criteria, eval type) can be parameterized
+
+```yaml
+# .hive-mind-skills/gan-loop/skill.yaml
+name: gan-loop
+description: "Generator-Evaluator loop with configurable stopping criteria"
+parameters:
+  generator_agent: string     # which agent generates
+  evaluator_agent: string     # which agent evaluates
+  max_iterations: number      # hard cap
+  min_improvement: number     # score delta for diminishing returns
+  fail_fast: boolean          # stop on first hard failure
+  eval_criteria: string       # path to criteria file
+inputs:
+  - context files (varies by use case)
+outputs:
+  - final artifact
+  - eval report with iteration history
+```
+
+**Auto-research for eval generation:**
+- Before PLAN stage, spawn a research agent that analyzes the PRD + project type
+- Research agent generates project-specific eval criteria (e.g., "for a REST API, always test: auth, rate limiting, error responses, pagination")
+- These criteria supplement the standard AC/EC generation
+- Over time, the knowledge base accumulates proven eval patterns per project type
+
+---
+
+### Q12: Dark Factory vs Orchestration Layer
+
+**What is a dark factory?** A fully autonomous code production system. Specs go in, working software comes out. No human in the loop during execution. The term comes from manufacturing -- factories that run with the lights off because no humans are present.
+
+**StrongDM's example:** 3 engineers, 16,000 lines of Rust, no human-written code, no human code review. Uses holdout scenarios (hidden from the agent) instead of traditional tests.
+
+**The key question:** Should Hive Mind BE the dark factory, or should it ORCHESTRATE dark factories?
+
+#### Option A: Hive Mind as Dark Factory
+- Focus: PRD in -> working code out
+- Remove human checkpoints (or make them optional)
+- Add holdout validation (hidden test scenarios the agent can't game)
+- Single-purpose: code generation from requirements
+
+#### Option B: Hive Mind as Orchestration Layer
+- Focus: route tasks to specialized harnesses
+- Coding harness for new features
+- Defect fixer harness for bugs
+- Refactoring harness for tech debt
+- Security audit harness for vulnerability scanning
+- Each harness is independently developed and improved
+
+#### Option C (Recommended): Hive Mind as Dark Factory + Separate Orchestration Layer Above
+
+**ELI5:** A car factory doesn't also manage the dealership, the repair shop, and the parts warehouse. It does one thing well: build cars. A separate company (the automaker) decides which factory builds what, when.
+
+```
+USER REQUIREMENTS
+       |
+       v
+  ORCHESTRATION LAYER (new -- above Hive Mind)
+  Routes tasks to the right harness:
+       |
+       +--> Hive Mind (dark factory: PRD -> working code)
+       +--> Bug Fixer (harness: bug report -> fix + regression test)
+       +--> Enhancer (harness: feature request -> incremental change)
+       +--> Auditor (harness: codebase -> security/quality report)
+       +--> Migrator (harness: old code -> new framework/language)
+```
+
+**Why Option C:**
+1. **Hive Mind is already good at PRD -> code.** Don't dilute its focus.
+2. **Bug fixing is fundamentally different from feature building.** Different agent types, different eval criteria, different pipeline shape. Forcing both into one pipeline creates complexity.
+3. **The orchestration layer is thin.** It's just a router that reads the user's intent and dispatches to the right harness. It doesn't need Hive Mind's full pipeline.
+4. **Each harness can evolve independently.** Hive Mind gets better at building. Bug Fixer gets better at diagnosing. They don't block each other.
+
+**Hive Mind's current `bug` command** is already a separate harness (DIAGNOSE -> FIX -> VERIFY). This validates the multi-harness approach.
+
+**What makes it a "dark factory":**
+- Optional `--autonomous` flag removes human checkpoints
+- Holdout validation: hidden test scenarios generated from SPEC but not visible to implementer
+- Quality gate: pipeline only "ships" (commits to main) if scorecard grade >= B
+- Cost ceiling: `--budget` enforces hard stop
+
+---
+
+### Q13: Making GAN Pattern Loops Scalable
+
+**The scaling problem:** A single GAN loop (generator + evaluator, N iterations) is bounded. But what if:
+- A 50-story pipeline has 50 independent GAN loops running in waves?
+- Each loop spawns 3-5 agents per iteration x 3 iterations = 9-15 agents per story?
+- 50 stories x 15 agents = 750 agent spawns?
+
+**Three dimensions of GAN scalability:**
+
+#### Dimension 1: Horizontal -- Parallel GAN loops
+
+Multiple stories run their GAN loops concurrently (Hive Mind already does this via waves). Scaling means:
+- Increase `maxConcurrency` (currently default 3)
+- Ensure non-overlapping file sets (already implemented in `filterNonOverlapping`)
+- Add resource-aware scheduling: if API rate limits approach, reduce concurrency dynamically
+
+```
+Wave 1: [Story A GAN loop] [Story B GAN loop] [Story C GAN loop]  -- parallel
+Wave 2: [Story D GAN loop] [Story E GAN loop]                      -- parallel
+```
+
+**Implementation:** Add adaptive concurrency in wave executor:
+```typescript
+function getAdaptiveConcurrency(config: HiveMindConfig, costTracker: CostTracker): number {
+  const recentRateLimits = costTracker.getRecentUsageLimitHits(lastMinutes: 5);
+  if (recentRateLimits > 2) return Math.max(1, config.maxConcurrency - 1);
+  return config.maxConcurrency;
+}
+```
+
+#### Dimension 2: Vertical -- Nested GAN loops
+
+A GAN loop inside a GAN loop. Example:
+- Outer loop: SPEC critique (generate spec -> evaluate spec -> refine)
+- Inner loop: Each SPEC section could have its own generate-evaluate cycle
+
+**Should we?** NO for now. Nested loops explode cost quadratically. Keep GAN loops flat -- one level of iteration per stage. If the outer loop needs improvement, the INNER work should be better, not recursive.
+
+#### Dimension 3: Temporal -- Cross-run improvement
+
+GAN loops get better over time by learning from prior runs:
+- Track which eval criteria consistently fail on first attempt -> pre-generate hints for the generator
+- Track which failure patterns the fixer resolves quickly -> prioritize those fix strategies
+- Graduate successful fix patterns to knowledge base
+
+**ELI5:** Horizontal = more chefs cooking different dishes at the same time. Vertical = a chef asking another chef to critique their critique (don't do this). Temporal = the kitchen gets better every night because they write down what worked.
+
+**Scalability limits and practical caps:**
+
+| Parameter | Default | Max Recommended | Why |
+|---|---|---|---|
+| maxConcurrency | 3 | 8-10 | API rate limits, git merge conflicts |
+| maxAttempts (GAN iterations) | 3 | 5 | Diminishing returns after 3-4 |
+| maxBuildAttempts | 2 | 3 | If BUILD fails 3x, the story spec is wrong |
+| Stories per wave | unbounded | 10 | Merge complexity, progress visibility |
+
+---
+
+### Q14: Limits and Safeguards Against Runaway Loops
+
+**Current safeguards in Hive Mind:**
+
+| Safeguard | Location | Mechanism |
+|---|---|---|
+| Agent timeout | `config.agentTimeout` (default 10min) | Kill subprocess after timeout |
+| Shell timeout | `config.shellTimeout` (default 2min) | Kill shell command after timeout |
+| Max retry attempts | `config.maxRetries` (default 1) | Stop retrying failed agent spawns |
+| Max verify attempts | `config.maxAttempts` (default 3) | Stop GAN loop after N iterations |
+| Max build attempts | `config.maxBuildAttempts` (default 2) | Stop BUILD retry after N attempts |
+| Budget ceiling | `--budget <dollars>` | Throw HiveMindError when exceeded |
+| Usage limit detection | `src/utils/usage-limit.ts` | Detect API rate limits, pause pipeline |
+| Output file polling | `src/utils/shell.ts:145-153` | Kill agent early when output detected |
+
+**What's MISSING -- additional safeguards needed:**
+
+#### 1. Global pipeline timeout
+Currently no overall timeout. A 50-story pipeline could run for days.
+
+```typescript
+// Add to config schema
+pipelineTimeout: z.number().default(14_400_000), // 4 hours default
+```
+
+#### 2. Cost velocity alert
+Detect when cost is accumulating faster than expected.
+
+```typescript
+function checkCostVelocity(tracker: CostTracker, plan: ExecutionPlan): void {
+  const elapsed = Date.now() - tracker.startTime;
+  const spent = tracker.getPipelineTotal();
+  const progress = plan.stories.filter(s => s.status === 'done').length / plan.stories.length;
+  const projectedTotal = spent / Math.max(progress, 0.01);
+  if (projectedTotal > budget * 2) {
+    warn(`Projected cost $${projectedTotal.toFixed(2)} exceeds 2x budget. Consider aborting.`);
+  }
+}
+```
+
+#### 3. Infinite loop detection (GAN-specific)
+Detect when a GAN loop is not making progress:
+
+```typescript
+function detectStaleLoop(attempts: AttemptResult[]): boolean {
+  if (attempts.length < 2) return false;
+  const last = attempts[attempts.length - 1];
+  const prev = attempts[attempts.length - 2];
+  // Same failures on consecutive attempts = stale
+  return last.failedCriteria.join(',') === prev.failedCriteria.join(',');
+}
+```
+
+#### 4. Tool chain validation
+Prevent agents from calling tools in invalid sequences (e.g., Write before Read, Bash rm -rf):
+
+```typescript
+const DANGEROUS_PATTERNS = [
+  /rm\s+-rf/,
+  /DROP\s+TABLE/i,
+  /git\s+push\s+--force/,
+  /curl.*\|.*sh/,
+];
+```
+
+#### 5. Output size limits
+Prevent agents from generating unbounded output:
+
+```typescript
+// Add to config
+maxOutputSizeBytes: z.number().default(1_000_000), // 1MB per agent output
+maxTotalOutputBytes: z.number().default(50_000_000), // 50MB total pipeline output
+```
+
+**ELI5:** Current safeguards are like having a smoke detector but no sprinkler system. We need: a timer that shuts everything down after 4 hours (pipeline timeout), a meter that warns when the bill is running too high (cost velocity), a watchdog that notices when we're going in circles (stale loop detection), and a lock on the gun cabinet (dangerous command blocking).
+
+---
+
+### Q15: Tool Sandboxing and Agent Trust Model
+
+**Current state:** Hive Mind uses `--dangerously-skip-permissions` when spawning Claude (`src/utils/shell.ts`). This means agents have FULL access to their allowed tools with no runtime permission checks. Agents are implicitly trusted.
+
+**Should agents be treated as untrusted?** YES, by default.
+
+**ELI5:** You wouldn't give a contractor the keys to your house and say "do whatever you want." You'd give them access to the room they're working on, check their work, and lock the medicine cabinet.
+
+**Proposed trust model -- three tiers:**
+
+#### Tier 1: Read-Only Agents (LOW trust needed)
+- Agents: researcher, critic, reviewer, evaluator, scorecard, log-summarizer
+- Tools: Read, Glob, Grep only
+- Sandbox: None needed -- can't modify anything
+- Current status: Already implemented via `READ_ONLY_TOOLS`
+
+#### Tier 2: Write-Scoped Agents (MEDIUM trust)
+- Agents: spec-drafter, planner, reporter, compliance-reviewer
+- Tools: Read, Glob, Grep, Write (to specific output paths only)
+- Sandbox: **Path allowlist** -- can only write to `.hive-mind-working/` directory
+- Current gap: Write tool has no path restriction
+
+**Implementation:**
+```typescript
+// Add to tool-permissions.ts
+const SCOPED_WRITE_TOOLS = [...READ_ONLY_TOOLS, "Write"];
+const WRITE_ALLOWLIST = [".hive-mind-working/", ".hive-mind-lab/"];
+```
+
+#### Tier 3: Dev Agents (HIGH trust -- sandbox required)
+- Agents: implementer, fixer, refactorer, compliance-fixer
+- Tools: Read, Write, Edit, Bash, Glob, Grep
+- Sandbox: **Container or chroot** -- full dev access but isolated from host system
+- Current gap: Bash has no command filtering, no filesystem isolation
+
+**Sandbox options for Tier 3:**
+
+| Option | Isolation Level | Complexity | Latency |
+|---|---|---|---|
+| Command blocklist | Low -- blocks known dangerous commands | Low | None |
+| Path-scoped Bash | Medium -- restricts working directory | Medium | None |
+| Docker container | High -- full filesystem/network isolation | High | 2-5s startup |
+| Firecracker microVM | Highest -- hardware-level isolation | Very High | <1s startup |
+
+**Recommended: Command blocklist + path-scoped Bash (short term), Docker container (long term)**
+
+**MCP integration for sandboxing (ties to Q9):**
+If agents use MCP tool servers, the MCP server itself becomes the sandbox. The agent doesn't call `Bash` directly -- it calls an MCP tool that runs in a container. This is cleaner than trying to sandbox Claude CLI's built-in Bash tool.
+
+---
+
+### Q16: RAG Knowledge Sources and Context Governance
+
+**What knowledge sources must be indexed for RAG:**
+
+| Source | Content | Update Frequency | Priority |
+|---|---|---|---|
+| **Memory.md** | Session learnings (patterns, mistakes, discoveries) | Every story | HIGH |
+| **Knowledge base** | Graduated patterns from prior runs | Per pipeline run | HIGH |
+| **SPEC artifacts** | Technical specifications from prior builds | Per pipeline run | MEDIUM |
+| **Manager log** | Agent execution history, timing, costs | Real-time | MEDIUM |
+| **Code review reports** | Quality findings from prior runs | Per pipeline run | MEDIUM |
+| **Failure post-mortems** | Root cause analysis of failed stories | Per failure | HIGH |
+| **Project codebase** | Existing source code (for codebase-aware agents) | Pre-pipeline | HIGH |
+| **External docs** | Framework documentation, API references | On-demand | LOW |
+
+**Context governance -- what agents CAN and CANNOT retrieve:**
+
+**Principle: Least-privilege retrieval.** Each agent should only see context relevant to its task. A tester doesn't need SPEC history. An implementer doesn't need cost data.
+
+| Agent Type | Allowed Context | Blocked Context |
+|---|---|---|
+| researcher | PRD, codebase, KB patterns, external docs | Cost data, prior failures, agent logs |
+| spec-drafter | Research report, KB patterns, prior specs | Implementation details, test results |
+| implementer | Step file, source files, relevant KB patterns | Full spec, other stories, cost data |
+| tester-exec | Step file (ACs/ECs only), source files | Spec, plan, other stories, memory |
+| fixer | Step file, diagnosis report, source files, relevant KB mistakes | Full spec, cost, other stories |
+| scorecard | All reports, logs, metrics | Raw source code, step files |
+
+**Implementation with SQL RAG (from Q7):**
+
+```sql
+-- Agent context governance via tags + agent-type filtering
+CREATE TABLE context_policies (
+  agent_type TEXT NOT NULL,
+  allowed_sources TEXT NOT NULL,  -- JSON array: ["memory", "kb", "spec"]
+  max_results INTEGER DEFAULT 10,
+  max_tokens INTEGER DEFAULT 4000,
+  recency_weight REAL DEFAULT 0.5  -- prefer recent learnings
+);
+
+-- Example policies
+INSERT INTO context_policies VALUES
+  ('implementer', '["kb_patterns", "kb_mistakes"]', 5, 2000, 0.3),
+  ('tester-exec', '[]', 0, 0, 0),  -- no RAG context for testers (pure binary eval)
+  ('researcher', '["kb_patterns", "kb_discoveries", "prior_specs"]', 15, 8000, 0.7),
+  ('fixer', '["kb_mistakes", "failure_postmortems"]', 10, 4000, 0.8);
+```
+
+**Retrieval pipeline:**
+1. Before agent spawn, query: `SELECT content FROM learnings WHERE category IN (policy.allowed_sources) ORDER BY relevance_score DESC LIMIT policy.max_results`
+2. Truncate to `max_tokens`
+3. Inject as `## RELEVANT CONTEXT` section in agent prompt
+4. Agent never directly queries the database -- all retrieval is pre-filtered by the orchestrator
+
+**Why governance matters:**
+- **Cost:** Unrestricted retrieval bloats prompts with irrelevant context (token waste)
+- **Focus:** Agents perform better with focused, relevant context vs. information overload
+- **Security:** Prevents agents from accessing sensitive data (cost/budget info, other project data)
+- **Bias prevention:** Testers should NOT see implementation details -- keeps evaluation independent
+
+---
+
+### Q17: Full Observability -- Plan, Retrieve, Act, Reflect
+
+**Current observability in Hive Mind:**
+
+| What's Tracked | Where | Gaps |
+|---|---|---|
+| Agent spawns | manager-log.jsonl | No input/output capture |
+| Cost per agent | cost-log.jsonl | No token breakdown (input vs output) |
+| Stage timing | manager-log timestamps | No per-agent latency histogram |
+| Story status | execution-plan.json | No sub-step status (BUILD vs VERIFY) |
+| Live progress | Dashboard (port 9100) | No historical dashboard |
+| Wave execution | WAVE_START log entries | No wave completion metrics |
+| Failures | FAILED log entries | No failure categorization |
+
+**Proposed observability framework -- 4 pillars:**
+
+#### Pillar 1: PLAN observability
+Track what the orchestrator decided and why.
+
+```typescript
+interface PlanDecision {
+  timestamp: string;
+  stage: string;
+  decision: string;        // "skip_normalize" | "run_baseline" | "use_quick_tier"
+  reason: string;           // "PRD < 200 words, auto-detected quick tier"
+  inputs: Record<string, any>;  // what data informed the decision
+}
+```
+
+Log every orchestrator decision: which stages to run, which agents to spawn, which tier was selected, why a story was deferred to next wave.
+
+#### Pillar 2: RETRIEVE observability
+Track what context each agent received and from where.
+
+```typescript
+interface RetrievalEvent {
+  timestamp: string;
+  agentType: string;
+  storyId?: string;
+  sources: string[];        // ["memory.md", "kb/01-proven-patterns.md"]
+  totalTokens: number;      // estimated tokens in context
+  retrievalLatency: number; // ms to build context
+}
+```
+
+This answers: "Why did the agent do X?" -- because it saw Y in its context. Critical for debugging bad agent behavior.
+
+#### Pillar 3: ACT observability
+Track what each agent did -- inputs, outputs, tool calls, duration, cost.
+
+```typescript
+interface AgentExecution {
+  timestamp: string;
+  agentType: string;
+  storyId?: string;
+  model: string;
+  inputFiles: string[];
+  inputTokens: number;
+  outputFile: string;
+  outputTokens: number;
+  toolCalls: ToolCall[];     // what tools were invoked during execution
+  duration: number;
+  cost: number;
+  exitCode: number;
+  truncated: boolean;        // did output hit truncation limit?
+}
+```
+
+**Tool call tracking** is the biggest gap. Currently Hive Mind doesn't know what tools an agent called during execution. With MCP, tool calls would be logged by the MCP server. Without MCP, we'd need to parse Claude's output for tool invocations.
+
+#### Pillar 4: REFLECT observability
+Track what the system learned from each execution.
+
+```typescript
+interface ReflectionEvent {
+  timestamp: string;
+  storyId?: string;
+  learnings: Learning[];     // what was captured
+  graduations: Graduation[]; // what was promoted to KB
+  evalResults: EvalResult[]; // AC/EC pass/fail with details
+  retryReason?: string;      // why a retry was triggered
+  scorecardDelta?: number;   // how much the grade changed
+}
+```
+
+**Putting it all together -- the Agent Loop Trace:**
+
+```
+PLAN: Orchestrator decides to run SPEC stage with evidence-gating (tier: standard)
+  RETRIEVE: Loaded 5 KB patterns (2000 tokens) for researcher agent
+  ACT: Researcher spawned (opus, 45s, $0.12, Read x3, Grep x2)
+    -> research-report.md (1200 words)
+  RETRIEVE: Loaded research-report.md + PRD for spec-drafter
+  ACT: Spec-drafter spawned (opus, 60s, $0.18, Write x1)
+    -> SPEC-draft.md (2400 words)
+  ACT: Critic spawned (sonnet, 20s, $0.04, Read x1)
+    -> critique-1.md (PASS, confidence: matched)
+  REFLECT: SPEC passed on first critique -- GAN loop exited early (saved 2 agent spawns)
+```
+
+**Implementation approach:**
+1. Define a unified `TraceEvent` type that covers all 4 pillars
+2. Write all trace events to a single `trace-log.jsonl` file
+3. Dashboard reads trace log for real-time visualization
+4. Post-pipeline, trace log feeds into the scorecard for grading Efficiency dimension
+
+**Dashboard enhancement -- trace view:**
+Add a "Trace" tab to the live dashboard showing the agent loop in real-time:
+- Timeline view: horizontal bars showing agent duration
+- Context view: what each agent received
+- Cost waterfall: cumulative cost over time
+- Decision tree: why each stage/agent was invoked
+
+---
+
+## Updated Implementation Priority (All Questions)
+
+| # | Improvement | Effort | Impact | Priority |
+|---|---|---|---|---|
+| Q9 | MCP Phase 1: consume MCP servers | Medium | Unlocks tool ecosystem | **CRITICAL** |
+| Q14 | Pipeline timeout + cost velocity alert | Small | Prevents runaway costs | **HIGH** |
+| Q3 | Merge compliance into VERIFY GAN loop | Small | Simplifies pipeline | HIGH |
+| Q17 | Trace logging (4-pillar observability) | Medium | Debug + quality visibility | HIGH |
+| Q6/11 | GAN loop as reusable skill with adaptive evals | Medium | Saves cost, improves quality | HIGH |
+| Q8 | Multi-dimensional scorecard with rubric | Medium | Better quality grading | HIGH |
+| Q1 | Memory summarization between waves | Small | Prevents context bloat | HIGH |
+| Q15 | Command blocklist + path-scoped writes | Small | Basic security | HIGH |
+| Q10 | Extract agent definitions to .agent/ YAML | Medium | Extensibility | MEDIUM |
+| Q12 | Dark factory mode (--autonomous + holdout) | Large | Full autonomy | MEDIUM |
+| Q16 | RAG context governance policies | Medium | Better retrieval | MEDIUM |
+| Q7 | Surface graduation stats in REPORT | Small | Shows learning value | MEDIUM |
+| Q10 | Staffing agent for dynamic pipeline | Large | True scalability | MEDIUM (v2) |
+| Q7 | Full RAG + SQL memory | Large | Semantic retrieval | LOW (v2) |
+| Q9 | MCP Phase 2: expose Hive Mind as MCP server | Large | Composability | LOW (v2) |
+| Q15 | Docker container sandbox for dev agents | Large | Full isolation | LOW (v2) |
+| Q13 | Adaptive concurrency based on rate limits | Medium | Better throughput | LOW |
+| Q2 | Playwright verification | Large | Only for UI projects | LOW |
+
+---
+
 ## Verification
 1. Review the analysis doc for accuracy against source code
 2. Validate recommendations against actual file references
