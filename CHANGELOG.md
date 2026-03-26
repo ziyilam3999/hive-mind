@@ -1,3 +1,11 @@
+## [0.17.1](https://github.com/ziyilam3999/hive-mind/compare/v0.17.0...v0.17.1) (2026-03-26)
+
+### Miscellaneous
+
+* extract deriveActiveAgents and add 31 unit tests (#125)
+* add harness comparison and improvement roadmap (#123)
+* update README to reflect v0.16.0 features and capabilities (#123)
+
 ## [0.17.0](https://github.com/ziyilam3999/hive-mind/compare/v0.16.0...v0.17.0) (2026-03-25)
 
 ### Features
