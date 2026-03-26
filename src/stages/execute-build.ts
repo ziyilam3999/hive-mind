@@ -126,7 +126,7 @@ export async function runBuild(
   }
   if (hasTsc) {
     try {
-      await execFileAsync("npx", ["tsc", "--noEmit"], {
+      await execFileAsync("npx", ["tsc", "--noEmit", "--incremental"], {
         cwd: targetDir,
         timeout: 120_000,
         shell: process.platform === "win32",

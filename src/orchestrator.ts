@@ -794,12 +794,14 @@ async function executeStoryWithSubTasks(
   const logPath = join(dirs.workingDir, "manager-log.jsonl");
   let totalAttempts = 0;
 
+
   console.log(`[${story.id}] SUB-TASK EXECUTION: ${story.subTasks!.length} sub-tasks`);
 
   const failedSubTasks: string[] = [];
 
   for (const subTask of story.subTasks!) {
     if (subTask.status === "passed") continue; // already done (resume case)
+
 
     // Retry loop for this sub-task
     let passed = false;
