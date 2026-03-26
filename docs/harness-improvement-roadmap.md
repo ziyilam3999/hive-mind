@@ -1282,3 +1282,237 @@ Add a "Trace" tab to the live dashboard showing the agent loop in real-time:
 1. Review the analysis doc for accuracy against source code
 2. Validate recommendations against actual file references
 3. No code changes in this plan -- this is a research/analysis document
+
+---
+
+## Part 3: Ecosystem & Tooling -- 19 Ideas Analysis
+
+### Category A: MCP Tool Integrations (Ideas 1, 2, 8, 9, 19)
+
+All become trivial config entries once MCP Phase 1 (Q9) is built.
+
+| # | Tool | MCP Server | What It Gives Hive Mind | Priority |
+|---|---|---|---|---|
+| 1 | **Obsidian** | `@bitbonsai/mcpvault` | Knowledge management -- agents read/write Obsidian vault for structured notes, research, project context. 16 tools for search, read, write, tag. | MEDIUM |
+| 2 | **GitHub/GitLab** | `@anthropic-ai/mcp-server-github` | Agents manage issues, PRs, CI/CD status directly. Create issues from failed stories, auto-comment on PRs with scorecard results, check CI before committing. | HIGH |
+| 8 | **Supabase** | `supabase-mcp-server` | Managed Postgres for agent memory, project data, auth. Replaces SQLite for production-scale RAG. Adds auth for multi-user Hive Mind. | MEDIUM |
+| 9 | **Vercel** | `vercel-mcp` | Deploy web projects directly from pipeline. After EXECUTE, auto-deploy preview. REPORT includes live URL. | MEDIUM |
+| 19 | **SQL Database** | `@anthropic-ai/mcp-server-sqlite` | Persistent memory in SQL (aligns with Q7). Move memory.md and knowledge-base to structured DB. | HIGH |
+
+**Implementation:** All are just `.hivemindrc.json` entries once MCP Phase 1 is built:
+
+```json
+{
+  "mcpServers": {
+    "obsidian": { "command": "npx", "args": ["-y", "@bitbonsai/mcpvault", "--vault", "~/notes"] },
+    "github": { "command": "npx", "args": ["-y", "@anthropic-ai/mcp-server-github"] },
+    "sqlite": { "command": "npx", "args": ["-y", "@anthropic-ai/mcp-server-sqlite", ".hive-mind-persist/memory.db"] },
+    "supabase": { "command": "npx", "args": ["-y", "supabase-mcp-server"] },
+    "vercel": { "command": "npx", "args": ["-y", "vercel-mcp"] }
+  }
+}
+```
+
+---
+
+### Category B: Code Intelligence (Ideas 3, 4)
+
+| # | Tool | What It Does | Hive Mind Impact |
+|---|---|---|---|
+| 3 | **LSP Plugins** | Gives agents "eyes" in code -- type errors, jump-to-definition, find-references in 50ms vs 45s grep | GAME-CHANGER for implementer and fixer agents |
+| 4 | **Claude Plugins** | Extensibility system for Claude Code -- custom tools, linters, formatters | Foundation for per-project agent customization |
+
+**LSP for Hive Mind agents -- HIGH priority:**
+
+Currently agents use Read/Grep/Glob for code navigation. With LSP:
+- Implementer sees type errors IMMEDIATELY after writing code (no need to wait for VERIFY)
+- Fixer can jump-to-definition to understand codebase before patching
+- Diagnostician gets real compiler errors, not guessed ones from output parsing
+- Could make compliance-reviewer unnecessary -- type errors caught at BUILD time
+
+**How to enable:** Pass LSP config when spawning agents:
+```bash
+claude --model opus --allowedTools "Read,Write,Edit,Bash,Lsp" --env "ENABLE_LSP_TOOL=1"
+```
+
+Add to `.hivemindrc.json`:
+```json
+{
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true
+  }
+}
+```
+
+---
+
+### Category C: Browser & UI Testing (Ideas 6, 7, 14, 15, 17)
+
+Coherent cluster: give Hive Mind "eyes" for the UI.
+
+| # | Tool | Role in Pipeline |
+|---|---|---|
+| 6 | **Firecrawl CLI** | Web scraping -- research agent crawls docs, competitor analysis, API references |
+| 7 | **Playwright CLI** | Headless browser testing -- automated E2E tests for web UIs |
+| 14 | **Evaluator with Playwright** | Anthropic's approach: Playwright as evaluation backbone for GAN loop |
+| 15 | **Chrome extension** | Claude Code + Chrome: build-test-fix loop. Claude opens browser, tests UI, iterates autonomously |
+| 17 | **Self-testing** | Claude Code runs app, clicks through pages, catches hidden errors, fixes code |
+
+**The vision: Hive Mind with browser eyes**
+
+```
+EXECUTE stage (for web projects):
+  BUILD: implementer writes code
+  DEPLOY: auto-deploy to localhost (or Vercel preview)
+  BROWSER-TEST: Playwright agent tests all ACs visually
+  DIAGNOSE: if issues, screenshot + DOM state captured
+  FIX: fixer gets screenshot + error context
+  RE-TEST: Playwright re-runs
+  (GAN loop until passing)
+```
+
+**Two approaches -- use BOTH:**
+1. **Playwright MCP (headless, CI-friendly)** -- binary pass/fail ACs (functional correctness)
+2. **Chrome extension (interactive, visual)** -- subjective design quality evaluation (ties to Q8 scorecard: Design Quality, Originality, Craft)
+
+---
+
+### Category D: Front-End Design Pipeline (Ideas 10, 16)
+
+**Idea 10: No more AI slop**
+- Figma to Code + paste link, get real code
+- Theme Factory + 10 ready themes
+- Brand Guidelines auto brand control
+- Canvas Design + export real visuals
+
+**Idea 16: Claude Code to Figma (Code to Canvas)**
+- Figma MCP: bidirectional -- Design -> Code AND Code -> Design
+- Push final UI back to Figma as editable layers (not screenshots)
+
+**Design-aware pipeline:**
+
+```
+PRD + Figma Link
+  --> SPEC (reads Figma design tokens, layout, components via MCP)
+  --> PLAN (stories reference specific Figma frames)
+  --> EXECUTE
+      BUILD: implementer codes against Figma specs
+      VISUAL-CHECK: Chrome extension compares live UI to Figma reference
+      DESIGN-EVAL: evaluator grades Design Quality, Originality, Craft (Q8 rubric)
+  --> Code to Canvas: push final UI back to Figma for designer review
+  --> REPORT (includes Figma comparison screenshots)
+```
+
+**Anti-AI-slop strategy:**
+1. **Brand control:** Figma MCP reads design tokens (colors, fonts, spacing), injects as constraints
+2. **Theme system:** 10 curated themes as base. Agent selects and customizes rather than generating from scratch
+3. **Visual regression:** Compare screenshots against Figma reference. Reject if deviation exceeds threshold
+4. **Originality scoring:** Anthropic's rubric penalizes "template layouts and AI-generated patterns"
+
+---
+
+### Category E: Agent Teams as Skills (Idea 5)
+
+Aligns with Q10 (dynamic agent architecture) and Q11 (GAN loop as skill).
+
+Define reusable "agent teams" -- groups of agents that work together on a task:
+
+```yaml
+# .hive-mind-skills/spec-team/skill.yaml
+name: spec-team
+description: "Generate and critique a technical specification"
+team:
+  - agent: researcher
+    role: gather evidence from codebase and PRD
+  - agent: spec-drafter
+    role: generate SPEC from research
+  - agent: critic
+    role: evaluate SPEC quality
+pattern: gan-loop
+max_iterations: 3
+outputs:
+  - SPEC-v1.0.md
+  - critique-log.md
+```
+
+**Benefits:**
+- Composable: `spec-team` + `plan-team` + `execute-team` = full pipeline
+- Swappable: use `spec-team-quick` for Quick mode
+- Skill-creator can improve teams without touching orchestrator code
+- Each team owns its own evaluation criteria
+
+---
+
+### Category F: Infrastructure & Memory (Ideas 11, 18)
+
+**Idea 11: Cloudflare Dynamic Workers**
+
+V8 isolates: ~5ms startup, few MB memory. 100x faster than Docker. $0.002/worker/day.
+
+**Why it matters for Hive Mind:**
+- Agent sandboxing (Q15) without Docker overhead
+- Isolated execution per story
+- "Code Mode": TypeScript API instead of tool calls, saving 80% tokens
+- Global edge deployment
+
+**Trade-off:** Requires Cloudflare account + network. Not for air-gapped deployments. Best for hosted/SaaS Hive Mind.
+
+**Idea 18: Google's Always On Memory Agent**
+
+No vector DB, no embeddings. LLM reads, thinks, writes structured memory to SQLite. Consolidates every 30 minutes (merges duplicates, drops noise).
+
+**Key insight for Hive Mind:** LLM decides what to remember, not an embedding pipeline. Simpler than traditional RAG.
+
+**How to apply:**
+1. Replace rule-based graduation (date count + story refs) with LLM-driven consolidation
+2. Ask the model: "Which learnings are proven enough to graduate?"
+3. Memory consolidation runs between pipeline stages (not on a timer)
+4. Aligns with Q1 (memory summarization) -- LLM summarizes instead of a function
+
+**Limitation:** Google's demo reads only 50 most recent memories. For Hive Mind with 100+ runs, need pagination or hybrid (LLM consolidation + SQL indexing).
+
+---
+
+### Category G: GAN Pattern Refinement (Ideas 12, 13)
+
+Already covered in Q3, Q6, Q11, Q13. Key reinforcements from Anthropic's details:
+
+- **Separation is critical:** Generator and evaluator MUST be separate agents
+- **Few-shot skepticism:** Train evaluator to be skeptical via few-shot examples of harsh-but-fair critiques. Currently Hive Mind's critic has no few-shot examples.
+- **5-15 cycles is the range.** Hive Mind caps at 3. Consider increasing to 5 for thorough mode.
+- **Context anxiety avoidance:** Each GAN iteration should get clean context with handoff artifact
+
+**New action item:** Add few-shot skepticism examples to critic/evaluator agent prompts in `src/agents/prompts.ts`. Small change, high impact.
+
+---
+
+## Part 3: Priority Summary
+
+| Priority | Ideas | Theme |
+|---|---|---|
+| **CRITICAL** | MCP Phase 1 (enables 1, 2, 8, 9, 19) | Foundation -- unlocks everything else |
+| **HIGH** | 3 (LSP), 5 (Agent Teams), 7+14+15 (Browser Testing) | Agent intelligence + visual evaluation |
+| **HIGH** | 12+13 (GAN few-shot skepticism) | Small change, big impact on eval quality |
+| **MEDIUM** | 10+16 (Figma/Design pipeline) | Anti-AI-slop for frontend projects |
+| **MEDIUM** | 18 (LLM-driven memory consolidation) | Simpler than rule-based graduation |
+| **MEDIUM** | 11 (Cloudflare Dynamic Workers) | Agent sandboxing alternative to Docker |
+| **LOW** | 6 (Firecrawl) | Nice-to-have for research agent |
+
+## What to Build First (Execution Order)
+
+1. **MCP Phase 1** -- add `mcpServers` config to `.hivemindrc.json` + pass `--mcp-config` to `spawnClaude()`. ONE change enables ideas 1, 2, 8, 9, 19.
+2. **LSP enablement** -- add `enabledPlugins` config and `ENABLE_LSP_TOOL` env var to agent spawning. Immediate quality boost.
+3. **GAN few-shot skepticism** -- add 3-5 skeptical critique examples to critic/evaluator prompts. 30 minutes of work.
+4. **Browser testing** -- add Playwright MCP + Chrome extension for web projects. Enables visual GAN loop.
+5. **Agent teams as skills** -- extract orchestration into composable `.skill/` definitions.
+6. **Figma MCP** -- design-aware pipeline. Anti-AI-slop.
+
+## Sources
+- [Obsidian MCP](https://mcp-obsidian.org/)
+- [Cloudflare Dynamic Workers](https://blog.cloudflare.com/dynamic-workers/)
+- [Google Always On Memory Agent](https://venturebeat.com/orchestration/google-pm-open-sources-always-on-memory-agent-ditching-vector-databases-for/)
+- [Claude Code LSP](https://karanbansal.in/blog/claude-code-lsp/)
+- [Claude Code Chrome Integration](https://code.claude.com/docs/en/chrome)
+- [Figma Code to Canvas](https://www.figma.com/blog/introducing-claude-code-to-figma/)
+- [Figma MCP Server](https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/)
