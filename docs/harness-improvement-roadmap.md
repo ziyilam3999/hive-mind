@@ -1740,3 +1740,180 @@ Originally an undocumented `ENABLE_EXPERIMENTAL_MCP_CLI=true` flag. Now replaced
 - [Claude Code Web Search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool)
 - [MCP-CLI Deferred Loading](https://paddo.dev/blog/claude-code-hidden-mcp-flag/)
 - [Context7 MCP](https://github.com/am-will/swarms)
+
+---
+
+## Part 5: 3 New Ideas (Preview, Channels, Skill-Creator)
+
+### Idea 1: Preview MCP for Claude Code
+
+Claude Code Desktop has a built-in Preview MCP that lets agents start dev servers and preview running apps directly. Click-to-edit: users click a UI element, Claude knows which component to modify.
+
+**How it works:**
+- `preview_start` launches a dev server defined in `.claude/launch.json`
+- Connects to a headless browser for screenshots, DOM inspection, click simulation, network monitoring
+- Agent sees the live app, reads console logs, catches errors, and iterates
+
+**What it gives Hive Mind:**
+
+The missing link between BUILD and VERIFY for web projects. Currently Hive Mind runs shell-based ACs/ECs blind -- never sees the UI. With Preview:
+
+```
+EXECUTE stage (web projects):
+  BUILD: implementer writes code
+  PREVIEW: spawn agent with preview MCP
+    - Starts dev server
+    - Takes screenshots at key pages
+    - Reads console for errors
+    - Checks responsive layouts (mobile, tablet, desktop)
+  EVALUATE: grades screenshots against design criteria
+  FIX: fixer gets screenshot + DOM state + console errors
+  (GAN loop with visual feedback)
+```
+
+**Key difference from Chrome extension (Part 4, Idea 3):**
+- Chrome extension: requires Chrome browser, works via extension API
+- Preview MCP: built into Claude Code Desktop, headless, no browser dependency
+- Preview MCP is better for CI/headless pipelines (Hive Mind's use case)
+- Chrome extension is better for interactive development
+
+**Integration approach:**
+1. Add `.claude/launch.json` generation to PLAN stage (auto-detect start command from package.json)
+2. In VERIFY stage, if project type is web, use `preview_start` before running visual ACs
+3. Evaluator receives screenshots alongside test results for multi-dimensional grading
+
+**Priority:** HIGH -- enables visual verification without browser dependency. Critical for dark factory mode.
+
+---
+
+### Idea 2: Claude Channels
+
+Claude Code added `--channels` as a research preview. MCP-based message push system:
+- **Permission relay:** Channel servers forward tool approval prompts to your phone
+- **Remote notifications:** Pipeline status updates pushed to mobile
+- **Cross-device coordination:** Start pipeline on desktop, approve checkpoints from phone
+
+**What it gives Hive Mind:**
+
+Directly enhances the human-in-the-loop system:
+
+```
+Current checkpoint flow:
+  Pipeline pauses -> writes .checkpoint file -> user polls `hive-mind status`
+  User must be at terminal to `hive-mind approve`
+
+With Channels:
+  Pipeline pauses -> pushes notification to phone
+  User approves from phone -> channel relays back
+  Pipeline resumes
+```
+
+**Three applications:**
+
+1. **Checkpoint notifications:** Push "SPEC ready for review" to phone. Approve/reject from mobile.
+2. **Progress streaming:** Real-time pipeline progress pushed to a channel.
+3. **Multi-user coordination:** Team lead gets notifications when any pipeline needs review.
+
+**Integration approach:**
+1. Add `--channels` support to `spawnClaude()` in `src/utils/shell.ts`
+2. When checkpoint is written, push notification via channel MCP
+3. Channel server listens for approval/rejection and writes to `.checkpoint`
+4. Ties into three-layer notification system (v0.15.0) -- channels become the 4th layer
+
+**Priority:** MEDIUM -- significant UX improvement, but channels is still research preview.
+
+---
+
+### Idea 3: Claude Skill-Creator -- Self-Improving Harness
+
+The official Anthropic skill-creator (`github.com/anthropics/skills`, 87k+ stars) automates custom skill creation with a built-in evaluation and optimization loop.
+
+**How it works:**
+1. Describe what the skill should do
+2. Skill-creator drafts `SKILL.md` with YAML frontmatter + instructions
+3. Creates test cases (trigger queries)
+4. Runs evaluation: splits 60/40 train/test, measures trigger rate
+5. Iterates up to 5 times: proposes improved descriptions, picks best by test score
+6. Outputs HTML report + optimized SKILL.md
+
+**What it gives Hive Mind -- self-improving harness:**
+
+After each pipeline run, convert learned patterns into executable skills:
+
+```
+Post-pipeline self-improvement:
+  1. Analyze scorecard + failure logs for repeating patterns
+  2. Identify patterns that could become skills:
+     - "Always run tsc before tests in TypeScript projects"
+     - "Check for circular imports before BUILD"
+     - "Use vitest --reporter=json for parseable test output"
+  3. Use skill-creator to generate + evaluate a skill from the pattern
+  4. If trigger rate > 80%, add to `.claude/skills/` for future runs
+```
+
+**Three types of auto-generated skills:**
+
+| Type | Example | Generated From |
+|---|---|---|
+| **Project skills** | "This project uses pnpm, not npm" | BASELINE stage observations |
+| **Pattern skills** | "For React projects, always check hydration errors" | Graduated KB patterns |
+| **Fix skills** | "When TypeScript strict mode fails, check for implicit any" | Repeated fixer success patterns |
+
+**This closes the self-improvement loop:**
+```
+Run 1: Pipeline fails on 3 stories due to TypeScript strict mode
+  -> Learner captures pattern
+  -> Graduation promotes it to KB
+  -> SELF-IMPROVE creates skill: "always enable strict mode checks before BUILD"
+
+Run 2: Skill auto-triggers during PLAN
+  -> EC-generator includes strict mode ECs
+  -> All stories pass strict mode checks
+  -> 0 failures from this pattern
+```
+
+**Hive Mind already has the learning + graduation system. Skill-creator is the missing piece that converts graduated learnings into executable skills.**
+
+**Integration:**
+1. Add optional `SELF-IMPROVE` stage after REPORT (enabled in thorough mode)
+2. Reads scorecard + failure logs + graduated learnings
+3. For each candidate pattern, invoke skill-creator
+4. Skills that pass evaluation are added to project `.claude/skills/`
+5. Next pipeline run inherits the new skills
+
+**Priority:** HIGH -- path to a self-improving dark factory.
+
+---
+
+## Part 5: Priority Summary
+
+| Priority | Idea | Impact |
+|---|---|---|
+| **HIGH** | 1 (Preview MCP) | Visual verification for web projects, no browser dependency |
+| **HIGH** | 3 (Skill-Creator) | Self-improving harness, gets better every run |
+| **MEDIUM** | 2 (Channels) | Mobile checkpoint approval, team coordination |
+
+---
+
+## Revised Master Build Order (All Parts, Final)
+
+1. **MCP Phase 1 + deferred loading** (Q9 + P4.8)
+2. **WebSearch + WebFetch for agents** (P4.7)
+3. **Context7 MCP** (P4.5)
+4. **LSP enablement** (P3.3)
+5. **Preview MCP for web testing** (P5.1)
+6. **Claude-Mem integration** (P4.6)
+7. **GAN few-shot skepticism** (P3.12-13)
+8. **Skill-Creator self-improvement loop** (P5.3) -- SELF-IMPROVE stage
+9. **Agent teams as skills** (P3.5 + Q10)
+10. **Community skills per project type** (P4.4)
+11. **Channels for checkpoint notifications** (P5.2)
+12. **Google Workspace CLI** (P4.1)
+13. **Figma MCP** (P3.10+16)
+
+## Sources (Part 5)
+- [Claude Code Preview, Review, and Merge](https://claude.com/blog/preview-review-and-merge-with-claude-code)
+- [Claude Code Desktop Preview MCP](https://medium.com/@dan.avila7/claude-code-desktop-has-a-built-in-preview-mcp-heres-how-it-works-774809ff676f)
+- [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
+- [Anthropic Skills Repository](https://github.com/anthropics/skills)
+- [Skill-Creator Guide](https://apidog.com/blog/claude-code-skill-creator-guide/)
