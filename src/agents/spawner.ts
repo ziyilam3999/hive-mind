@@ -119,5 +119,10 @@ export async function spawnAgentsParallel(
     }
   }
 
-  return settled.map((r) => (r as PromiseFulfilledResult<AgentResult>).value);
+  return settled.map((r, i) => {
+    if (r.status === "fulfilled") return r.value;
+    const err = r.reason instanceof Error ? r.reason.message : String(r.reason);
+    console.error(`[spawnAgentsParallel] Agent ${i} rejected: ${err}`);
+    return { success: false, error: err, outputFile: "" } as AgentResult;
+  });
 }
