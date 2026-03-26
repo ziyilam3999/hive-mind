@@ -1479,7 +1479,7 @@ function deriveActiveAgents(stories, managerLog, costLog) {
         else if (substage === 'COMMIT') description = 'Preparing commit';
       }
       var startTs = startTsByStory[story.id] || waveStartByStory[story.id] || (now - (story.durationMs || 0));
-      agents.push({ type: agentType, context: story.id, substage: substage, startTs: startTs, pipeline: false, wave: story.wave || currentWave, subtaskId: subtaskId, description: description });
+      agents.push({ type: agentType, context: story.id, substage: substage, startTs: startTs, pipeline: false, wave: story.wave ?? currentWave, subtaskId: subtaskId, description: description });
     }
   }
   return { agents: agents, currentWave: currentWave };
