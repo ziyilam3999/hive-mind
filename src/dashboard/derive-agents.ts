@@ -197,7 +197,7 @@ export function deriveActiveAgents(
         substage,
         startTs,
         pipeline: false,
-        wave: story.wave || currentWave,
+        wave: story.wave ?? currentWave,
         subtaskId,
         description,
       });

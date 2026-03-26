@@ -318,6 +318,17 @@ describe("deriveActiveAgents", () => {
     expect(result.agents[0].wave).toBe(3);
   });
 
+  it("should use wave 0 when story.wave is 0", () => {
+    const stories: Story[] = [
+      { id: "US-01", status: "in-progress", wave: 0 },
+    ];
+    const log = [
+      logEntry("WAVE_START", -5000, { waveNumber: 3, storyIds: ["US-01"] }),
+    ];
+    const result = deriveActiveAgents(stories, log, [], NOW);
+    expect(result.agents[0].wave).toBe(0);
+  });
+
   it("falls back to currentWave when story has no wave", () => {
     const stories: Story[] = [{ id: "US-01", status: "in-progress" }];
     const log = [
