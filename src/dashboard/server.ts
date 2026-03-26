@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { join, resolve, sep } from "node:path";
+import { join, resolve, sep, dirname } from "node:path";
 import { readFile, readdir } from "node:fs/promises";
+import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import { openBrowser } from "./browser.js";
@@ -149,7 +151,29 @@ async function handleLogsRoute(
   sendJson(res, { lines: page, nextOffset });
 }
 
-const DASHBOARD_HTML = `<!DOCTYPE html>
+// Read the esbuild-generated dashboard bundle (derive-stages + derive-agents).
+// This is inlined into the <script> tag so the browser gets a single self-contained page.
+
+function resolveBundlePath(): string {
+  // When running from dist/ (production), the bundle is in the same directory.
+  const sameDir = join(dirname(fileURLToPath(import.meta.url)), "dashboard-bundle.js");
+  if (existsSync(sameDir)) return sameDir;
+  // When running from src/ (vitest/tsx), look in dist/dashboard/.
+  const fromSrc = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "dist", "dashboard", "dashboard-bundle.js");
+  return fromSrc;
+}
+
+let _dashboardHtml: string | null = null;
+function getDashboardHtml(): string {
+  if (!_dashboardHtml) {
+    const bundleJs = readFileSync(resolveBundlePath(), "utf-8");
+    _dashboardHtml = buildDashboardHtml(bundleJs);
+  }
+  return _dashboardHtml;
+}
+
+function buildDashboardHtml(bundleJs: string): string {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1162,6 +1186,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
+/* ===== BUNDLED: derive-stages + derive-agents (from esbuild) ===== */
+${bundleJs}
+
 /* ===== STATE ===== */
 var state = null;
 var pipelineStartTs = null;
@@ -1221,147 +1248,7 @@ function statusToCssStatus(status) {
 }
 
 /* ===== DERIVED DATA ===== */
-
-/* Pipeline stages derived from managerLog */
-var STAGE_DEFS = [
-  { key: 'spec',    label: 'Spec',    startAction: 'SPEC_START',    fallbackStart: 'PIPELINE_START', endAction: 'SPEC_COMPLETE', secondaryFallback: null },
-  { key: 'plan',    label: 'Plan',    startAction: 'PLAN_START',    fallbackStart: 'SPEC_COMPLETE',  endAction: 'PLAN_COMPLETE', secondaryFallback: null },
-  { key: 'execute', label: 'Execute', startAction: 'EXECUTE_START', fallbackStart: 'PLAN_COMPLETE',  endAction: 'EXECUTE_COMPLETE', secondaryFallback: 'WAVE_START' },
-  { key: 'report',  label: 'Report',  startAction: 'EXECUTE_COMPLETE', fallbackStart: null, endAction: 'REPORT_COMPLETE', secondaryFallback: null }
-];
-
-function deriveStages(managerLog) {
-  /* Scan the ENTIRE log and keep the LAST timestamp for each action type */
-  var actionTimestamps = {};
-  for (var i = 0; i < managerLog.length; i++) {
-    var entry = managerLog[i];
-    if (entry && entry.action) {
-      actionTimestamps[entry.action] = new Date(entry.timestamp).getTime();
-    }
-  }
-
-  /* Check if any managerLog action contains REPORT (case-insensitive) */
-  var hasReportAction = false;
-  var lastLogTs = null;
-  for (var r = 0; r < managerLog.length; r++) {
-    var act = managerLog[r].action || '';
-    if (act.toUpperCase().indexOf('REPORT') !== -1) {
-      hasReportAction = true;
-      var ts = new Date(managerLog[r].timestamp).getTime();
-      if (!lastLogTs || ts > lastLogTs) lastLogTs = ts;
-    }
-  }
-
-  /* Check story completion for EXECUTE stage */
-  var stories = (state && state.executionPlan && state.executionPlan.stories) ? state.executionPlan.stories : null;
-  var allStoriesDone = false;
-  var hasFailed = false;
-  if (stories && stories.length > 0) {
-    allStoriesDone = true;
-    for (var j = 0; j < stories.length; j++) {
-      if (stories[j].status === 'failed') hasFailed = true;
-      if (stories[j].status !== 'passed' && stories[j].status !== 'failed') allStoriesDone = false;
-    }
-  }
-
-  /* Find latest WAVE_COMPLETE or cost log timestamp as execute end proxy */
-  var executeEndTs = null;
-  for (var w = 0; w < managerLog.length; w++) {
-    var wAct = managerLog[w].action || '';
-    if (wAct.indexOf('WAVE_COMPLETE') !== -1) {
-      var wTs = new Date(managerLog[w].timestamp).getTime();
-      if (!executeEndTs || wTs > executeEndTs) executeEndTs = wTs;
-    }
-  }
-  if (!executeEndTs && allStoriesDone && state && state.costLog && state.costLog.length > 0) {
-    for (var c = 0; c < state.costLog.length; c++) {
-      var cTs = new Date(state.costLog[c].timestamp).getTime();
-      if (!executeEndTs || cTs > executeEndTs) executeEndTs = cTs;
-    }
-  }
-
-  /* Map checkpoint to the stage it gates (the NEXT stage that hasn't started yet) */
-  var checkpoint = state ? state.checkpoint : null;
-  var pausedStageKey = null;
-  if (checkpoint && checkpoint.awaiting) {
-    var cpToStage = {
-      'approve-normalize': 'spec',
-      'approve-spec': 'plan',
-      'approve-plan': 'execute',
-      'approve-preflight': 'execute',
-      'approve-integration': 'report',
-      'approve-diagnosis': 'execute'
-    };
-    pausedStageKey = cpToStage[checkpoint.awaiting] || null;
-  }
-
-  /* Find first occurrence of each secondaryFallback action */
-  var firstOccurrence = {};
-  for (var fw = 0; fw < managerLog.length; fw++) {
-    var fwAct = (managerLog[fw].action || '');
-    for (var d = 0; d < STAGE_DEFS.length; d++) {
-      if (STAGE_DEFS[d].secondaryFallback === fwAct && firstOccurrence[fwAct] == null) {
-        firstOccurrence[fwAct] = new Date(managerLog[fw].timestamp).getTime();
-      }
-    }
-  }
-
-  var stages = [];
-  for (var s = 0; s < STAGE_DEFS.length; s++) {
-    var def = STAGE_DEFS[s];
-    /* Resolve startTs: prefer _START action, then secondaryFallback first-occurrence, then fallback */
-    var startTs = actionTimestamps[def.startAction];
-    if (!startTs) {
-      if (def.secondaryFallback && firstOccurrence[def.secondaryFallback]) {
-        startTs = firstOccurrence[def.secondaryFallback];
-      } else if (def.fallbackStart) {
-        startTs = actionTimestamps[def.fallbackStart];
-      }
-    }
-    var endTs = actionTimestamps[def.endAction];
-    var stageStatus = 'pending';
-    var durationMs = null;
-
-    /* Special handling for EXECUTE: use story completion */
-    if (def.key === 'execute' && !endTs && startTs && allStoriesDone) {
-      stageStatus = hasFailed ? 'failed' : 'done';
-      durationMs = executeEndTs ? (executeEndTs - startTs) : (Date.now() - startTs);
-    /* Special handling for REPORT: check for any REPORT action in log */
-    } else if (def.key === 'report' && !endTs && hasReportAction) {
-      var reportStart = actionTimestamps[def.startAction] || (executeEndTs || actionTimestamps['PLAN_COMPLETE']);
-      if (reportStart) {
-        stageStatus = 'done';
-        durationMs = lastLogTs ? (lastLogTs - reportStart) : (Date.now() - reportStart);
-      }
-    } else if (endTs && startTs) {
-      stageStatus = 'done';
-      durationMs = endTs - startTs;
-    } else if (startTs) {
-      if (def.key === pausedStageKey) {
-        stageStatus = 'paused';
-      } else {
-        stageStatus = 'running';
-        durationMs = Date.now() - startTs;
-      }
-    } else if (def.key === pausedStageKey) {
-      stageStatus = 'paused';
-    }
-
-    stages.push({
-      key: def.key,
-      label: def.label,
-      status: stageStatus,
-      durationMs: durationMs
-    });
-  }
-
-  /* If execute is done but not failed, also check running state for execute */
-  if (stories && stages.length >= 3 && stages[2].status === 'running' && hasFailed) {
-    stages[2].status = 'failed';
-  }
-
-  return stages;
-}
+/* deriveStages + deriveActiveAgents are provided by the esbuild bundle above */
 
 function deriveCounts(stories) {
   var counts = { passed: 0, running: 0, failed: 0, pending: 0, blocked: 0 };
@@ -1392,98 +1279,6 @@ function deriveCostTotals(costLog) {
 }
 
 /* ===== SWARM ACTIVITY ===== */
-
-/* NOTE: derive-agents.ts has the typed, testable copy of this function.
-   Keep both in sync when modifying agent derivation logic. */
-function deriveActiveAgents(stories, managerLog, costLog) {
-  var agents = [];
-  var now = Date.now();
-  var currentWave = null;
-
-  var hasRunningStory = stories && stories.some(function(s) { return s.status === 'in-progress'; });
-  if (!hasRunningStory && managerLog.length > 0) {
-    var hasSpecComplete = false, hasPlanComplete = false, pipelineStartTs = null, specCompleteTs = null;
-    for (var i = 0; i < managerLog.length; i++) {
-      var entry = managerLog[i];
-      if (entry.action === 'PIPELINE_START') pipelineStartTs = new Date(entry.timestamp).getTime();
-      if (entry.action === 'SPEC_COMPLETE') { hasSpecComplete = true; specCompleteTs = new Date(entry.timestamp).getTime(); }
-      if (entry.action === 'PLAN_COMPLETE') hasPlanComplete = true;
-    }
-    if (pipelineStartTs && !hasSpecComplete) {
-      agents.push({ type: 'spec-agent', context: 'SPEC', substage: '', startTs: pipelineStartTs, pipeline: true, subtaskId: null, description: 'Generating specification from PRD' });
-    } else if (hasSpecComplete && !hasPlanComplete && specCompleteTs) {
-      agents.push({ type: 'planner', context: 'PLAN', substage: '', startTs: specCompleteTs, pipeline: true, subtaskId: null, description: 'Creating execution plan' });
-    }
-  }
-
-  if (stories) {
-    var latestActionByStory = {};
-    /* Build waveStartByStory from WAVE_START entries for immediate elapsed display */
-    var waveStartByStory = {};
-    for (var w = 0; w < managerLog.length; w++) {
-      var wEntry = managerLog[w];
-      if (wEntry.action === 'WAVE_START' && wEntry.waveNumber != null) currentWave = wEntry.waveNumber;
-      if (wEntry.storyId) latestActionByStory[wEntry.storyId] = wEntry;
-      if (wEntry.action === 'WAVE_START' && wEntry.storyIds) {
-        var wsTs = new Date(wEntry.timestamp).getTime();
-        var wsIds = wEntry.storyIds;
-        for (var wsi = 0; wsi < wsIds.length; wsi++) {
-          if (!waveStartByStory[wsIds[wsi]]) waveStartByStory[wsIds[wsi]] = wsTs;
-        }
-      }
-    }
-    var startTsByStory = {};
-    for (var cl = 0; cl < costLog.length; cl++) {
-      var ce = costLog[cl];
-      if (ce.storyId && ce.timestamp) {
-        var ts = new Date(ce.timestamp).getTime();
-        if (!startTsByStory[ce.storyId] || ts < startTsByStory[ce.storyId]) startTsByStory[ce.storyId] = ts;
-      }
-    }
-    for (var si = 0; si < stories.length; si++) {
-      var story = stories[si];
-      if (story.status !== 'in-progress') continue;
-      var substage = story.substage || 'BUILD';
-      var agentType = 'implementer';
-      if (substage === 'VERIFY') agentType = 'verifier';
-      else if (substage === 'COMMIT') agentType = 'committer';
-      else if (substage === 'TEST') agentType = 'tester';
-      var latestAction = latestActionByStory[story.id];
-      if (latestAction) {
-        if (latestAction.action === 'BUILD_COMPLETE') { agentType = 'refactorer'; substage = 'BUILD'; }
-        if (latestAction.action === 'VERIFY_ATTEMPT') { agentType = 'verifier'; substage = 'VERIFY'; }
-        if (latestAction.action === 'COMPLIANCE_CHECK') { agentType = 'compliance'; substage = 'VERIFY'; }
-        if (latestAction.action === 'BUILD_RETRY') { agentType = 'implementer'; substage = 'RETRY'; }
-      }
-      var subtaskId = null;
-      if (story.subTasks) {
-        for (var st = 0; st < story.subTasks.length; st++) {
-          if (story.subTasks[st].status === 'in-progress') { subtaskId = story.subTasks[st].id; break; }
-        }
-      }
-      var description = null;
-      if (latestAction) {
-        var act = latestAction.action;
-        var attemptSuffix = latestAction.attempt ? ' (attempt ' + latestAction.attempt + ')' : '';
-        if (act === 'BUILD_COMPLETE') description = 'Refactoring after build' + attemptSuffix;
-        else if (act === 'VERIFY_ATTEMPT') description = 'Running verification' + attemptSuffix;
-        else if (act === 'COMPLIANCE_CHECK') description = 'Running compliance checks';
-        else if (act === 'BUILD_RETRY') description = 'Retrying build' + attemptSuffix;
-        else if (act === 'FIX_UNVERIFIED') description = 'Fixing unverified items' + attemptSuffix;
-        else if (act === 'EVAL_ATTEMPT') description = 'Evaluating results' + attemptSuffix;
-        else description = 'Building implementation' + attemptSuffix;
-      } else {
-        if (substage === 'BUILD') description = 'Building implementation';
-        else if (substage === 'VERIFY') description = 'Running verification';
-        else if (substage === 'TEST') description = 'Running tests';
-        else if (substage === 'COMMIT') description = 'Preparing commit';
-      }
-      var startTs = startTsByStory[story.id] || waveStartByStory[story.id] || (now - (story.durationMs || 0));
-      agents.push({ type: agentType, context: story.id, substage: substage, startTs: startTs, pipeline: false, wave: story.wave ?? currentWave, subtaskId: subtaskId, description: description });
-    }
-  }
-  return { agents: agents, currentWave: currentWave };
-}
 
 function renderActiveAgents(result) {
   if (!result || !result.agents || result.agents.length === 0) return '';
@@ -2236,6 +2031,7 @@ elapsedTimerHandle = setInterval(updateElapsed, 1000);
 </body>
 </html>
 `;
+}
 
 export async function startDashboard(
   dirs: PipelineDirs,
@@ -2283,7 +2079,7 @@ export async function startDashboard(
 
     if (pathname === "/") {
       withTimeout(res, async () => {
-        sendHtml(res, DASHBOARD_HTML);
+        sendHtml(res, getDashboardHtml());
       });
       return;
     }
