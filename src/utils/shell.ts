@@ -186,15 +186,23 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
 
       const durationMs = Date.now() - startTime;
 
-      // Detect usage limit: fast exit + no output + non-zero exit code
+      // Detect usage limit: first check stderr for known patterns
       let usageLimitHit = false;
-      if (durationMs < 5000 && !killedByOutputDetection && exitCode !== 0) {
+      const stderrLower = stderr.toLowerCase();
+      if (stderrLower.includes("usage limit") || stderrLower.includes("rate limit")
+          || stderrLower.includes("too many requests") || stderrLower.includes("429")) {
+        usageLimitHit = true;
+        console.warn(`[spawnClaude] USAGE LIMIT (stderr match): ${stderr.slice(0, 200)}`);
+      }
+
+      // Fallback heuristic: fast exit + no output + non-zero exit code (narrowed from 5000ms to 3000ms)
+      if (!usageLimitHit && durationMs < 3000 && !killedByOutputDetection && exitCode !== 0) {
         const hasOutput = options.outputFile ? existsSync(options.outputFile) : stdout.length > 0;
         if (!hasOutput) {
           const noCost = !json || json.cost_usd === undefined || json.cost_usd === 0;
           if (noCost) {
             usageLimitHit = true;
-            console.warn(`[spawnClaude] USAGE LIMIT: Agent completed in ${durationMs}ms with no output and no cost. exit=${exitCode} stderr=${stderr.slice(0, 200)}`);
+            console.warn(`[spawnClaude] USAGE LIMIT (heuristic): Agent completed in ${durationMs}ms with no output and no cost. exit=${exitCode} stderr=${stderr.slice(0, 200)}`);
           } else {
             console.warn(`[spawnClaude] DIAGNOSTIC: Agent completed in ${durationMs}ms with no output. exit=${exitCode} stderr=${stderr.slice(0, 200)}`);
           }

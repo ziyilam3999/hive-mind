@@ -8,6 +8,7 @@ import { getAgentRules, buildRoleReportContents } from "../agents/prompts.js";
 import { readMemory } from "../memory/memory-manager.js";
 import { readFileSafe, ensureDir } from "../utils/file-io.js";
 import { getReportPath } from "../reports/templates.js";
+import { BuildPipelineError } from "../utils/errors.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
@@ -70,7 +71,7 @@ export async function runBuild(
     .map(f => join(moduleCwd ?? process.cwd(), f.path));
   const missingAfterImpl = earlyAddedFiles.filter(f => !existsSync(f));
   if (missingAfterImpl.length > 0) {
-    throw new Error(`BUILD file existence check failed (pre-refactor): missing: ${missingAfterImpl.join(", ")}`);
+    throw new BuildPipelineError("existence", `BUILD file existence check failed (pre-refactor): missing: ${missingAfterImpl.join(", ")}`);
   }
 
   // E.2: Refactorer — receives source code + impl-report + memory
@@ -108,7 +109,7 @@ export async function runBuild(
     );
     if (missingFiles.length > 0) {
       console.warn(`[${story.id}] BUILD file existence check failed. Missing files: ${missingFiles.join(", ")}`);
-      throw new Error(`BUILD file existence check failed: missing files: ${missingFiles.join(", ")}`);
+      throw new BuildPipelineError("existence", `BUILD file existence check failed: missing files: ${missingFiles.join(", ")}`);
     }
   }
 
@@ -137,7 +138,7 @@ export async function runBuild(
       } else {
         const tscOutput = (execErr.stdout || execErr.stderr || "").slice(0, 2000);
         console.warn(`[${story.id}] tsc --noEmit failed after BUILD:\n${tscOutput}`);
-        throw new Error(`BUILD type-check gate failed:\n${tscOutput}`);
+        throw new BuildPipelineError("typecheck", `BUILD type-check gate failed:\n${tscOutput}`);
       }
     }
   } else if (existsSync(pkgJsonPath)) {

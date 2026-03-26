@@ -8,3 +8,14 @@ export class HiveMindError extends Error {
     this.name = "HiveMindError";
   }
 }
+
+export type BuildPipelineErrorKind = "existence" | "typecheck";
+
+export class BuildPipelineError extends HiveMindError {
+  readonly kind: BuildPipelineErrorKind;
+  constructor(kind: BuildPipelineErrorKind, message: string) {
+    super(message);
+    this.name = "BuildPipelineError";
+    this.kind = kind;
+  }
+}
