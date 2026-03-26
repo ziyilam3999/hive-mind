@@ -1516,3 +1516,227 @@ Already covered in Q3, Q6, Q11, Q13. Key reinforcements from Anthropic's details
 - [Claude Code Chrome Integration](https://code.claude.com/docs/en/chrome)
 - [Figma Code to Canvas](https://www.figma.com/blog/introducing-claude-code-to-figma/)
 - [Figma MCP Server](https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/)
+
+---
+
+## Part 4: 8 New Ecosystem Ideas
+
+### Idea 1: Google Workspace CLI (`gws`)
+
+Google released `gws` -- one CLI for all of Workspace (Gmail, Drive, Calendar, Docs, Sheets, Chat, Admin). 67 pre-built agent skills, native MCP server support, 10k+ GitHub stars in first week.
+
+**What it gives Hive Mind:**
+- **Notification system:** After pipeline completion, email scorecard to stakeholders via `gws gmail send`
+- **Document management:** Upload SPEC, REPORT artifacts to Google Drive for team review
+- **Calendar integration:** Schedule pipeline runs, block time for human review checkpoints
+- **Sheets as data store:** Write cost/timing metrics to Google Sheets for cross-run tracking
+
+**How to integrate:** `gws` has native MCP mode (`gws mcp`). Just add to `.hivemindrc.json`:
+```json
+{ "mcpServers": { "workspace": { "command": "gws", "args": ["mcp"] } } }
+```
+
+**Key advantage:** Avoids 37k-98k token "context tax" of raw Google API tool definitions. Skills are lightweight.
+
+**Priority:** MEDIUM -- high value for enterprise/team use, low value for solo dev.
+
+---
+
+### Idea 2: NotebookLLM-py
+
+Unofficial Python API for Google NotebookLM. Programmatic access to create notebooks, import sources (URLs, PDFs, YouTube), generate audio overviews, export quizzes/flashcards.
+
+**What it gives Hive Mind:**
+- **Research agent enhancement:** Import PRD sources into NotebookLM for AI-synthesized insights
+- **Knowledge synthesis:** Generate audio overviews and structured insights from imported sources
+- **Export artifacts:** Generate study guides, mind maps, or presentations from pipeline reports
+
+**Caveat:** Uses undocumented Google APIs -- can break anytime. Not for production pipelines.
+
+**Priority:** LOW -- nice for research/knowledge synthesis but fragile.
+
+---
+
+### Idea 3: Use Claude's Built-in Browser Testing Instead of Raw Playwright
+
+Rather than Hive Mind agents using Playwright directly (complex setup, script writing), use Claude's built-in browser testing via the Chrome extension + `--chrome` flag.
+
+**Why this is better:**
+- Claude already knows how to navigate, click, test, screenshot
+- No Playwright script writing needed -- agent describes what to test in natural language
+- Build-test-fix loop is native: Claude opens browser, sees issues, fixes code, re-checks
+- Handles mobile/theme testing automatically
+
+**How Hive Mind uses it:**
+```
+EXECUTE stage (web projects):
+  BUILD: implementer writes code
+  VISUAL-VERIFY: spawn agent with --chrome flag
+    Agent: "Open localhost:3000, test the login flow, verify responsive design"
+    Agent sees the page, catches issues, fixes code, re-tests
+    GAN loop until passing
+```
+
+**vs. Playwright scripts:**
+- Playwright: agent writes test scripts -> run scripts -> parse results -> fix -> re-run
+- Chrome skill: agent looks at the page -> evaluates -> fixes -> looks again
+
+**Recommendation:** Use Chrome skill for subjective evaluation (design quality, UX). Use Playwright scripts for binary regression tests (API endpoints, data flow). They complement each other.
+
+**Priority:** HIGH -- dramatically simplifies web project verification.
+
+---
+
+### Idea 4: Pre-Built Community Skills
+
+Leverage community-created Claude Code skills for specialized capabilities:
+
+| Skill | What It Does | Hive Mind Application |
+|---|---|---|
+| **frontend-design** | Professional frontend design patterns | Implementer uses for UI stories |
+| **ui-ux-pro-max** | Advanced UI/UX best practices | Anti-AI-slop: evaluator grades UX quality |
+| **seo** | SEO optimization | Post-EXECUTE: SEO audit as scorecard dimension |
+| **code-review** | Structured code review | Replace/supplement code-reviewer agent |
+| **remotion** | Programmatic video generation (React) | Generate demo videos from completed builds |
+| **owasp-security** | OWASP Top 10 security scanning | Security audit as pipeline stage or scorecard dimension |
+
+**Key insight:** Instead of building custom agents for security/SEO/design quality, leverage community skills. Hive Mind's orchestrator loads appropriate skills per project type:
+- Web project: load `frontend-design`, `ui-ux-pro-max`, `seo`
+- API project: load `owasp-security`, `code-review`
+- Video project: load `remotion`
+
+**Priority:** MEDIUM -- curate a recommended skill set per project type.
+
+---
+
+### Idea 5: Slash Commands (/create, Context7, /swarm, /research, /system-design)
+
+| Command | What It Does | Hive Mind Application |
+|---|---|---|
+| **/create** | Builds new skills from a description | Meta-skill: create project-specific skills during PLAN stage |
+| **Context7** | Pulls live docs for any library via MCP | Research agent gets current API docs instead of stale training data |
+| **/swarm** | Launches parallel agent team | Native to Claude Code agent teams -- aligns with Q10 dynamic agents |
+| **/research** | Deep discovery with cross-referenced findings | Enhance SPEC research agent with deep research capability |
+| **/system-design** | Full architecture with tools and pricing | Could replace or supplement SPEC stage for architecture decisions |
+
+**Context7 is the most impactful for Hive Mind:**
+- Currently, research and spec-drafter agents use their training data for library APIs
+- Context7 MCP fetches LATEST docs at runtime -- no stale patterns, no deprecated APIs
+- Add to `.hivemindrc.json`:
+```json
+{ "mcpServers": { "context7": { "command": "npx", "args": ["-y", "@context7/mcp-server"] } } }
+```
+
+**/create for skill generation:**
+- After a pipeline run, analyze what custom behaviors emerged
+- Use `/create` to generate a reusable skill from that pattern
+- Self-improving harness: Hive Mind gets better per project by generating skills
+
+**Priority:** HIGH for Context7. MEDIUM for /create. /swarm covered by Q10.
+
+---
+
+### Idea 6: Claude-Mem
+
+Claude Code plugin that auto-captures everything Claude does, compresses into structured summaries via Agent SDK, stores in SQLite, and injects relevant context into future sessions.
+
+**What it gives Hive Mind:**
+- **Automatic session memory:** Every agent's actions captured without explicit learn stage
+- **Cross-session continuity:** Next pipeline run gets relevant context from prior runs automatically
+- **SQLite storage:** Aligns with Q7 (RAG + SQL) and Idea 19 (persist memory to SQL)
+- **Searchable via MCP:** Natural language queries over project history
+
+**How it compares to Hive Mind's current learning system:**
+
+| Feature | Hive Mind Current | Claude-Mem |
+|---|---|---|
+| Capture | Explicit learner agent per story | Automatic from all tool usage |
+| Storage | memory.md (flat file) | SQLite (structured, searchable) |
+| Retrieval | Load entire file | Query by relevance |
+| Consolidation | Rule-based graduation | AI-compressed summaries |
+| Cross-session | Knowledge base files | Injected context per session |
+
+**Recommendation:** Don't replace Hive Mind's learning system -- augment it. Use Claude-Mem for automatic capture, Hive Mind's graduation for curation.
+
+**Priority:** HIGH -- directly solves the memory persistence problem.
+
+---
+
+### Idea 7: Claude Code Web Search
+
+Claude Code has built-in WebSearch and WebFetch tools. Latest version (`web_search_20260209`) adds dynamic filtering -- Claude writes code to filter results before they hit context, saving 24% tokens with 11% better accuracy.
+
+**What it gives Hive Mind:**
+- **Research agent upgrade:** Search the web for current API docs, Stack Overflow solutions, GitHub issues
+- **Error diagnosis:** When fixer encounters unknown error, search for solutions in real-time
+- **Competitive analysis:** Research agent compares PRD requirements against existing solutions
+
+**How to enable for Hive Mind agents:**
+Just add "WebSearch" and "WebFetch" to allowed tools for research/fixer agents:
+
+```typescript
+// tool-permissions.ts update
+const RESEARCH_TOOLS = [...READ_ONLY_TOOLS, "Write", "WebSearch", "WebFetch"];
+```
+
+**Priority:** HIGH -- easy to enable, high value for research and diagnosis agents.
+
+---
+
+### Idea 8: MCP-CLI Deferred Tool Loading
+
+Originally an undocumented `ENABLE_EXPERIMENTAL_MCP_CLI=true` flag. Now replaced by official **Tool Search** and **`defer_loading`** in Claude Code settings. Reduces MCP tool context from 30-100k tokens to near zero by loading schemas on-demand.
+
+**What it gives Hive Mind:**
+- **Token savings:** With many MCP servers (GitHub, SQLite, Figma, Vercel), deferred loading prevents 100k+ tokens of tool schemas filling context
+- **More room for actual work:** Agents get full context window for code, not tool definitions
+- **Scale:** Enables 10+ MCP servers configured without penalty
+
+**How to enable:**
+```json
+{
+  "mcpServers": {
+    "github": { "command": "...", "defer_loading": true },
+    "sqlite": { "command": "...", "defer_loading": true }
+  }
+}
+```
+
+**Priority:** HIGH -- essential prerequisite for MCP Phase 1 at scale.
+
+---
+
+## Part 4: Priority Summary
+
+| Priority | Ideas | Impact |
+|---|---|---|
+| **HIGH** | 3 (Chrome skill), 6 (Claude-Mem), 7 (Web Search), 8 (Deferred loading) | Immediate quality + efficiency |
+| **HIGH** | 5 (Context7 for live docs) | No more stale API patterns |
+| **MEDIUM** | 1 (Google Workspace CLI), 4 (Community skills), 5 (/create) | Enterprise/team, project-type customization |
+| **LOW** | 2 (NotebookLLM-py) | Fragile unofficial API |
+
+---
+
+## Revised Master Build Order (All Parts)
+
+1. **MCP Phase 1 + deferred loading** (Q9 + Part 4 Idea 8) -- foundation for everything
+2. **WebSearch + WebFetch for agents** (Part 4 Idea 7) -- add to tool-permissions.ts
+3. **Context7 MCP** (Part 4 Idea 5) -- live docs for research/spec agents
+4. **LSP enablement** (Part 3 Idea 3) -- IDE-level code intelligence for agents
+5. **Chrome skill for web testing** (Part 4 Idea 3) -- visual GAN loop for UI projects
+6. **Claude-Mem integration** (Part 4 Idea 6) -- automatic memory capture to SQLite
+7. **GAN few-shot skepticism** (Part 3 Ideas 12-13) -- critic prompt improvement
+8. **Agent teams as skills** (Part 3 Idea 5 + Q10) -- dynamic agent composition
+9. **Community skills per project type** (Part 4 Idea 4) -- frontend-design, owasp-security, etc.
+10. **Google Workspace CLI** (Part 4 Idea 1) -- enterprise notification/reporting
+11. **Figma MCP** (Part 3 Ideas 10+16) -- design-aware pipeline
+
+## Sources (Part 4)
+- [Google Workspace CLI](https://github.com/googleworkspace/cli)
+- [notebooklm-py](https://github.com/teng-lin/notebooklm-py)
+- [Claude Code Chrome Integration](https://code.claude.com/docs/en/chrome)
+- [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams)
+- [Claude-Mem](https://github.com/thedotmack/claude-mem)
+- [Claude Code Web Search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool)
+- [MCP-CLI Deferred Loading](https://paddo.dev/blog/claude-code-hidden-mcp-flag/)
+- [Context7 MCP](https://github.com/am-will/swarms)
