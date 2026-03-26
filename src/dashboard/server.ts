@@ -1393,6 +1393,8 @@ function deriveCostTotals(costLog) {
 
 /* ===== SWARM ACTIVITY ===== */
 
+/* NOTE: derive-agents.ts has the typed, testable copy of this function.
+   Keep both in sync when modifying agent derivation logic. */
 function deriveActiveAgents(stories, managerLog, costLog) {
   var agents = [];
   var now = Date.now();
