@@ -170,32 +170,55 @@ Items 4, 5, 6 have no dependencies (can start immediately)
 
 ---
 
-### Story 6: Pipeline Timeout + Cost Velocity Alert
+### Story 6: Dynamic Pipeline Timeout + Cost Velocity Alert
 
-**Goal:** Prevent runaway pipelines from running forever or burning budget.
+**Goal:** Prevent runaway pipelines with timeouts that scale to the task, not a fixed number.
 
 **Ref:** [Pillar 6 ss6.3](../roadmap-by-pillar.md) (lines 1603-1677)
 
 **What to build:**
-1. Add `pipelineTimeout` to config schema (default: 4 hours / 14,400,000ms)
-2. Add timeout check in orchestrator main loop -- abort if exceeded
-3. Add `checkCostVelocity()` function that projects total cost from progress
-4. Call cost velocity check after each story completes
-5. Warn (not abort) when projected cost exceeds 2x budget
+
+1. **Dynamic timeout system (3 tiers):**
+   - Pre-execute stages (NORMALIZE, SPEC, PLAN): 2hr fixed safety cap
+   - Execute stage: rolling average of completed story durations * remaining stories * 1.5 buffer + 1hr grace. Recalculated after each story completion. Before first story completes, use 2hr initial safety cap.
+   - Post-execute stages (REPORT, SCORECARD): 1hr fixed safety cap
+
+2. **Hard cap:** 48 hours maximum regardless of calculation. User override via `--timeout <minutes>` always wins.
+
+3. **Cost velocity alert:**
+   - `checkCostVelocity()` projects total cost from progress after each story
+   - Warn (not abort) when projected cost exceeds 2x budget
+   - Uses same rolling average approach: actual cost per story * remaining stories
+
+4. **Timeout calculation example:**
+   ```
+   After story 1 completes (took 12 min):
+     avgPerStory = 12 min
+     remaining = 9 stories
+     executeTimeout = 12 * 9 * 1.5 + 60 = 222 min (~3.7 hr)
+
+   After story 5 completes (avg now 18 min due to retries):
+     avgPerStory = 18 min
+     remaining = 5 stories
+     executeTimeout = 18 * 5 * 1.5 + 60 = 195 min (~3.25 hr from now)
+   ```
 
 **Files to modify:**
-- `src/config/schema.ts` -- add pipelineTimeout field
-- `src/orchestrator.ts` -- add timeout check in main loop, add cost velocity check after each story
-- `src/utils/cost-tracker.ts` (or equivalent) -- add velocity projection function
+- `src/config/schema.ts` -- add stageTimeouts config, remove fixed pipelineTimeout
+- `src/orchestrator.ts` -- add per-stage timeout checks, rolling average tracker
+- `src/utils/cost-tracker.ts` (or equivalent) -- add velocity projection + rolling avg duration tracker
 
 **ACs:**
-- Pipeline aborts with clear message after pipelineTimeout (default 4hr)
+- Pre-execute stages abort after 2hr with clear message
+- Execute stage timeout recalculates after each story using rolling average
+- Post-execute stages abort after 1hr
+- Hard cap at 48hr regardless of calculation
+- `--timeout <minutes>` overrides all dynamic calculation
 - Cost velocity warning fires when projected total > 2x budget
-- Warning includes projected cost and recommendation to abort
-- Both are configurable via `.hivemindrc.json`
-- No impact when pipeline runs within normal bounds
+- Warning includes projected cost, avg story duration, and recommendation
+- No timeout impact when pipeline runs within normal bounds (timeout always > actual)
 
-**Effort:** Small (1 day)
+**Effort:** Small-Medium (1-2 days)
 
 **Depends on:** Nothing (can start immediately)
 
@@ -231,7 +254,7 @@ All must pass before R1 is considered done:
 - [ ] Context7: research agent fetches live library docs
 - [ ] Few-shot skepticism: critic prompts include skeptical examples
 - [ ] Compliance merged: no separate compliance stage, criteria are ECs
-- [ ] Safeguards: pipeline aborts after timeout, warns on cost velocity
+- [ ] Safeguards: dynamic timeouts (2hr pre-execute, rolling-avg execute, 48hr cap), cost velocity warning
 - [ ] Regression: `npm run test` passes, `npm run build` succeeds
 - [ ] Validation: full pipeline run on test PRD produces scorecard >= baseline
 
