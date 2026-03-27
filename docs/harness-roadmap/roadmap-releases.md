@@ -117,11 +117,13 @@
 ## How to Use This Plan
 
 1. **Active release:** Only one release is actively being worked on at a time
-2. **New ideas:** Add to [roadmap-backlog.md](roadmap-backlog.md) with one-liner + pillar tag
-3. **Release planning:** When current release is ~75% done, detail the next release plan
-4. **Items can move:** If an R3 item becomes urgent, pull it into R2. If an R1 item is blocked, push to R2
-5. **Retrospective:** After each release, add a retro section to the release plan doc
-6. **Validation:** After each release, run a full pipeline on a test PRD and compare scorecard against baseline
+2. **One PR per story:** Each story = one PR. No multi-story PRs. Large stories get sub-PRs. Keeps reviews small and revertable.
+3. **Skills over hardcoded prompts:** Prompt-based items are `.claude/skills/` files, not hardcoded in `prompts.ts`. Auto-improvable by skill-creator in R3.
+4. **New ideas:** Add to [roadmap-backlog.md](roadmap-backlog.md) with one-liner + pillar tag
+5. **Release planning:** When current release is ~75% done, detail the next release plan
+6. **Items can move:** If an R3 item becomes urgent, pull it into R2. If an R1 item is blocked, push to R2
+7. **Retrospective:** After each release, add a retro section to the release plan doc
+8. **Validation:** After each release, run a full pipeline on a test PRD and compare scorecard against baseline
 
 ## Deferred (v2+)
 Items explicitly deferred beyond R4:
