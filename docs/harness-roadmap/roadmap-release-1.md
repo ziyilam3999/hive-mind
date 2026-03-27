@@ -40,14 +40,15 @@ Items 4, 5, 6 have no dependencies (can start immediately)
 **Ref:** [Pillar 1 ss1.1](../roadmap-by-pillar.md) (lines 19-55)
 
 **What to build:**
-1. Add `mcpServers` field to config schema (`src/config/schema.ts`)
-2. In `spawnClaude()` (`src/utils/shell.ts`), if config has mcpServers, write a temp MCP config JSON and pass `--mcp-config <path>` to the Claude CLI invocation
-3. Add `defer_loading: true` support so tool schemas don't bloat context
-4. Add `.hivemindrc.json` example to README
+1. Add `mcpServers` field to `HiveMindConfig` interface (`src/config/schema.ts`) -- note: project uses plain TS interface, not Zod
+2. Add validation rules for mcpServers in `validateConfig()` (`src/config/loader.ts`)
+3. In `spawnClaude()` (`src/utils/shell.ts`), if config has mcpServers, write a temp MCP config JSON and pass `--mcp-config <path>` to the Claude CLI invocation
+4. Add `defer_loading: true` support so tool schemas don't bloat context
+5. Add `.hivemindrc.json` example to README
 
 **Files to modify:**
-- `src/config/schema.ts` -- add mcpServers to Zod schema
-- `src/config/loader.ts` -- load mcpServers from config
+- `src/config/schema.ts` -- add mcpServers to HiveMindConfig interface + DEFAULT_CONFIG
+- `src/config/loader.ts` -- add mcpServers validation to validateConfig()
 - `src/utils/shell.ts` -- pass --mcp-config flag to spawnClaude()
 - `README.md` -- document MCP config
 
@@ -69,11 +70,11 @@ Items 4, 5, 6 have no dependencies (can start immediately)
 **Ref:** [Pillar 1 ss1.5](../roadmap-by-pillar.md) (lines 146-163)
 
 **What to build:**
-1. Add "WebSearch" and "WebFetch" to tool permission sets for research-capable agents
-2. Update agent tool permissions in `src/agents/tool-permissions.ts`
+1. Add "WebSearch" and "WebFetch" to specific agent entries in `AGENT_TOOL_MAP` -- note: no RESEARCH_TOOLS/FIXER_TOOLS constants exist, tool perms are per-agent arrays
+2. Add to: `researcher`, `fixer`, `compliance-fixer` entries
 
 **Files to modify:**
-- `src/agents/tool-permissions.ts` -- add WebSearch, WebFetch to RESEARCH_TOOLS and FIXER_TOOLS
+- `src/agents/tool-permissions.ts` -- add WebSearch, WebFetch to researcher, fixer, compliance-fixer entries in AGENT_TOOL_MAP
 
 **ACs:**
 - Research agent (`researcher`) has WebSearch and WebFetch in allowed tools
@@ -147,13 +148,13 @@ Items 4, 5, 6 have no dependencies (can start immediately)
 
 **What to build:**
 1. Update EC-generator prompt to include compliance criteria (instruction coverage) as additional ECs
-2. Remove compliance stage invocation from orchestrator
+2. Remove compliance stage invocation from orchestrator -- **two call sites**: line ~748 (normal path) AND line ~865 (decomposed story path)
 3. Remove or deprecate `src/stages/execute-compliance.ts`
 4. Update execution plan types if compliance stage is referenced
 
 **Files to modify:**
 - `src/agents/prompts.ts` -- EC-generator prompt to include compliance ECs
-- `src/orchestrator.ts` -- remove compliance stage call
+- `src/orchestrator.ts` -- remove runComplianceCheck() at BOTH call sites (~line 748 and ~line 865)
 - `src/stages/execute-compliance.ts` -- remove or mark deprecated
 - `src/types/` -- update if compliance stage enum/type exists
 
@@ -207,9 +208,10 @@ Items 4, 5, 6 have no dependencies (can start immediately)
    ```
 
 **Files to modify:**
-- `src/config/schema.ts` -- add stageTimeouts config, remove fixed pipelineTimeout
+- `src/config/schema.ts` -- add stageTimeouts to HiveMindConfig interface (pure addition, no existing pipelineTimeout to remove)
+- `src/config/loader.ts` -- add stageTimeouts validation to validateConfig()
 - `src/orchestrator.ts` -- add per-stage timeout checks, rolling average tracker
-- `src/utils/cost-tracker.ts` (or equivalent) -- add velocity projection + rolling avg duration tracker
+- `src/utils/cost-tracker.ts` -- extend existing CostTracker class with velocity projection + rolling avg duration tracker
 
 **ACs:**
 - Pre-plan stages (NORMALIZE, SPEC) abort after 2hr with clear message
