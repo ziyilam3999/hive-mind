@@ -1,8 +1,8 @@
 /**
  * Extracted deriveStages logic for testability.
  *
- * NOTE: The inline browser JS in server.ts has an equivalent var-based copy.
- * Keep both in sync when modifying stage derivation logic.
+ * This is the single source of truth — esbuild bundles it into
+ * dashboard-bundle.js which server.ts inlines into the browser page.
  */
 
 export interface StageDef {
