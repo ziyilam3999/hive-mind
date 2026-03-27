@@ -178,8 +178,11 @@ Items 4, 5, 6 have no dependencies (can start immediately)
 
 **What to build:**
 
-1. **Dynamic timeout system (3 tiers):**
-   - Pre-execute stages (NORMALIZE, SPEC, PLAN): 2hr fixed safety cap
+1. **Dynamic timeout system (4 tiers):**
+   - Pre-plan stages (NORMALIZE, SPEC): 2hr fixed safety cap -- these process one PRD, not N stories
+   - PLAN stage (two sub-phases):
+     - Story decomposition (planner agent): 30min fixed -- one agent, bounded
+     - Per-story AC/EC generation: rolling average, same as EXECUTE. After first story's ACs/ECs generated, measure duration, multiply by remaining * 1.5 buffer. Recalculate after each story.
    - Execute stage: rolling average of completed story durations * remaining stories * 1.5 buffer + 1hr grace. Recalculated after each story completion. Before first story completes, use 2hr initial safety cap.
    - Post-execute stages (REPORT, SCORECARD): 1hr fixed safety cap
 
@@ -209,7 +212,8 @@ Items 4, 5, 6 have no dependencies (can start immediately)
 - `src/utils/cost-tracker.ts` (or equivalent) -- add velocity projection + rolling avg duration tracker
 
 **ACs:**
-- Pre-execute stages abort after 2hr with clear message
+- Pre-plan stages (NORMALIZE, SPEC) abort after 2hr with clear message
+- PLAN story decomposition aborts after 30min; PLAN AC/EC gen uses rolling average per story
 - Execute stage timeout recalculates after each story using rolling average
 - Post-execute stages abort after 1hr
 - Hard cap at 48hr regardless of calculation
