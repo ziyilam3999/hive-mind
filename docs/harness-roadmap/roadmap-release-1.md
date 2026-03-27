@@ -4,6 +4,22 @@
 **Timeline:** 2-3 weeks
 **Status:** Not started
 
+## Design Principles
+
+**1. Skills over hardcoded prompts.** Prompt-based items (few-shot examples, EC-generator rules, Context7 instructions) must be implemented as `.claude/skills/` files, not hardcoded in `prompts.ts`. Claude CLI auto-loads skills from the project's `.claude/skills/` directory via the `cwd` passed to `spawnClaude()`. This makes them editable without code changes and auto-improvable by skill-creator in R3.
+
+Applies to: Story 3 (Context7 instructions), Story 4 (few-shot skepticism), Story 5 (compliance EC rules).
+Does NOT apply to: Story 1 (MCP infra -- code), Story 2 (tool permissions -- code), Story 6 (timeout -- code).
+
+**2. One PR per story.** Each story = one PR. No multi-story PRs. This keeps PRs reviewable, revertable, and CI-testable independently. For large stories, break into sub-PRs:
+- Story 1 (MCP Phase 1) suggested sub-PRs:
+  - PR 1a: config schema + loader changes
+  - PR 1b: spawnClaude() MCP flag passing
+  - PR 1c: deferred loading support
+  - PR 1d: README docs
+
+---
+
 ## Dependencies
 
 ```
