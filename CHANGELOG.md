@@ -1,3 +1,29 @@
+## [0.17.2](https://github.com/ziyilam3999/hive-mind/compare/v0.17.1...v0.17.2) (2026-03-27)
+
+### Documentation
+
+* add double-critique effectiveness and retrospective reports (R11R, R12) (#142)
+* fix R1 plan to match codebase reality (#141)
+* split PLAN stage timeout into decomposition + AC/EC gen (#140)
+* replace fixed 4hr timeout with dynamic rolling-average (#139)
+* add design principles to harness roadmap (#138)
+* add harness roadmap release plan and R1 detailed plan (#137)
+* reorganize harness improvement roadmap (#136)
+* add improvement roadmap Parts 2-4 (#133)
+
+### Bug Fixes
+
+* use nullish coalescing for story.wave to handle wave 0 (#134)
+* scope tsc to story files, add checkpoint resume, enable incremental (#132)
+* improve usage-limit detection and guard spawner rejections (#127)
+* treat deleted source files as verification failure (#128)
+* replace string-matching with typed BuildPipelineError (#126)
+
+### Miscellaneous
+
+* bundle dashboard JS with esbuild to eliminate dual-copy (#135)
+* extract writeReportAndCheckpoint helper (#131)
+
 ## [0.17.1](https://github.com/ziyilam3999/hive-mind/compare/v0.17.0...v0.17.1) (2026-03-26)
 
 ### Miscellaneous
