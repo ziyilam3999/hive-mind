@@ -18,16 +18,44 @@ Does NOT apply to: Story 1 (MCP infra -- code), Story 2 (tool permissions -- cod
   - PR 1c: deferred loading support
   - PR 1d: README docs
 
+**3. Simple scales better than complex.** Use simple algorithms and data structures. Fancy algorithms are slow when N is small -- and N is usually small in our context (stories per PRD, agents per stage, waves per run). Prefer straightforward loops over clever abstractions. Only optimize when profiling proves a bottleneck.
+
+Applies to: all stories, all releases.
+
+---
+
+## Pre-R1: Baseline Current Pipeline
+
+Before any R1 code changes, capture a performance baseline for comparison:
+
+1. Run the full pipeline once on a test PRD (use an existing PRD from `../hive-mind-design/`)
+2. Save all outputs to `../hive-mind-design/baselines/pre-r1/`:
+   - `cost-log.jsonl` -- per-agent cost and duration
+   - `manager-log.jsonl` -- pipeline event log
+   - `execution-plan.json` -- story metadata and pass/fail
+   - `report-card.md` -- accumulated scorecard
+   - `live-report.md` -- final dashboard snapshot
+   - `consolidated-report.md` -- full pipeline summary
+3. Record summary metrics in a `baseline-summary.md`:
+   - Total cost (USD)
+   - Total elapsed time
+   - Story pass rate (passed/total)
+   - Test pass rate
+   - Number of retries
+   - Agent count by type
+
+This baseline is referenced by the Exit Criteria ("scorecard >= baseline") and will be used for R1 retrospective comparison.
+
 ---
 
 ## Dependencies
 
 ```
 Item 1 (MCP Phase 1) --> Items 2, 3 (WebSearch, Context7 need MCP)
-Items 4, 5, 6 have no dependencies (can start immediately)
+Items 4, 5, 6, 7 have no dependencies (can start immediately)
 ```
 
-**Recommended order:** Start items 4, 5, 6 in parallel with item 1. Items 2, 3 after item 1 lands.
+**Recommended order:** Start items 4, 5, 6, 7 in parallel with item 1. Items 2, 3 after item 1 lands.
 
 ---
 
@@ -230,13 +258,43 @@ Items 4, 5, 6 have no dependencies (can start immediately)
 
 ---
 
+### Story 7: Clear Old .ai-workspace Before New Pipeline Run
+
+**Goal:** Prevent stale artifacts from previous pipeline runs from confusing the current run.
+
+**What to build:**
+1. At pipeline start (before NORMALIZE), check if `.ai-workspace/` exists from a previous run
+2. If it exists, archive it to `.ai-workspace-archive/{timestamp}/` using `mv` (safer than `rm` on Windows)
+3. Create a fresh `.ai-workspace/` directory for the new run
+4. Log the archive action so the user knows where old artifacts went
+
+**Files to modify:**
+- `src/orchestrator.ts` -- add workspace cleanup at pipeline start, before NORMALIZE stage
+
+**ACs:**
+- Previous `.ai-workspace/` is moved to `.ai-workspace-archive/{ISO-timestamp}/` before new run starts
+- Fresh `.ai-workspace/` directory is created for the new pipeline run
+- Log message indicates where old workspace was archived
+- No error if `.ai-workspace/` doesn't exist (first run)
+- No error if `.ai-workspace-archive/` doesn't exist (auto-created)
+
+**Effort:** Small (< 0.5 day)
+
+**Depends on:** Nothing (can start immediately)
+
+---
+
 ## Execution Plan
 
 ```
+Pre-R1:
+  Baseline run on test PRD                -- 0.5 day (save outputs to baselines/pre-r1/)
+
 Week 1:
   [parallel] Story 4 (few-shot skepticism) -- 0.5 day
   [parallel] Story 5 (merge compliance)    -- 1-2 days
   [parallel] Story 6 (timeout + velocity)  -- 1 day
+  [parallel] Story 7 (workspace cleanup)   -- 0.5 day
   [parallel] Story 1 (MCP Phase 1)         -- starts, takes 2-3 days
 
 Week 2:
@@ -255,12 +313,14 @@ Week 3 (buffer):
 
 All must pass before R1 is considered done:
 
+- [ ] Baseline: pre-R1 pipeline outputs saved to `../hive-mind-design/baselines/pre-r1/`
 - [ ] MCP Phase 1: agents use MCP servers from `.hivemindrc.json`
 - [ ] WebSearch: research agent searches web during SPEC research
 - [ ] Context7: research agent fetches live library docs
 - [ ] Few-shot skepticism: critic prompts include skeptical examples
 - [ ] Compliance merged: no separate compliance stage, criteria are ECs
 - [ ] Safeguards: dynamic timeouts (2hr pre-execute, rolling-avg execute, 48hr cap), cost velocity warning
+- [ ] Workspace cleanup: old `.ai-workspace/` archived before new pipeline run
 - [ ] Regression: `npm run test` passes, `npm run build` succeeds
 - [ ] Validation: full pipeline run on test PRD produces scorecard >= baseline
 

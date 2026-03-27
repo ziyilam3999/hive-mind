@@ -26,6 +26,7 @@
 | 4 | GAN few-shot skepticism (prompt change) | P3 | Small | P3 ss3.4 |
 | 5 | Merge compliance into VERIFY GAN loop | P3 | Small | P3 ss3.1 |
 | 6 | Pipeline timeout + cost velocity alert | P6 | Small | P6 ss6.3 |
+| 7 | Clear old .ai-workspace before new run | P6 | Small | -- |
 
 **Why first:** MCP unblocks everything. The rest are small/medium effort, high impact, zero architecture changes.
 
@@ -35,6 +36,7 @@
 - Compliance stage removed, criteria merged into VERIFY ECs
 - Critic prompts include few-shot skepticism examples
 - Pipeline has dynamic timeouts (2hr pre-execute, rolling-average during execute, 48hr hard cap) and 2x budget velocity warning
+- Old .ai-workspace archived before new pipeline run
 
 **Detailed plan:** [roadmap-release-1.md](roadmap-release-1.md)
 
@@ -126,6 +128,7 @@
 6. **Items can move:** If an R3 item becomes urgent, pull it into R2. If an R1 item is blocked, push to R2
 7. **Retrospective:** After each release, add a retro section to the release plan doc
 8. **Validation:** After each release, run a full pipeline on a test PRD and compare scorecard against baseline
+9. **Simple scales better:** Use simple algorithms and data structures. Fancy algorithms are slow when N is small -- and N is usually small. Only optimize when profiling proves a bottleneck.
 
 ## Deferred (v2+)
 Items explicitly deferred beyond R4:
