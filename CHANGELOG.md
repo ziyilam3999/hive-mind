@@ -1,3 +1,9 @@
+## [0.17.3](https://github.com/ziyilam3999/hive-mind/compare/v0.17.2...v0.17.3) (2026-03-27)
+
+### Documentation
+
+* add 8 new ideas to harness roadmap (baseline, simplicity, workspace cleanup, backlog) (#144)
+
 ## [0.17.2](https://github.com/ziyilam3999/hive-mind/compare/v0.17.1...v0.17.2) (2026-03-27)
 
 ### Documentation
