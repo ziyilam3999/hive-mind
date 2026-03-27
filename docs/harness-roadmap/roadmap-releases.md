@@ -34,7 +34,7 @@
 - Research agent uses WebSearch and Context7
 - Compliance stage removed, criteria merged into VERIFY ECs
 - Critic prompts include few-shot skepticism examples
-- Pipeline aborts after 4hr timeout or 2x budget velocity
+- Pipeline has dynamic timeouts (2hr pre-execute, rolling-average during execute, 48hr hard cap) and 2x budget velocity warning
 
 **Detailed plan:** [roadmap-release-1.md](roadmap-release-1.md)
 
@@ -107,8 +107,10 @@
 | 6 | Community skills per project type | P4 | Medium | P4 ss4.5 |
 | 7 | Figma MCP for design-aware pipeline | P2 | Large | P2 ss2.3 |
 | 8 | Adaptive concurrency based on rate limits | P6 | Medium | P6 ss6.2 |
+| 9 | Docker container sandbox for dev agents | P6 | Large | P6 ss6.4 |
+| 10 | Staffing agent for dynamic pipeline (capstone) | P5 | Large | P5 ss5.3 |
 
-**Why last:** Largest changes, need the most testing, benefit from everything before them.
+**Why last:** Largest changes, need the most testing, benefit from everything before them. Staffing agent is the capstone -- it replaces the orchestrator's fixed stage sequence with a dynamic agent graph. Requires tiered mode gates (item 1) to be in place first, so the staffing agent can evolve the gate logic rather than rewrite the orchestrator. Docker sandbox pairs with dark factory mode (item 4) -- untrusted autonomous execution needs container isolation.
 
 **Exit criteria:** (stub -- detailed during R3)
 
@@ -127,8 +129,6 @@
 
 ## Deferred (v2+)
 Items explicitly deferred beyond R4:
-- Full RAG + SQL memory with embeddings (P4)
-- MCP Phase 2: expose Hive Mind as MCP server (P1)
-- Docker container sandbox for dev agents (P6)
-- Staffing agent for fully dynamic pipeline (P5)
-- NotebookLLM-py integration (P6)
+- **Full RAG + SQL memory with embeddings (P4)** -- LLM-driven consolidation (R3) gets 80% of value without vector infra
+- **MCP Phase 2: expose Hive Mind as MCP server (P1)** -- no demand yet; build consumer side first (R1), expose when orchestration layer needs it
+- **NotebookLLM-py integration (P6)** -- unofficial API using undocumented Google endpoints, zero production reliability
