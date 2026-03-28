@@ -264,7 +264,7 @@ Items 4, 5, 6, 7 have no dependencies (can start immediately)
 
 **What to build:**
 1. At pipeline start (before NORMALIZE), check if `.ai-workspace/` exists from a previous run
-2. If it exists, archive it to `.ai-workspace-archive/{timestamp}/` using `mv` (safer than `rm` on Windows)
+2. If it exists, archive it to `.ai-workspace-archive/{ISO-8601-timestamp}/` using `mv` (safer than `rm` on Windows)
 3. Create a fresh `.ai-workspace/` directory for the new run
 4. Log the archive action so the user knows where old artifacts went
 
