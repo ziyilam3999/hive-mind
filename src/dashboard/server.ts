@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join, resolve, sep, dirname } from "node:path";
 import { readFile, readdir } from "node:fs/promises";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import type { HiveMindConfig } from "../config/schema.js";
@@ -2114,6 +2114,16 @@ export async function startDashboard(
 
   const DEFAULT_PORT = 4040;
   const MAX_PORT_ATTEMPTS = 10;
+  const portFilePath = join(workingDir, ".dashboard-port");
+
+  function writeDashboardPort(boundPort: number): void {
+    try { writeFileSync(portFilePath, String(boundPort)); } catch { /* non-fatal */ }
+  }
+
+  function shouldOpenBrowser(): boolean {
+    // Only open browser if no port file exists (first dashboard start this run)
+    return !existsSync(portFilePath);
+  }
 
   function tryListen(port: number, attempt: number): Promise<DashboardHandle> {
     return new Promise<DashboardHandle>((resolvePromise, rejectPromise) => {
@@ -2132,12 +2142,16 @@ export async function startDashboard(
         const boundPort = typeof address === "object" && address ? address.port : port;
         const url = `http://localhost:${boundPort}`;
 
-        openBrowser(url);
+        const wantBrowser = shouldOpenBrowser();
+        writeDashboardPort(boundPort);
+        if (wantBrowser) openBrowser(url);
+        else console.log(`Dashboard: ${url}`);
 
         resolvePromise({
           stop: () => {
             clearInterval(pollTimer);
             server.close();
+            try { unlinkSync(portFilePath); } catch { /* non-fatal */ }
           },
           url,
           signalShutdown: (shutdownAt: number) => {
@@ -2159,9 +2173,12 @@ export async function startDashboard(
         const address = server.address();
         const boundPort = typeof address === "object" && address ? address.port : portOverride;
         const url = `http://localhost:${boundPort}`;
-        openBrowser(url);
+        const wantBrowser = shouldOpenBrowser();
+        writeDashboardPort(boundPort);
+        if (wantBrowser) openBrowser(url);
+        else console.log(`Dashboard: ${url}`);
         resolvePromise({
-          stop: () => { clearInterval(pollTimer); server.close(); },
+          stop: () => { clearInterval(pollTimer); server.close(); try { unlinkSync(portFilePath); } catch { /* non-fatal */ } },
           url,
           signalShutdown: (shutdownAt: number) => { cached.shutdownAt = shutdownAt; },
         });
