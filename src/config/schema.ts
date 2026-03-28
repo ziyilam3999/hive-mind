@@ -1,4 +1,5 @@
-import type { AgentType, ModelTier } from "../types/agents.js";
+import type { ModelTier } from "../types/agents.js";
+import { AGENT_MODEL_MAP } from "../agents/registry.js";
 
 export interface HiveMindConfig {
   agentTimeout: number;
@@ -26,47 +27,8 @@ export interface HiveMindConfig {
   labDir?: string;
 }
 
-export const DEFAULT_MODEL_ASSIGNMENTS: Record<AgentType, ModelTier> = {
-  "researcher": "opus",
-  "spec-drafter": "opus",
-  "critic": "sonnet",
-  "spec-corrector": "opus",
-  "tooling-setup": "sonnet",
-  "analyst": "opus",
-  "reviewer": "sonnet",
-  "security": "sonnet",
-  "architect": "opus",
-  "tester-role": "sonnet",
-  "synthesizer": "opus",
-  "implementer": "opus",
-  "refactorer": "sonnet",
-  "tester-exec": "haiku",
-  "evaluator": "haiku",
-  "diagnostician": "sonnet",
-  "fixer": "sonnet",
-  "learner": "haiku",
-  "reporter": "haiku",
-  "retrospective": "sonnet",
-  "planner": "opus",
-  "ac-generator": "sonnet",
-  "ec-generator": "sonnet",
-  "code-reviewer": "sonnet",
-  "log-summarizer": "haiku",
-  "enricher": "sonnet",
-  "compliance-reviewer": "sonnet",
-  "compliance-fixer": "sonnet",
-  "decomposer": "sonnet",
-  "integration-verifier": "opus",
-  "diagnostician-bug": "opus",
-  "workspace-cleanup": "haiku",
-  "normalizer": "sonnet",
-  "relevance-scanner": "sonnet",
-  "codebase-analyzer": "opus",
-  "feature-spec-drafter": "opus",
-  "reconciler": "opus",
-  "scorecard": "haiku",
-  "plan-validator": "sonnet",
-};
+/** Derived from the central AGENT_REGISTRY — kept as a named export for backward compatibility. */
+export const DEFAULT_MODEL_ASSIGNMENTS = { ...AGENT_MODEL_MAP };
 
 export const DEFAULT_CONFIG: HiveMindConfig = {
   agentTimeout: 600_000,

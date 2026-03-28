@@ -1,46 +1,8 @@
 import type { AgentType, ModelTier } from "../types/agents.js";
 
-export const AGENT_MODEL_MAP: Record<AgentType, ModelTier> = {
-  "researcher": "opus",
-  "spec-drafter": "opus",
-  "critic": "sonnet",
-  "spec-corrector": "opus",
-  "tooling-setup": "sonnet",
-  "analyst": "opus",
-  "reviewer": "sonnet",
-  "security": "sonnet",
-  "architect": "opus",
-  "tester-role": "sonnet",
-  "synthesizer": "opus",
-  "implementer": "opus",
-  "refactorer": "sonnet",
-  "tester-exec": "haiku",
-  "evaluator": "haiku",
-  "diagnostician": "sonnet",
-  "fixer": "sonnet",
-  "learner": "haiku",
-  "reporter": "haiku",
-  "retrospective": "sonnet",
-  "planner": "opus",
-  "ac-generator": "sonnet",
-  "ec-generator": "sonnet",
-  "code-reviewer": "sonnet",
-  "log-summarizer": "haiku",
-  "enricher": "sonnet",
-  "compliance-reviewer": "sonnet",
-  "compliance-fixer": "sonnet",
-  "decomposer": "sonnet",
-  "integration-verifier": "opus",
-  "diagnostician-bug": "opus",
-  "workspace-cleanup": "haiku",
-  "normalizer": "sonnet",
-  "relevance-scanner": "sonnet",
-  "codebase-analyzer": "opus",
-  "feature-spec-drafter": "opus",
-  "reconciler": "opus",
-  "scorecard": "haiku",
-  "plan-validator": "sonnet",
-};
+export { AGENT_MODEL_MAP } from "./registry.js";
+
+import { AGENT_MODEL_MAP } from "./registry.js";
 
 export function getModelForAgent(agentType: AgentType): ModelTier {
   return AGENT_MODEL_MAP[agentType];
