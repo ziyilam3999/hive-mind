@@ -26,8 +26,7 @@ const JSON_OUTPUT_AGENTS: Set<AgentType> = new Set([
   "planner", "decomposer",
 ]);
 
-// AGENT_JOBS and AGENT_RULES are now derived from the central AGENT_REGISTRY.
-// Re-exported here for backward compatibility — see ./registry.ts for the source of truth.
+// AGENT_JOBS and AGENT_RULES are now in registry.ts; imported here for local use.
 
 export const ROLE_REPORT_MAPPING: Partial<Record<AgentType, AgentType[]>> = {
   "implementer": ["architect", "security", "analyst"],

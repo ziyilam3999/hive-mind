@@ -342,7 +342,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentRegistryEntry> = {
   },
   "diagnostician-bug": {
     modelTier: "opus",
-    tools: [...READ_ONLY_TOOLS, "Write"],
+    tools: OUTPUT_TOOLS,
     job: "Read bug report + codebase, perform root cause analysis, produce diagnosis-report-attempt-N.md with Root Cause, Affected Files, Recommended Fix, and Confidence sections",
     rules: [
       "ROOT-CAUSE: Identify the actual root cause using Glob, Grep, and Read to search the codebase. Reference specific file:line locations.",
