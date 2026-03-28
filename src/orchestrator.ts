@@ -121,6 +121,15 @@ export async function runPipeline(
     throw new HiveMindError(`PRD file not found: ${prdPath}`);
   }
 
+  // Clean stale working directory from previous runs
+  if (existsSync(dirs.workingDir)) {
+    const hasArtifacts = readdirSync(dirs.workingDir).some(f => !f.startsWith("."));
+    if (hasArtifacts) {
+      console.log("[cleanup] Removing stale working directory from previous run");
+      rmSync(dirs.workingDir, { recursive: true });
+    }
+  }
+
   ensureDir(dirs.workingDir);
   ensureDir(join(dirs.workingDir, "spec"));
   ensureDir(join(dirs.workingDir, "plans"));
