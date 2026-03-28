@@ -1,3 +1,9 @@
+## [0.18.1](https://github.com/ziyilam3999/hive-mind/compare/v0.18.0...v0.18.1) (2026-03-28)
+
+### Bug Fixes
+
+* address PR #153 code review comments (#154)
+
 ## [0.18.0](https://github.com/ziyilam3999/hive-mind/compare/v0.17.5...v0.18.0) (2026-03-28)
 
 ### Features
