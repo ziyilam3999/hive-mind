@@ -8,7 +8,7 @@ import { runPipeline, resumeFromCheckpoint, runBugFixPipeline } from "./orchestr
 import { loadConfig, resolvePipelineDirs } from "./config/loader.js";
 import { HiveMindError } from "./utils/errors.js";
 import { join } from "node:path";
-import { realpathSync } from "node:fs";
+import { realpathSync, existsSync, readFileSync } from "node:fs";
 import { approveCheckpoint, rejectCheckpoint } from "./state/checkpoint-ops.js";
 import { startDashboard } from "./dashboard/server.js";
 import type { DashboardHandle } from "./dashboard/server.js";
@@ -111,8 +111,13 @@ export function parseArgs(argv: string[]): ParsedCommand {
   }
 }
 
-async function isDashboardRunning(port: number): Promise<boolean> {
+async function isDashboardRunning(workingDir: string): Promise<boolean> {
   try {
+    const portFilePath = join(workingDir, ".dashboard-port");
+    if (!existsSync(portFilePath)) return false;
+    const port = parseInt(readFileSync(portFilePath, "utf-8").trim(), 10);
+    if (isNaN(port)) return false;
+
     const { request } = await import("node:http");
     return new Promise((resolve) => {
       const req = request({ hostname: "localhost", port, path: "/api/status", method: "GET", timeout: 1000 }, (res) => {
@@ -138,7 +143,7 @@ export async function main(): Promise<void> {
   const wantsDashboard = dashboardCommands.has(parsed.command) && !("noDashboard" in parsed && parsed.noDashboard);
   let dashboardHandle: DashboardHandle | null = null;
   if (wantsDashboard) {
-    const dashboardAlive = await isDashboardRunning(4040);
+    const dashboardAlive = await isDashboardRunning(dirs.workingDir);
     if (dashboardAlive) {
       // Existing dashboard is serving the same working directory — skip
     } else {
