@@ -1,3 +1,9 @@
+## [0.18.0](https://github.com/ziyilam3999/hive-mind/compare/v0.17.5...v0.18.0) (2026-03-28)
+
+### Features
+
+* consolidate 5-file agent type registry into single file (#153)
+
 ## [0.17.5](https://github.com/ziyilam3999/hive-mind/compare/v0.17.4...v0.17.5) (2026-03-28)
 
 ### Bug Fixes
