@@ -1,3 +1,9 @@
+## [0.17.5](https://github.com/ziyilam3999/hive-mind/compare/v0.17.4...v0.17.5) (2026-03-28)
+
+### Bug Fixes
+
+* clean stale working directory before new pipeline run (#151)
+
 ## [0.17.4](https://github.com/ziyilam3999/hive-mind/compare/v0.17.3...v0.17.4) (2026-03-28)
 
 ### Bug Fixes
