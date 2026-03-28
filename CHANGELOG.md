@@ -1,3 +1,9 @@
+## [0.17.4](https://github.com/ziyilam3999/hive-mind/compare/v0.17.3...v0.17.4) (2026-03-28)
+
+### Bug Fixes
+
+* prevent dashboard from opening multiple browser tabs across CLI commands (#150)
+
 ## [0.17.3](https://github.com/ziyilam3999/hive-mind/compare/v0.17.2...v0.17.3) (2026-03-27)
 
 ### Documentation
