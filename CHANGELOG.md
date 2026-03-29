@@ -1,3 +1,9 @@
+## [0.18.3](https://github.com/ziyilam3999/hive-mind/compare/v0.18.2...v0.18.3) (2026-03-29)
+
+### Bug Fixes
+
+* skip duplicate dashboard when one is already running (#159)
+
 ## [0.18.2](https://github.com/ziyilam3999/hive-mind/compare/v0.18.1...v0.18.2) (2026-03-29)
 
 ### Bug Fixes
