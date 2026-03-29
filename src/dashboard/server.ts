@@ -2197,3 +2197,26 @@ export async function startDashboard(
   }
   return tryListen(preferredPort, 1);
 }
+
+/** Check if a dashboard is already running for the given working directory. */
+export async function isDashboardRunning(workingDir: string): Promise<boolean> {
+  try {
+    const portFile = join(workingDir, ".dashboard-port");
+    if (!existsSync(portFile)) return false;
+    const port = parseInt(readFileSync(portFile, "utf-8").trim(), 10);
+    if (isNaN(port)) return false;
+
+    const { request } = await import("node:http");
+    return new Promise((resolve) => {
+      const req = request({ hostname: "localhost", port, path: "/api/status", method: "GET", timeout: 1000 }, (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      });
+      req.on("error", () => resolve(false));
+      req.on("timeout", () => { req.destroy(); resolve(false); });
+      req.end();
+    });
+  } catch {
+    return false;
+  }
+}
