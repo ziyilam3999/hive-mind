@@ -2185,5 +2185,15 @@ export async function startDashboard(
       });
     });
   }
-  return tryListen(DEFAULT_PORT, 1);
+
+  // If a previous dashboard wrote a port file but is now dead, try that port
+  // first so we reuse the same port and avoid opening a new browser tab.
+  let preferredPort = DEFAULT_PORT;
+  if (existsSync(portFilePath)) {
+    const prev = parseInt(readFileSync(portFilePath, "utf-8").trim(), 10);
+    if (!isNaN(prev) && prev >= DEFAULT_PORT && prev < DEFAULT_PORT + MAX_PORT_ATTEMPTS) {
+      preferredPort = prev;
+    }
+  }
+  return tryListen(preferredPort, 1);
 }
