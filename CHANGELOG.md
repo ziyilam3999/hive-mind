@@ -1,3 +1,11 @@
+## [0.18.2](https://github.com/ziyilam3999/hive-mind/compare/v0.18.1...v0.18.2) (2026-03-29)
+
+### Bug Fixes
+
+* reuse previous dashboard port to avoid opening new browser tabs (#157)
+* specify ISO-8601 timestamp format in Story 7 (#147) (#156)
+* add stable IDs to backlog items (#145) (#155)
+
 ## [0.18.1](https://github.com/ziyilam3999/hive-mind/compare/v0.18.0...v0.18.1) (2026-03-28)
 
 ### Bug Fixes
