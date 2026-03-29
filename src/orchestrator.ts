@@ -63,7 +63,7 @@ import { writeFileAtomic } from "./utils/file-io.js";
 import { spawnAgentWithRetry } from "./agents/spawner.js";
 import { getAgentRules } from "./agents/prompts.js";
 import { runScorecard } from "./stages/scorecard.js";
-import { startDashboard } from "./dashboard/server.js";
+import { startDashboard, isDashboardRunning } from "./dashboard/server.js";
 
 function printTimingSummary(tracker: CostTracker): void {
   const timing = tracker.getTimingSummary();
@@ -144,11 +144,14 @@ export async function runPipeline(
   // Dashboard lifecycle — non-fatal observer (DESIGN-01)
   let dashboardHandle: { stop: () => void; url: string; signalShutdown: (shutdownAt: number) => void } | null = null;
   if (!options?.noDashboard) {
-    try {
-      dashboardHandle = await startDashboard(dirs, config);
-    } catch (err) {
-      process.stderr.write(`Dashboard server error: ${err instanceof Error ? err.message : String(err)}\n`);
-      dashboardHandle = null;
+    const alreadyRunning = await isDashboardRunning(dirs.workingDir);
+    if (!alreadyRunning) {
+      try {
+        dashboardHandle = await startDashboard(dirs, config);
+      } catch (err) {
+        process.stderr.write(`Dashboard server error: ${err instanceof Error ? err.message : String(err)}\n`);
+        dashboardHandle = null;
+      }
     }
   }
 

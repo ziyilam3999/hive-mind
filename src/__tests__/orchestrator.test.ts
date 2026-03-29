@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Mock all heavy dependencies to isolate dashboard lifecycle tests
 vi.mock("../dashboard/server.js", () => ({
   startDashboard: vi.fn(),
+  isDashboardRunning: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock("../utils/file-io.js", () => ({

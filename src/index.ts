@@ -10,7 +10,7 @@ import { HiveMindError } from "./utils/errors.js";
 import { join } from "node:path";
 import { realpathSync, existsSync, readFileSync } from "node:fs";
 import { approveCheckpoint, rejectCheckpoint } from "./state/checkpoint-ops.js";
-import { startDashboard } from "./dashboard/server.js";
+import { startDashboard, isDashboardRunning } from "./dashboard/server.js";
 import type { DashboardHandle } from "./dashboard/server.js";
 
 export type ParsedCommand =
@@ -108,28 +108,6 @@ export function parseArgs(argv: string[]): ParsedCommand {
     }
     default:
       throw new HiveMindError(`Unknown command '${cmd}'. Run 'hive-mind help' for available commands.`);
-  }
-}
-
-async function isDashboardRunning(workingDir: string): Promise<boolean> {
-  try {
-    const portFilePath = join(workingDir, ".dashboard-port");
-    if (!existsSync(portFilePath)) return false;
-    const port = parseInt(readFileSync(portFilePath, "utf-8").trim(), 10);
-    if (isNaN(port)) return false;
-
-    const { request } = await import("node:http");
-    return new Promise((resolve) => {
-      const req = request({ hostname: "localhost", port, path: "/api/status", method: "GET", timeout: 1000 }, (res) => {
-        res.resume();
-        resolve(res.statusCode === 200);
-      });
-      req.on("error", () => resolve(false));
-      req.on("timeout", () => { req.destroy(); resolve(false); });
-      req.end();
-    });
-  } catch {
-    return false;
   }
 }
 
