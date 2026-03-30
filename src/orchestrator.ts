@@ -27,10 +27,10 @@ import {
 import { runWithConcurrency } from "./utils/concurrency.js";
 import { appendLogEntry, createLogEntry } from "./state/manager-log.js";
 import { isoTimestamp } from "./utils/timestamp.js";
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, basename } from "node:path";
 import { rmSync, readdirSync, writeFileSync, copyFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "node:fs";
+import { archiveWorkspace } from "./utils/archive-workspace.js";
 import { execSync } from "node:child_process";
-import { basename } from "node:path";
 import { HiveMindError } from "./utils/errors.js";
 import { notifyCheckpoint } from "./utils/notify.js";
 import { CostTracker, estimatePipelineCost } from "./utils/cost-tracker.js";
@@ -153,6 +153,9 @@ export async function runPipeline(
       );
     }
   }
+
+  // Archive .ai-workspace/ before fresh run
+  archiveWorkspace(dirs.workingDir);
 
   // Clean stale working directory from previous runs
   if (existsSync(dirs.workingDir)) {
