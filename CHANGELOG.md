@@ -1,3 +1,13 @@
+## [0.18.5](https://github.com/ziyilam3999/hive-mind/compare/v0.18.4...v0.18.5) (2026-03-30)
+
+### Bug Fixes
+
+* scope tsc gate to story-owned files (#166)
+
+### Miscellaneous
+
+* gitignore old working dirs and remove unused script (#165)
+
 ## [0.18.4](https://github.com/ziyilam3999/hive-mind/compare/v0.18.3...v0.18.4) (2026-03-30)
 
 ### Bug Fixes
