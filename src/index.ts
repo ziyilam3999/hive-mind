@@ -14,7 +14,7 @@ import { startDashboard, isDashboardRunning } from "./dashboard/server.js";
 import type { DashboardHandle } from "./dashboard/server.js";
 
 export type ParsedCommand =
-  | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean }
+  | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean; force?: boolean }
   | { command: "bug"; reportPath: string; silent?: boolean; skipBaseline?: boolean }
   | { command: "approve"; silent?: boolean; skipBaseline?: boolean }
   | { command: "reject"; feedback: string; silent?: boolean }
@@ -64,7 +64,8 @@ export function parseArgs(argv: string[]): ParsedCommand {
       const skipNormalize = args.includes("--skip-normalize");
       const greenfield = args.includes("--greenfield");
       const noDashboard = args.includes("--no-dashboard");
-      return { command: "start", prdPath: args[prdIdx + 1], silent, budget, skipBaseline, stopAfterPlan, skipNormalize, greenfield, noDashboard };
+      const force = args.includes("--force");
+      return { command: "start", prdPath: args[prdIdx + 1], silent, budget, skipBaseline, stopAfterPlan, skipNormalize, greenfield, noDashboard, force };
     }
     case "bug": {
       const reportIdx = args.indexOf("--report");
@@ -154,7 +155,7 @@ export async function main(): Promise<void> {
       if (claudeCheck.exitCode !== 0) {
         throw new HiveMindError("claude CLI not found on PATH");
       }
-      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan, skipNormalize: parsed.skipNormalize, greenfield: parsed.greenfield, noDashboard: true });
+      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan, skipNormalize: parsed.skipNormalize, greenfield: parsed.greenfield, noDashboard: true, force: parsed.force });
       break;
     }
     case "bug": {
@@ -227,9 +228,21 @@ export async function main(): Promise<void> {
       break;
     }
     case "resume": {
+      // Check for active checkpoint first (crash recovery — pre-PLAN stages)
+      const resumeCheckpoint = readCheckpointFile(dirs);
+      if (resumeCheckpoint) {
+        console.log(`Active checkpoint found (${resumeCheckpoint.awaiting}). Resuming from checkpoint...`);
+        const resumeApproveResult = await approveCheckpoint(dirs.workingDir);
+        if (!resumeApproveResult.success) {
+          throw new HiveMindError(resumeApproveResult.error ?? "Checkpoint approval failed");
+        }
+        await resumeFromCheckpoint(resumeCheckpoint, dirs, config, { silent: parsed.silent });
+        break;
+      }
+
       const planPath = join(dirs.workingDir, "plans/execution-plan.json");
       if (!fileExists(planPath)) {
-        throw new HiveMindError("No execution plan found. Run 'start' and 'approve' first.");
+        throw new HiveMindError("No execution plan or checkpoint found. Run 'start' first.");
       }
       const { loadExecutionPlan, updateStoryStatus, saveExecutionPlan, resetAllFailedStories } = await import("./state/execution-plan.js");
       let plan = loadExecutionPlan(planPath);
