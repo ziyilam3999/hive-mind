@@ -1174,7 +1174,7 @@ function buildDashboardHtml(bundleJs: string): string {
       <circle cx="22" cy="24" r="3" fill="#5a6e5a"/>
     </svg>
     <div class="logo">Hive <span>Mind</span></div>
-    <span class="project-sep">/</span>
+    <span class="project-sep" style="display:none">/</span>
     <span class="project-name" id="projectName"></span>
     <span class="run-id" id="runId">--</span>
   </div>
@@ -1672,6 +1672,8 @@ function renderAll() {
   }
   var projEl = document.getElementById('projectName');
   if (projEl) projEl.textContent = projectName;
+  var sepEl = document.querySelector('.project-sep');
+  if (sepEl) sepEl.style.display = projectName ? '' : 'none';
 
   /* Derive run-id from working directory or first log entry */
   var runIdEl = document.getElementById('runId');
