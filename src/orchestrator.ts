@@ -156,6 +156,10 @@ export async function runPipeline(
 
   // Clean stale working directory from previous runs
   if (existsSync(dirs.workingDir)) {
+    const checkpointPath = join(dirs.workingDir, ".checkpoint");
+    if (options?.force && existsSync(checkpointPath)) {
+      console.warn("[cleanup] --force: deleting working directory with active checkpoint");
+    }
     const hasArtifacts = readdirSync(dirs.workingDir).some(f => !f.startsWith("."));
     if (hasArtifacts) {
       console.log("[cleanup] Removing stale working directory from previous run");
@@ -508,9 +512,18 @@ export async function resumeFromCheckpoint(
           const designRules = loadDesignRules(config, dirs, dirs.workingDir);
           const freshQuestionnairePath = join(designDir, "design-questionnaire.yaml");
 
-          await spawnPrototype(
+          const protoRecoverySuccess = await spawnPrototype(
             INITIAL_PROTOTYPE_FILE, dirs, config, freshQuestionnairePath, designRules, normalizedPrdQ, [], qTracker,
           );
+
+          if (!protoRecoverySuccess) {
+            console.warn("Prototype generation failed after YAML reset — skipping DESIGN stage.");
+            appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("DESIGN_SKIPPED", {
+              reason: "Prototype generation failed after 3 YAML parse attempts",
+            }));
+            await runSpecThenCheckpoint(normalizedPrdQ, dirs, config, silent, startDataDesignQ.stopAfterPlan, startDataDesignQ.greenfield, qTracker);
+            break;
+          }
 
           writeCheckpoint(dirs.workingDir, {
             awaiting: "approve-design-prototype",
@@ -563,6 +576,9 @@ export async function resumeFromCheckpoint(
           // Approved — copy to approved-prototype.html and extract tokens
           const prototypePath = join(designDirP, INITIAL_PROTOTYPE_FILE);
           const approvedPath = join(designDirP, "approved-prototype.html");
+          if (!existsSync(prototypePath)) {
+            throw new HiveMindError(`Prototype file not found: ${prototypePath}. DESIGN prototype may have failed to generate.`);
+          }
           copyFileSync(prototypePath, approvedPath);
 
           // Read questionnaire for token extraction
@@ -615,6 +631,9 @@ export async function resumeFromCheckpoint(
             ? (typeof metaP.lastPathA === "string" ? metaP.lastPathA : join(designDirP, `prototype-v${rejectionIterationCount}-a.html`))
             : (typeof metaP.lastPathB === "string" ? metaP.lastPathB : join(designDirP, `prototype-v${rejectionIterationCount}-b.html`));
           const approvedPath = join(designDirP, "approved-prototype.html");
+          if (!existsSync(selectedPath)) {
+            throw new HiveMindError(`Selected prototype file not found: ${selectedPath}. The prototype may have failed to generate.`);
+          }
           copyFileSync(selectedPath, approvedPath);
 
           // Read questionnaire for token extraction
@@ -1703,6 +1722,8 @@ async function writeReportAndCheckpoint(
       appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("REPORT_INCOMPLETE", {
         reason: `REPORT stage missing files: ${reportResult.missingFiles.join(", ")}`,
       }));
+    } else {
+      appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("REPORT_COMPLETE", {}));
     }
     writeCheckpoint(dirs.workingDir, {
       awaiting: "verify",

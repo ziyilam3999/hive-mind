@@ -74,7 +74,7 @@ export function deriveStages(input: DeriveStagesInput, now?: number): DerivedSta
   let lastLogTs: number | null = null;
   for (const entry of managerLog) {
     const act = entry.action || "";
-    if (act.toUpperCase().includes("REPORT")) {
+    if (act === "REPORT_COMPLETE" || act === "REPORT_INCOMPLETE") {
       hasReportAction = true;
       const ts = new Date(entry.timestamp).getTime();
       if (!lastLogTs || ts > lastLogTs) lastLogTs = ts;
@@ -129,11 +129,13 @@ export function deriveStages(input: DeriveStagesInput, now?: number): DerivedSta
   const stages: DerivedStage[] = [];
   for (const def of STAGE_DEFS) {
     let startTs = actionTimestamps[def.startAction];
+    let usedFallbackOnly = false;
     if (!startTs) {
       if (def.secondaryFallback && firstOccurrence[def.secondaryFallback]) {
         startTs = firstOccurrence[def.secondaryFallback];
       } else if (def.fallbackStart) {
         startTs = actionTimestamps[def.fallbackStart];
+        usedFallbackOnly = true;
       }
     }
     const endTs = actionTimestamps[def.endAction];
@@ -152,7 +154,7 @@ export function deriveStages(input: DeriveStagesInput, now?: number): DerivedSta
     } else if (endTs && startTs) {
       stageStatus = "done";
       durationMs = endTs - startTs;
-    } else if (startTs) {
+    } else if (startTs && !(usedFallbackOnly && def.secondaryFallback)) {
       if (def.key === pausedStageKey) {
         stageStatus = "paused";
       } else {

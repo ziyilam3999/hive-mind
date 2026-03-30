@@ -120,14 +120,13 @@ describe("crash recovery checkpoints", () => {
         feedback: null,
       };
 
-      // SPEC stage will run and complete (mocked agents produce output).
-      // After SPEC completes, writeCheckpoint(approve-spec) overwrites recovery.
+      // DESIGN stage runs (no UI keywords → approve-design-skip checkpoint).
       await resumeFromCheckpoint(checkpoint, dirs, config);
 
-      // Final checkpoint should be approve-spec (recovery was overwritten by SPEC completion)
+      // Final checkpoint should be approve-design-skip (DESIGN gates SPEC now)
       expect(existsSync(join(testDir, ".checkpoint"))).toBe(true);
       const final = JSON.parse(readFileSync(join(testDir, ".checkpoint"), "utf-8"));
-      expect(final.awaiting).toBe("approve-spec");
+      expect(final.awaiting).toBe("approve-design-skip");
     } finally {
       consoleSpy.mockRestore();
       cleanup();

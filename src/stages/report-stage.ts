@@ -43,16 +43,20 @@ export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig)
   const changedSourceFiles = collectChangedSourceFiles(planPath);
 
   const batch1Configs = [];
-  batch1Configs.push({
-    type: "code-reviewer" as const,
-    model: "sonnet" as const,
-    inputFiles: [...implAndRefactorReports, ...changedSourceFiles],
-    outputFile: codeReviewReportPath,
-    rules: getAgentRules("code-reviewer"),
-    memoryContent,
-  });
+  if (!fileExists(codeReviewReportPath)) {
+    batch1Configs.push({
+      type: "code-reviewer" as const,
+      model: "sonnet" as const,
+      inputFiles: [...implAndRefactorReports, ...changedSourceFiles],
+      outputFile: codeReviewReportPath,
+      rules: getAgentRules("code-reviewer"),
+      memoryContent,
+    });
+  } else {
+    console.log("[REPORT] Skipping code-reviewer — output already exists.");
+  }
 
-  if (fileExists(managerLogPath)) {
+  if (fileExists(managerLogPath) && !fileExists(logAnalysisPath)) {
     batch1Configs.push({
       type: "log-summarizer" as const,
       model: "haiku" as const,
@@ -63,7 +67,9 @@ export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig)
     });
   }
 
-  await spawnAgentsParallel(batch1Configs, config);
+  if (batch1Configs.length > 0) {
+    await spawnAgentsParallel(batch1Configs, config);
+  }
 
   // Batch 2: reporter + retrospective (after batch 1 completes)
   console.log("Running reporter + retrospective agents in parallel...");
@@ -93,10 +99,11 @@ export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig)
   const consolidatedPath = join(dirs.workingDir, "consolidated-report.md");
   const retrospectivePath = join(dirs.workingDir, "retrospective.md");
 
-  await spawnAgentsParallel([
-    {
-      type: "reporter",
-      model: "haiku",
+  const batch2Configs = [];
+  if (!fileExists(consolidatedPath)) {
+    batch2Configs.push({
+      type: "reporter" as const,
+      model: "haiku" as const,
       inputFiles: reporterInputs,
       outputFile: consolidatedPath,
       rules: getAgentRules("reporter"),
@@ -105,16 +112,27 @@ export async function runReportStage(dirs: PipelineDirs, config: HiveMindConfig)
         heading: "AUTHORITATIVE STATUS DATA",
         content: "The file story-status-summary.md was computed by the pipeline (not an LLM). Its pass/fail totals are CORRECT. Your Executive Summary MUST use these exact numbers. Do not derive totals from individual impl-reports.",
       }] : undefined,
-    },
-    {
-      type: "retrospective",
-      model: "sonnet",
+    });
+  } else {
+    console.log("[REPORT] Skipping reporter — output already exists.");
+  }
+
+  if (!fileExists(retrospectivePath)) {
+    batch2Configs.push({
+      type: "retrospective" as const,
+      model: "sonnet" as const,
       inputFiles: [...learningFiles, ...kbFiles],
       outputFile: retrospectivePath,
       rules: getAgentRules("retrospective"),
       memoryContent,
-    },
-  ], config);
+    });
+  } else {
+    console.log("[REPORT] Skipping retrospective — output already exists.");
+  }
+
+  if (batch2Configs.length > 0) {
+    await spawnAgentsParallel(batch2Configs, config);
+  }
 
   // ELI5 check on consolidated report
   const consolidatedContent = readFileSafe(consolidatedPath);
