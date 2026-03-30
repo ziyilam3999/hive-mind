@@ -432,9 +432,10 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   if (highComplexityStories.length > 0) {
     console.log(`Running decomposer for ${highComplexityStories.length} high-complexity stories...`);
     for (const story of highComplexityStories) {
-      // Resume: skip decomposer if subtasks JSON already exists
+      // Resume: skip decomposer if subtasks JSON already exists and is loadable
       const subtasksPath = join(stepsDir, `${story.id}-subtasks.json`);
       if (outputReady(subtasksPath)) {
+        let loaded = false;
         const existingSubtasks = readFileSafe(subtasksPath);
         if (existingSubtasks) {
           try {
@@ -450,13 +451,16 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
                 maxAttempts: story.maxAttempts,
               }));
               console.log(`[PLAN] Resuming: skipping decomposer for ${story.id} (${story.subTasks.length} sub-tasks loaded)`);
+              loaded = true;
             }
           } catch {
             console.debug(`[PLAN] Could not parse existing subtasks for ${story.id}, re-running decomposer`);
           }
         }
-        agentsSkipped++;
-        continue;
+        if (loaded) {
+          agentsSkipped++;
+          continue;
+        }
       }
 
       const subTasks = await decomposeStory(story, stepsDir, feedbackMemory, config, tracker);
