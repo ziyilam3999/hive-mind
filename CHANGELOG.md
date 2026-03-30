@@ -1,3 +1,11 @@
+## [0.21.0](https://github.com/ziyilam3999/hive-mind/compare/v0.20.0...v0.21.0) (2026-03-30)
+
+### Features
+
+* auto-defer integration test stories that require runtime infrastructure (#181)
+* detect and auto-fix module path conflicts (foo.ts vs foo/index.ts) (#181)
+* design stage unit tests (US-06)
+
 ## [0.20.0](https://github.com/ziyilam3999/hive-mind/compare/v0.19.2...v0.20.0) (2026-03-30)
 
 ### Features
