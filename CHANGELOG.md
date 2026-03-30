@@ -1,3 +1,9 @@
+## [0.19.0](https://github.com/ziyilam3999/hive-mind/compare/v0.18.5...v0.19.0) (2026-03-30)
+
+### Features
+
+* add PLAN stage partial resume via output-file existence checks (#170)
+
 ## [0.18.5](https://github.com/ziyilam3999/hive-mind/compare/v0.18.4...v0.18.5) (2026-03-30)
 
 ### Bug Fixes
