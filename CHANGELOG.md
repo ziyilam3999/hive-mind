@@ -1,3 +1,9 @@
+## [0.21.1](https://github.com/ziyilam3999/hive-mind/compare/v0.21.0...v0.21.1) (2026-03-30)
+
+### Bug Fixes
+
+* resolve 6 bugs + 4 CRITs from coral-beacon Run 4 report (#185)
+
 ## [0.21.0](https://github.com/ziyilam3999/hive-mind/compare/v0.20.0...v0.21.0) (2026-03-30)
 
 ### Features
