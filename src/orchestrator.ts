@@ -47,6 +47,19 @@ import { runReportStage as reportStage, type ReportStageResult } from "./stages/
 import { updateLiveReport } from "./reports/live-report.js";
 import { runBaselineCheck } from "./stages/baseline-check.js";
 import { runNormalizeStage } from "./stages/normalize-stage.js";
+import {
+  runDesignStage,
+  validateQuestionnaireYaml,
+  generateQuestionnaire,
+  spawnPrototype,
+  spawnSideBySide,
+  extractDesignTokens,
+  loadDesignRules,
+  parseSideBySideSelection,
+  INITIAL_PROTOTYPE_FILE,
+} from "./stages/design-stage.js";
+import type { QuestionnaireData } from "./types/design.js";
+import { parse as parseYaml } from "yaml";
 import { updateManifest } from "./manifest/generator.js";
 import { parseImplReport, parseRefactorReport } from "./reports/parser.js";
 import { getReportPath } from "./reports/templates.js";
@@ -64,6 +77,15 @@ import { spawnAgentWithRetry } from "./agents/spawner.js";
 import { getAgentRules } from "./agents/prompts.js";
 import { runScorecard } from "./stages/scorecard.js";
 import { startDashboard, isDashboardRunning } from "./dashboard/server.js";
+
+const DEFAULT_QUESTIONNAIRE_DATA: QuestionnaireData = {
+  style: "minimal",
+  palette: { mode: "warm", custom_colors: [] },
+  density: "balanced",
+  layout: { structure: "sidebar-main" },
+  font: "system",
+  interactivity: "static",
+};
 
 function printTimingSummary(tracker: CostTracker): void {
   const timing = tracker.getTimingSummary();
@@ -145,6 +167,7 @@ export async function runPipeline(
   ensureDir(join(dirs.workingDir, "spec"));
   ensureDir(join(dirs.workingDir, "plans"));
   ensureDir(join(dirs.workingDir, "reports"));
+  ensureDir(join(dirs.workingDir, "design"));
   ensureDir(dirs.knowledgeDir);
 
   const memoryPath = join(dirs.knowledgeDir, "memory.md");
@@ -310,6 +333,10 @@ function getPipelineStartData(workingDir: string): { prdPath: string; stopAfterP
   return lastData;
 }
 
+function buildSideBySideMessage(pathA: string | null | undefined, pathB: string | null | undefined): string {
+  return `Review the prototype alternatives in your browser:\n  (a) ${pathA ?? "failed"}\n  (b) ${pathB ?? "failed"}\nType "a" or "b" to select, or provide feedback to iterate.`;
+}
+
 export async function resumeFromCheckpoint(
   checkpoint: Checkpoint,
   dirs: PipelineDirs,
@@ -360,10 +387,296 @@ export async function resumeFromCheckpoint(
         return;
       }
 
-      // Approved — proceed to SPEC with normalized PRD
+      // Approved — proceed to DESIGN stage (which gates SPEC)
       const normCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const normalizeTracker = CostTracker.loadFromDisk(normCostLogPath, startData.budget);
-      await runSpecThenCheckpoint(normalizedPrd, dirs, config, silent, startData.stopAfterPlan, startData.greenfield, normalizeTracker);
+      await runDesignStage(dirs, config, normalizeTracker);
+      break;
+    }
+    case "approve-design-skip": {
+      deleteCheckpoint(dirs.workingDir);
+      const startDataDesignSkip = getPipelineStartData(dirs.workingDir);
+
+      if (feedback) {
+        // User rejected the skip — proceed to questionnaire flow
+        const dsCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+        const dsTracker = CostTracker.loadFromDisk(dsCostLogPath, startDataDesignSkip.budget);
+        const questionnairePath = await generateQuestionnaire(dirs, config, dirs.workingDir);
+        appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("DESIGN_QUESTIONNAIRE_COMPLETE", {
+          reason: `Questionnaire generated at ${questionnairePath}`,
+        }));
+
+        writeCheckpoint(dirs.workingDir, {
+          awaiting: "approve-design-questionnaire",
+          message: "Review and edit the design questionnaire, then approve.",
+          timestamp: isoTimestamp(),
+          feedback: null,
+          metadata: {
+            customMessage: `Review and edit the design questionnaire at ${questionnairePath}, then approve.`,
+            yamlParseFailureCount: 0,
+          },
+        });
+        console.log("Design questionnaire generated. Review and approve.");
+        notifyCheckpoint(silent, getCheckpointMessage("approve-design-questionnaire"));
+      } else {
+        // Approved skip — proceed directly to SPEC
+        const skipCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+        const skipTracker = CostTracker.loadFromDisk(skipCostLogPath, startDataDesignSkip.budget);
+        const normalizedPrdSkip = join(dirs.workingDir, "normalize", "normalized-prd.md");
+        await runSpecThenCheckpoint(normalizedPrdSkip, dirs, config, silent, startDataDesignSkip.stopAfterPlan, startDataDesignSkip.greenfield, skipTracker);
+      }
+      break;
+    }
+    case "approve-design-questionnaire": {
+      deleteCheckpoint(dirs.workingDir);
+      const startDataDesignQ = getPipelineStartData(dirs.workingDir);
+      const designDir = join(dirs.workingDir, "design");
+      const questionnairePath = join(designDir, "design-questionnaire.yaml");
+      const meta = checkpoint.metadata ?? {};
+      let yamlParseFailureCount = typeof meta.yamlParseFailureCount === "number" ? meta.yamlParseFailureCount : 0;
+
+      // Validate the questionnaire YAML
+      const validation = validateQuestionnaireYaml(questionnairePath);
+
+      if (validation.valid) {
+        // Reset counter on success
+        yamlParseFailureCount = 0;
+
+        // Proceed to prototype generation
+        const qCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+        const qTracker = CostTracker.loadFromDisk(qCostLogPath, startDataDesignQ.budget);
+        const normalizedPrdQ = join(dirs.workingDir, "normalize", "normalized-prd.md");
+        const designRules = loadDesignRules(config, dirs, dirs.workingDir);
+
+        const prototypeSuccess = await spawnPrototype(
+          INITIAL_PROTOTYPE_FILE, dirs, config, questionnairePath, designRules, normalizedPrdQ, [], qTracker,
+        );
+
+        if (prototypeSuccess) {
+          writeCheckpoint(dirs.workingDir, {
+            awaiting: "approve-design-prototype",
+            message: getCheckpointMessage("approve-design-prototype"),
+            timestamp: isoTimestamp(),
+            feedback: null,
+            metadata: {
+              customMessage: `Review the prototype at ${join(designDir, INITIAL_PROTOTYPE_FILE)} in your browser, then approve or reject.`,
+              rejectionIterationCount: 0,
+              generatedPrototypes: [],
+              questionnairePath,
+            },
+          });
+          console.log("Prototype generated. Review and approve.");
+          notifyCheckpoint(silent, getCheckpointMessage("approve-design-prototype"));
+        } else {
+          console.error("Prototype generation failed.");
+          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("DESIGN_SKIPPED", {
+            reason: "Prototype generation failed",
+          }));
+          // Fall through to SPEC
+          const fallbackCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+          const fallbackTracker = CostTracker.loadFromDisk(fallbackCostLogPath, startDataDesignQ.budget);
+          await runSpecThenCheckpoint(normalizedPrdQ, dirs, config, silent, startDataDesignQ.stopAfterPlan, startDataDesignQ.greenfield, fallbackTracker);
+        }
+      } else {
+        // Invalid YAML
+        yamlParseFailureCount = yamlParseFailureCount + 1;
+
+        if (yamlParseFailureCount >= 3) {
+          // 3 consecutive failures — reset to defaults and proceed
+          console.warn("3 consecutive YAML parse failures — resetting to default values and proceeding to prototype.");
+          await generateQuestionnaire(dirs, config, dirs.workingDir);
+          yamlParseFailureCount = 0;
+
+          // Re-validate (defaults are always valid) and proceed to prototype
+          const qCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+          const qTracker = CostTracker.loadFromDisk(qCostLogPath, startDataDesignQ.budget);
+          const normalizedPrdQ = join(dirs.workingDir, "normalize", "normalized-prd.md");
+          const designRules = loadDesignRules(config, dirs, dirs.workingDir);
+          const freshQuestionnairePath = join(designDir, "design-questionnaire.yaml");
+
+          await spawnPrototype(
+            INITIAL_PROTOTYPE_FILE, dirs, config, freshQuestionnairePath, designRules, normalizedPrdQ, [], qTracker,
+          );
+
+          writeCheckpoint(dirs.workingDir, {
+            awaiting: "approve-design-prototype",
+            message: getCheckpointMessage("approve-design-prototype"),
+            timestamp: isoTimestamp(),
+            feedback: null,
+            metadata: {
+              customMessage: `Review the prototype at ${join(designDir, INITIAL_PROTOTYPE_FILE)} in your browser, then approve or reject.`,
+              rejectionIterationCount: 0,
+              generatedPrototypes: [],
+              questionnairePath: freshQuestionnairePath,
+            },
+          });
+          console.log("Default questionnaire applied. Prototype generated. Review and approve.");
+          notifyCheckpoint(silent, getCheckpointMessage("approve-design-prototype"));
+        } else {
+          // Re-prompt with error feedback
+          console.warn(`YAML parse error (${yamlParseFailureCount}/3): ${validation.error}`);
+          writeCheckpoint(dirs.workingDir, {
+            awaiting: "approve-design-questionnaire",
+            message: `YAML parse error: ${validation.error}. Please fix and approve again.`,
+            timestamp: isoTimestamp(),
+            feedback: null,
+            metadata: {
+              customMessage: `YAML parse error: ${validation.error}. Fix the file at ${questionnairePath} and approve.`,
+              yamlParseFailureCount,
+            },
+          });
+          notifyCheckpoint(silent, "YAML parse error in design questionnaire. Fix and re-approve.");
+        }
+      }
+      break;
+    }
+    case "approve-design-prototype": {
+      deleteCheckpoint(dirs.workingDir);
+      const startDataDesignP = getPipelineStartData(dirs.workingDir);
+      const designDirP = join(dirs.workingDir, "design");
+      const metaP = checkpoint.metadata ?? {};
+      const rejectionIterationCount = typeof metaP.rejectionIterationCount === "number" ? metaP.rejectionIterationCount : 0;
+      const generatedPrototypes = Array.isArray(metaP.generatedPrototypes) ? metaP.generatedPrototypes as Array<{ file: string; iteration: number; feedback: string }> : [];
+      const questionnairePath = typeof metaP.questionnairePath === "string" ? metaP.questionnairePath : join(designDirP, "design-questionnaire.yaml");
+      const normalizedPrdP = join(dirs.workingDir, "normalize", "normalized-prd.md");
+      const designRules = loadDesignRules(config, dirs, dirs.workingDir);
+      const pCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
+      const pTracker = CostTracker.loadFromDisk(pCostLogPath, startDataDesignP.budget);
+
+      if (rejectionIterationCount === 0) {
+        // Single-mode (first prototype)
+        if (!feedback) {
+          // Approved — copy to approved-prototype.html and extract tokens
+          const prototypePath = join(designDirP, INITIAL_PROTOTYPE_FILE);
+          const approvedPath = join(designDirP, "approved-prototype.html");
+          copyFileSync(prototypePath, approvedPath);
+
+          // Read questionnaire for token extraction
+          const qContent = readFileSafe(questionnairePath);
+          const questionnaire: QuestionnaireData = qContent ? parseYaml(qContent) as QuestionnaireData : DEFAULT_QUESTIONNAIRE_DATA;
+
+          await extractDesignTokens(approvedPath, questionnaire, dirs, config, pTracker);
+
+          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("DESIGN_PROTOTYPE_APPROVED", {
+            reason: "Single prototype approved",
+          }));
+
+          // Proceed to SPEC
+          await runSpecThenCheckpoint(normalizedPrdP, dirs, config, silent, startDataDesignP.stopAfterPlan, startDataDesignP.greenfield, pTracker);
+        } else {
+          // Rejected — set rejectionIterationCount to 1, trigger side-by-side
+          const newRejectionCount = 1;
+          generatedPrototypes.push({ file: INITIAL_PROTOTYPE_FILE, iteration: 0, feedback });
+
+          const sideBySideResult = await spawnSideBySide(
+            newRejectionCount, dirs, config, questionnairePath, designRules, normalizedPrdP, [feedback], pTracker,
+          );
+
+          const customMsg = buildSideBySideMessage(sideBySideResult.pathA, sideBySideResult.pathB);
+
+          writeCheckpoint(dirs.workingDir, {
+            awaiting: "approve-design-prototype",
+            message: getCheckpointMessage("approve-design-prototype"),
+            timestamp: isoTimestamp(),
+            feedback: null,
+            metadata: {
+              customMessage: customMsg,
+              rejectionIterationCount: newRejectionCount,
+              generatedPrototypes,
+              questionnairePath,
+              lastPathA: sideBySideResult.pathA,
+              lastPathB: sideBySideResult.pathB,
+            },
+          });
+          console.log("Side-by-side prototypes generated. Review and select.");
+          notifyCheckpoint(silent, getCheckpointMessage("approve-design-prototype"));
+        }
+      } else {
+        // Side-by-side mode (rejectionIterationCount > 0)
+        const choice = feedback ? feedback.trim().toLowerCase() : "";
+
+        if (choice === "a" || choice === "b") {
+          // Valid selection — copy chosen file to approved-prototype.html
+          const selectedPath = choice === "a"
+            ? (typeof metaP.lastPathA === "string" ? metaP.lastPathA : join(designDirP, `prototype-v${rejectionIterationCount}-a.html`))
+            : (typeof metaP.lastPathB === "string" ? metaP.lastPathB : join(designDirP, `prototype-v${rejectionIterationCount}-b.html`));
+          const approvedPath = join(designDirP, "approved-prototype.html");
+          copyFileSync(selectedPath, approvedPath);
+
+          // Read questionnaire for token extraction
+          const qContent = readFileSafe(questionnairePath);
+          const questionnaire: QuestionnaireData = qContent ? parseYaml(qContent) as QuestionnaireData : DEFAULT_QUESTIONNAIRE_DATA;
+
+          await extractDesignTokens(approvedPath, questionnaire, dirs, config, pTracker);
+
+          appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("DESIGN_PROTOTYPE_APPROVED", {
+            reason: `Side-by-side selection: ${choice}`,
+          }));
+
+          // Proceed to SPEC
+          await runSpecThenCheckpoint(normalizedPrdP, dirs, config, silent, startDataDesignP.stopAfterPlan, startDataDesignP.greenfield, pTracker);
+        } else {
+          // Non-a/b text = rejection feedback
+          const rejectionFeedback = feedback ?? "";
+          const newRejectionCount = rejectionIterationCount + 1;
+
+          // Record rejected prototypes
+          if (metaP.lastPathA) generatedPrototypes.push({ file: String(metaP.lastPathA), iteration: rejectionIterationCount, feedback: rejectionFeedback });
+          if (metaP.lastPathB) generatedPrototypes.push({ file: String(metaP.lastPathB), iteration: rejectionIterationCount, feedback: rejectionFeedback });
+
+          if (newRejectionCount >= 3) {
+            // Halt — display annotated listing
+            console.log("\nMaximum rejection iterations reached (3). Generated prototypes:");
+            for (const p of generatedPrototypes) {
+              console.log(`  - ${p.file} (iteration ${p.iteration}): ${p.feedback}`);
+            }
+            console.log("\nPlease select a prototype file manually and copy it to design/approved-prototype.html.");
+
+            appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("DESIGN_SKIPPED", {
+              reason: "Maximum rejection iterations reached",
+            }));
+
+            writeCheckpoint(dirs.workingDir, {
+              awaiting: "approve-design-prototype",
+              message: "Maximum rejection iterations reached. Select a prototype manually or approve to skip design.",
+              timestamp: isoTimestamp(),
+              feedback: null,
+              metadata: {
+                customMessage: "Maximum rejection iterations reached. Review the generated prototypes listed above. Copy your preferred file to design/approved-prototype.html and approve, or approve to skip design.",
+                rejectionIterationCount: newRejectionCount,
+                generatedPrototypes,
+                questionnairePath,
+              },
+            });
+            notifyCheckpoint(silent, "Maximum prototype rejection iterations reached.");
+          } else {
+            // Spawn next side-by-side round
+            const allFeedback = generatedPrototypes.map(p => p.feedback).filter(Boolean);
+            const sideBySideResult = await spawnSideBySide(
+              newRejectionCount, dirs, config, questionnairePath, designRules, normalizedPrdP, allFeedback, pTracker,
+            );
+
+            const customMsg = buildSideBySideMessage(sideBySideResult.pathA, sideBySideResult.pathB);
+
+            writeCheckpoint(dirs.workingDir, {
+              awaiting: "approve-design-prototype",
+              message: getCheckpointMessage("approve-design-prototype"),
+              timestamp: isoTimestamp(),
+              feedback: null,
+              metadata: {
+                customMessage: customMsg,
+                rejectionIterationCount: newRejectionCount,
+                generatedPrototypes,
+                questionnairePath,
+                lastPathA: sideBySideResult.pathA,
+                lastPathB: sideBySideResult.pathB,
+              },
+            });
+            console.log("Next side-by-side round generated. Review and select.");
+            notifyCheckpoint(silent, getCheckpointMessage("approve-design-prototype"));
+          }
+        }
+      }
       break;
     }
     case "approve-spec": {

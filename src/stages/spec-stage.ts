@@ -12,6 +12,7 @@ import { checkTruncation } from "../utils/truncation-monitor.js";
 import { estimateTokens } from "../utils/token-count.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import { collectProjectFileListing } from "../utils/file-listing.js";
+import { appendLogEntry, createLogEntry } from "../state/manager-log.js";
 
 // 9 agent outputs for non-greenfield (project-listing.txt written by calling code, not an agent)
 const SPEC_STEPS_FULL = [
@@ -71,6 +72,67 @@ const GREENFIELD_CONTEXT_BLOCK = {
 - Explicitly specify all tech choices (agents can't infer from existing code).`,
 };
 
+/**
+ * Builds a DESIGN_CONTEXT instruction block for SPEC agents based on
+ * design stage artifacts. Four-case handling (§M-16, §FEAT-06):
+ * 1. Both prototype + tokens exist → full context
+ * 2. Only prototype exists → context with "tokens unavailable" note
+ * 3. Design ran but no artifacts → warn, no block
+ * 4. Design skipped or never started → no block, no warning
+ */
+function buildDesignContextBlock(
+  dirs: PipelineDirs,
+): { block: { heading: string; content: string } | null; warning: string | null } {
+  const designDir = join(dirs.workingDir, "design");
+  const prototypePath = join(designDir, "approved-prototype.html");
+  const tokensPath = join(designDir, "design-tokens.json");
+
+  const prototypeExists = fileExists(prototypePath);
+  const tokensExist = fileExists(tokensPath);
+
+  if (prototypeExists && tokensExist) {
+    // Case 1: both artifacts exist
+    const prototypeContent = readFileSafe(prototypePath) ?? "";
+    const tokensContent = readFileSafe(tokensPath) ?? "";
+    return {
+      block: {
+        heading: "DESIGN_CONTEXT",
+        content: `The following design artifacts were approved by the user during the DESIGN stage. Use them to inform the SPEC.\n\n### approved-prototype.html\n\`\`\`html\n${prototypeContent.slice(0, 5000)}\n\`\`\`\n\n### design-tokens.json\n\`\`\`json\n${tokensContent}\n\`\`\``,
+      },
+      warning: null,
+    };
+  }
+
+  if (prototypeExists && !tokensExist) {
+    // Case 2: prototype only — tokens unavailable
+    const prototypeContent = readFileSafe(prototypePath) ?? "";
+    return {
+      block: {
+        heading: "DESIGN_CONTEXT",
+        content: `The following design prototype was approved by the user during the DESIGN stage. Use it to inform the SPEC.\n\n### approved-prototype.html\n\`\`\`html\n${prototypeContent.slice(0, 5000)}\n\`\`\`\n\n### design-tokens.json\nDesign tokens were not extracted successfully. Refer to the prototype HTML for visual style decisions.`,
+      },
+      warning: null,
+    };
+  }
+
+  // Check manager log to determine if design ran but produced nothing
+  const logPath = join(dirs.workingDir, "manager-log.jsonl");
+  const logContent = readFileSafe(logPath) ?? "";
+  const hasDesignStart = logContent.includes('"DESIGN_START"');
+  const hasDesignSkipped = logContent.includes('"DESIGN_SKIPPED"');
+
+  if (hasDesignStart && !hasDesignSkipped) {
+    // Case 3: design ran but produced no artifacts — warn
+    return {
+      block: null,
+      warning: "Design stage ran but produced no artifacts — no DESIGN_CONTEXT injected.",
+    };
+  }
+
+  // Case 4: design skipped or never started — no block, no warning
+  return { block: null, warning: null };
+}
+
 export async function runSpecStage(
   prdPath: string,
   dirs: PipelineDirs,
@@ -103,10 +165,19 @@ export async function runSpecStage(
     ? "MULTI-MODULE: The PRD declares multiple modules. Include a ## Inter-Module Contracts section in the SPEC defining the API boundaries between modules (exports, imports, data formats). This section is used by the integration verifier after execution."
     : undefined;
 
+  // Build DESIGN_CONTEXT injection (§M-16, §FEAT-06)
+  const designContext = buildDesignContextBlock(dirs);
+  if (designContext.warning) {
+    console.warn(`[SPEC] Warning: ${designContext.warning}`);
+    appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("SPEC_START", {
+      reason: designContext.warning,
+    }));
+  }
+
   if (greenfield) {
-    await runGreenfieldFlow(specDir, prdPath, kbFiles, guidelinesPath, memoryContent, feedback, constitutionContent, config, tracker, fromStep, multiModuleRule);
+    await runGreenfieldFlow(specDir, prdPath, kbFiles, guidelinesPath, memoryContent, feedback, constitutionContent, config, tracker, fromStep, multiModuleRule, designContext.block);
   } else {
-    await runNonGreenfieldFlow(specDir, prdPath, dirs, kbFiles, guidelinesPath, memoryContent, feedback, constitutionContent, config, tracker, fromStep, multiModuleRule);
+    await runNonGreenfieldFlow(specDir, prdPath, dirs, kbFiles, guidelinesPath, memoryContent, feedback, constitutionContent, config, tracker, fromStep, multiModuleRule, designContext.block);
   }
 }
 
@@ -122,6 +193,7 @@ async function runGreenfieldFlow(
   tracker: CostTracker | undefined,
   fromStep: "drafter" | undefined,
   multiModuleRule: string | undefined,
+  designContextBlock: { heading: string; content: string } | null = null,
 ): Promise<void> {
   if (!fromStep) {
     // S.1: Researcher
@@ -144,7 +216,8 @@ async function runGreenfieldFlow(
   const drafterRules = [...getAgentRules("feature-spec-drafter")];
   if (multiModuleRule) drafterRules.push(multiModuleRule);
 
-  const drafterBlocks = [SELF_REVIEW_BLOCK, GREENFIELD_CONTEXT_BLOCK];
+  const drafterBlocks: Array<{ heading: string; content: string }> = [SELF_REVIEW_BLOCK, GREENFIELD_CONTEXT_BLOCK];
+  if (designContextBlock) drafterBlocks.push(designContextBlock);
   await spawnStep({
     type: "feature-spec-drafter",
     model: "opus",
@@ -181,6 +254,7 @@ async function runNonGreenfieldFlow(
   tracker: CostTracker | undefined,
   fromStep: "drafter" | undefined,
   multiModuleRule: string | undefined,
+  designContextBlock: { heading: string; content: string } | null = null,
 ): Promise<void> {
   if (!fromStep) {
     // Write project-listing.txt BEFORE spawning the scanner
@@ -242,13 +316,15 @@ async function runNonGreenfieldFlow(
   const drafterRules = [...getAgentRules("feature-spec-drafter")];
   if (multiModuleRule) drafterRules.push(multiModuleRule);
 
+  const nonGfDrafterBlocks: Array<{ heading: string; content: string }> = [SELF_REVIEW_BLOCK];
+  if (designContextBlock) nonGfDrafterBlocks.push(designContextBlock);
   await spawnStep({
     type: "feature-spec-drafter",
     model: "opus",
     inputFiles: [researchReport, prdPath],
     outputFile: join(specDir, "spec-new-features.md"),
     rules: drafterRules,
-    instructionBlocks: [SELF_REVIEW_BLOCK],
+    instructionBlocks: nonGfDrafterBlocks,
     memoryContent: feedback
       ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
       : memoryContent,
