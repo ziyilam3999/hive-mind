@@ -2109,6 +2109,35 @@ export async function startDashboard(
     const parsedUrl = new URL(req.url ?? "/", `http://localhost`);
     const pathname = parsedUrl.pathname;
 
+    // POST /api/shutdown — graceful shutdown from another process
+    if (req.method === "POST" && pathname === "/api/shutdown") {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>;
+          if (typeof body.workingDir !== "string" || resolve(body.workingDir) !== resolve(workingDir)) {
+            setResponseHeaders(res);
+            res.writeHead(403);
+            res.end(JSON.stringify({ error: "workingDir mismatch" }));
+            return;
+          }
+          setResponseHeaders(res);
+          res.writeHead(200);
+          res.end(JSON.stringify({ ok: true }));
+          // Graceful shutdown after response is sent
+          clearInterval(pollTimer);
+          server.close();
+          try { unlinkSync(portFilePath); } catch { /* non-fatal */ }
+        } catch {
+          setResponseHeaders(res);
+          res.writeHead(400);
+          res.end();
+        }
+      });
+      return;
+    }
+
     if (req.method !== "GET") {
       setResponseHeaders(res);
       res.writeHead(405);
@@ -2271,4 +2300,32 @@ export async function isDashboardRunning(workingDir: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Send a shutdown request to any existing dashboard and clean up the port file. */
+export async function shutdownExistingDashboard(workingDir: string): Promise<void> {
+  const portFile = join(workingDir, ".dashboard-port");
+  if (!existsSync(portFile)) return;
+  const portStr = readFileSync(portFile, "utf-8").trim();
+  const port = parseInt(portStr, 10);
+
+  // Always delete port file — even if HTTP shutdown fails (stale file cleanup)
+  try { unlinkSync(portFile); } catch { /* non-fatal */ }
+
+  if (isNaN(port)) return;
+
+  const { request } = await import("node:http");
+  const payload = JSON.stringify({ workingDir: resolve(workingDir) });
+
+  return new Promise<void>((res) => {
+    const req = request(
+      { hostname: "localhost", port, path: "/api/shutdown", method: "POST", timeout: 2000,
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } },
+      () => { res(); },
+    );
+    req.on("error", () => res());
+    req.on("timeout", () => { req.destroy(); res(); });
+    req.write(payload);
+    req.end();
+  });
 }

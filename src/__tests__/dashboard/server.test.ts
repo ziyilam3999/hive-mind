@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { startDashboard, isDashboardRunning } from "../../dashboard/server.js";
+import { startDashboard, isDashboardRunning, shutdownExistingDashboard } from "../../dashboard/server.js";
 import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 import type { HiveMindConfig } from "../../config/schema.js";
 import { DEFAULT_CONFIG } from "../../config/schema.js";
@@ -217,5 +217,93 @@ describe("startDashboard", () => {
     } finally {
       rmSync(otherDir, { recursive: true, force: true });
     }
+  });
+
+  it("POST /api/shutdown with matching workingDir returns 200 and closes server", async () => {
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
+    const url = handle.url;
+
+    const res = await fetch(`${url}/api/shutdown`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workingDir }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.ok).toBe(true);
+
+    // Server should be shutting down — clear handle so afterEach doesn't double-stop
+    handle = null;
+
+    // Wait for server to fully close — server.close() is async
+    // Retry until fetch fails or times out after 2s
+    const deadline = Date.now() + 2000;
+    let closed = false;
+    while (Date.now() < deadline) {
+      try {
+        await fetch(`${url}/api/status`);
+        await new Promise((r) => setTimeout(r, 50));
+      } catch {
+        closed = true;
+        break;
+      }
+    }
+    expect(closed).toBe(true);
+  });
+
+  it("POST /api/shutdown with wrong workingDir returns 403", async () => {
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
+
+    const res = await fetch(`${handle.url}/api/shutdown`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workingDir: "/some/other/dir" }),
+    });
+    expect(res.status).toBe(403);
+
+    // Server should still be running
+    const statusRes = await fetch(`${handle.url}/api/status`);
+    expect(statusRes.status).toBe(200);
+  });
+
+  it("shutdownExistingDashboard shuts down running dashboard and deletes port file", async () => {
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
+    const url = handle.url;
+    const portFile = join(workingDir, ".dashboard-port");
+
+    expect(existsSync(portFile)).toBe(true);
+
+    await shutdownExistingDashboard(workingDir);
+    handle = null; // Server is shut down
+
+    expect(existsSync(portFile)).toBe(false);
+
+    // Wait for server to fully close
+    const deadline = Date.now() + 2000;
+    let closed = false;
+    while (Date.now() < deadline) {
+      try {
+        await fetch(`${url}/api/status`);
+        await new Promise((r) => setTimeout(r, 50));
+      } catch {
+        closed = true;
+        break;
+      }
+    }
+    expect(closed).toBe(true);
+  });
+
+  it("shutdownExistingDashboard cleans up port file even if no server is running", async () => {
+    const portFile = join(workingDir, ".dashboard-port");
+    writeFileSync(portFile, "9999"); // Stale port file, no server on this port
+
+    await shutdownExistingDashboard(workingDir);
+
+    expect(existsSync(portFile)).toBe(false);
+  });
+
+  it("shutdownExistingDashboard is a no-op when no port file exists", async () => {
+    // Should not throw
+    await shutdownExistingDashboard(workingDir);
   });
 });
