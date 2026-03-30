@@ -1,3 +1,9 @@
+## [0.19.1](https://github.com/ziyilam3999/hive-mind/compare/v0.19.0...v0.19.1) (2026-03-30)
+
+### Bug Fixes
+
+* preserve recovery checkpoint before baseline check in approve-plan (#175)
+
 ## [0.19.0](https://github.com/ziyilam3999/hive-mind/compare/v0.18.5...v0.19.0) (2026-03-30)
 
 ### Features
