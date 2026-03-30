@@ -1,3 +1,9 @@
+## [0.18.4](https://github.com/ziyilam3999/hive-mind/compare/v0.18.3...v0.18.4) (2026-03-30)
+
+### Bug Fixes
+
+* persist recovery checkpoint to prevent progress loss on stage crash (#161)
+
 ## [0.18.3](https://github.com/ziyilam3999/hive-mind/compare/v0.18.2...v0.18.3) (2026-03-29)
 
 ### Bug Fixes
