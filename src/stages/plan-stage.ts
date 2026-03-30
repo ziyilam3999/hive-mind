@@ -45,6 +45,11 @@ export function scanForRoleKeywords(specContent: string): string[] {
   return roles;
 }
 
+/** Check if an agent's output file already exists with non-empty content (resume support). */
+function outputReady(path: string): boolean {
+  return fileExists(path) && (readFileSafe(path) ?? "").length > 0;
+}
+
 const GREENFIELD_PLAN_BLOCK = {
   heading: "GREENFIELD PROJECT",
   content: `This is a greenfield project with NO existing code.
@@ -79,6 +84,10 @@ export async function runPlanStage(
 
   const constitutionContent = loadConstitution(dirs.knowledgeDir);
 
+  // Resume counters — track how many agents were skipped vs ran
+  let agentsSkipped = 0;
+  let agentsRan = 0;
+
   // Load SPEC
   const specPath = join(dirs.workingDir, "spec", "SPEC-v1.0.md");
   const specContent = readFileSafe(specPath);
@@ -104,16 +113,29 @@ export async function runPlanStage(
     };
   });
 
-  console.log(`Spawning ${roleConfigs.length} role agents in parallel...`);
-  const roleResults = await spawnAgentsParallel(roleConfigs, config);
+  // Resume: skip role agents whose output already exists
+  const pendingRoleConfigs = roleConfigs.filter(c => !outputReady(c.outputFile));
+  const skippedRoleConfigs = roleConfigs.filter(c => outputReady(c.outputFile));
+  agentsSkipped += skippedRoleConfigs.length;
 
-  const roleReportPaths: string[] = [];
-  for (let i = 0; i < roleResults.length; i++) {
-    tracker?.recordAgentCost("PLAN", roleConfigs[i].type, roleResults[i].costUsd, roleResults[i].durationMs);
-    if (roleResults[i].success) {
-      roleReportPaths.push(roleConfigs[i].outputFile);
-    } else {
-      console.warn(`Warning: Role agent ${activeRoles[i]} failed. Omitting report.`);
+  if (skippedRoleConfigs.length > 0) {
+    console.log(`[PLAN] Resuming: skipping ${skippedRoleConfigs.length} role agent(s)`);
+  }
+
+  const roleReportPaths: string[] = skippedRoleConfigs.map(c => c.outputFile);
+
+  if (pendingRoleConfigs.length > 0) {
+    console.log(`Spawning ${pendingRoleConfigs.length} role agents in parallel...`);
+    const roleResults = await spawnAgentsParallel(pendingRoleConfigs, config);
+    agentsRan += pendingRoleConfigs.length;
+
+    for (let i = 0; i < roleResults.length; i++) {
+      tracker?.recordAgentCost("PLAN", pendingRoleConfigs[i].type, roleResults[i].costUsd, roleResults[i].durationMs);
+      if (roleResults[i].success) {
+        roleReportPaths.push(pendingRoleConfigs[i].outputFile);
+      } else {
+        console.warn(`Warning: Role agent ${pendingRoleConfigs[i].type} failed. Omitting report.`);
+      }
     }
   }
 
@@ -163,19 +185,26 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   if (greenfield) {
     plannerRules.push(`${GREENFIELD_PLAN_BLOCK.heading}: ${GREENFIELD_PLAN_BLOCK.content}`);
   }
-  const plannerResult = await spawnAgentWithRetry({
-    type: "planner",
-    model: "opus",
-    inputFiles: [specPath, ...roleReportPaths],
-    outputFile: planJsonPath,
-    rules: plannerRules,
-    memoryContent: feedbackMemory,
-    constitutionContent,
-  }, config);
-  tracker?.recordAgentCost("PLAN", "planner", plannerResult.costUsd, plannerResult.durationMs);
+  // Resume: skip planner if execution-plan.json already exists
+  if (!outputReady(planJsonPath)) {
+    const plannerResult = await spawnAgentWithRetry({
+      type: "planner",
+      model: "opus",
+      inputFiles: [specPath, ...roleReportPaths],
+      outputFile: planJsonPath,
+      rules: plannerRules,
+      memoryContent: feedbackMemory,
+      constitutionContent,
+    }, config);
+    tracker?.recordAgentCost("PLAN", "planner", plannerResult.costUsd, plannerResult.durationMs);
+    agentsRan++;
 
-  if (!fileExists(planJsonPath)) {
-    throw new Error("Planner failed to produce execution-plan.json");
+    if (!fileExists(planJsonPath)) {
+      throw new Error("Planner failed to produce execution-plan.json");
+    }
+  } else {
+    console.log("[PLAN] Resuming: skipping planner — execution-plan.json exists");
+    agentsSkipped++;
   }
 
   // Parse planner output
@@ -211,31 +240,38 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   }
 
   // Plan Validation — detect cross-story structural gaps
-  console.log("[PLAN] Validating execution plan structure...");
-  const validatorConfig: AgentConfig = {
-    type: "plan-validator",
-    model: "sonnet",
-    inputFiles: [planJsonPath, specPath],
-    outputFile: join(dirs.workingDir, "plans/plan-validation-report.md"),
-    rules: getAgentRules("plan-validator"),
-    memoryContent: feedbackMemory,
-    constitutionContent,
-  };
+  const validationReportPath = join(dirs.workingDir, "plans/plan-validation-report.md");
 
-  const validatorResult = await spawnAgentWithRetry(validatorConfig, config);
-  tracker?.recordAgentCost("PLAN", "plan-validator", validatorResult.costUsd, validatorResult.durationMs);
+  if (!outputReady(validationReportPath)) {
+    console.log("[PLAN] Validating execution plan structure...");
+    const validatorConfig: AgentConfig = {
+      type: "plan-validator",
+      model: "sonnet",
+      inputFiles: [planJsonPath, specPath],
+      outputFile: validationReportPath,
+      rules: getAgentRules("plan-validator"),
+      memoryContent: feedbackMemory,
+      constitutionContent,
+    };
 
-  if (validatorResult.success) {
-    const validationReport = readFileSafe(validatorConfig.outputFile);
-    if (validationReport) {
-      const correctedPlan = extractCorrectedPlan(validationReport);
-      if (correctedPlan) {
-        // Merge only stories — preserve modules, schemaVersion, and other top-level fields
-        planData = { ...planData, stories: correctedPlan.stories };
-        stories = planData.stories;
-        writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
-        console.log("[PLAN] Validator applied corrections to execution plan");
-      }
+    const validatorResult = await spawnAgentWithRetry(validatorConfig, config);
+    tracker?.recordAgentCost("PLAN", "plan-validator", validatorResult.costUsd, validatorResult.durationMs);
+    agentsRan++;
+  } else {
+    console.log("[PLAN] Resuming: skipping plan-validator");
+    agentsSkipped++;
+  }
+
+  // Apply corrections unconditionally (works for both fresh and resume paths)
+  const validationReport = readFileSafe(validationReportPath);
+  if (validationReport) {
+    const correctedPlan = extractCorrectedPlan(validationReport);
+    if (correctedPlan) {
+      // Merge only stories — preserve modules, schemaVersion, and other top-level fields
+      planData = { ...planData, stories: correctedPlan.stories };
+      stories = planData.stories;
+      writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
+      console.log("[PLAN] Validator applied corrections to execution plan");
     }
   }
 
@@ -271,8 +307,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     writeStorySkeleton(stepsDir, story);
   }
 
-  // AC-generator per story (parallel)
-  console.log(`Running ${stories.length} AC-generators in parallel...`);
+  // AC-generator per story (parallel) — resume: skip stories with existing output
   const acConfigs: AgentConfig[] = stories.map((story) => ({
     type: "ac-generator" as const,
     model: "sonnet" as const,
@@ -283,13 +318,22 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     constitutionContent,
   }));
 
-  const acResults = await spawnAgentsParallel(acConfigs, config);
-  for (let i = 0; i < acResults.length; i++) {
-    tracker?.recordAgentCost("PLAN", "ac-generator", acResults[i].costUsd, acResults[i].durationMs);
+  const pendingAcConfigs = acConfigs.filter(c => !outputReady(c.outputFile));
+  agentsSkipped += acConfigs.length - pendingAcConfigs.length;
+
+  if (pendingAcConfigs.length < acConfigs.length) {
+    console.log(`[PLAN] Resuming: skipping ${acConfigs.length - pendingAcConfigs.length} AC-generator(s)`);
+  }
+  if (pendingAcConfigs.length > 0) {
+    console.log(`Running ${pendingAcConfigs.length} AC-generators in parallel...`);
+    const acResults = await spawnAgentsParallel(pendingAcConfigs, config);
+    agentsRan += pendingAcConfigs.length;
+    for (let i = 0; i < acResults.length; i++) {
+      tracker?.recordAgentCost("PLAN", "ac-generator", acResults[i].costUsd, acResults[i].durationMs);
+    }
   }
 
-  // EC-generator per story (parallel)
-  console.log(`Running ${stories.length} EC-generators in parallel...`);
+  // EC-generator per story (parallel) — resume: skip stories with existing output
   const ecConfigs: AgentConfig[] = stories.map((story) => ({
     type: "ec-generator" as const,
     model: "sonnet" as const,
@@ -300,14 +344,28 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     constitutionContent,
   }));
 
-  const ecResults = await spawnAgentsParallel(ecConfigs, config);
-  for (let i = 0; i < ecResults.length; i++) {
-    tracker?.recordAgentCost("PLAN", "ec-generator", ecResults[i].costUsd, ecResults[i].durationMs);
+  const pendingEcConfigs = ecConfigs.filter(c => !outputReady(c.outputFile));
+  agentsSkipped += ecConfigs.length - pendingEcConfigs.length;
+
+  if (pendingEcConfigs.length < ecConfigs.length) {
+    console.log(`[PLAN] Resuming: skipping ${ecConfigs.length - pendingEcConfigs.length} EC-generator(s)`);
+  }
+  if (pendingEcConfigs.length > 0) {
+    console.log(`Running ${pendingEcConfigs.length} EC-generators in parallel...`);
+    const ecResults = await spawnAgentsParallel(pendingEcConfigs, config);
+    agentsRan += pendingEcConfigs.length;
+    for (let i = 0; i < ecResults.length; i++) {
+      tracker?.recordAgentCost("PLAN", "ec-generator", ecResults[i].costUsd, ecResults[i].durationMs);
+    }
   }
 
   // Assembly: merge skeleton + ACs + ECs into final step files
+  // Resume: skip assembly for stories already enriched (enricher appends sections we'd lose)
   console.log("Assembling step files...");
   for (const story of stories) {
+    const stepPath = join(stepsDir, `${story.id}.md`);
+    const existing = readFileSafe(stepPath);
+    if (existing?.includes("## Implementation Guidance")) continue;
     assembleStepFile(
       stepsDir,
       story,
@@ -320,6 +378,15 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   console.log("Running enricher per story...");
   for (const story of stories) {
     const stepFilePath = join(stepsDir, `${story.id}.md`);
+
+    // Resume: skip enricher if step file already contains enricher-appended sections
+    const existingStepContent = readFileSafe(stepFilePath);
+    if (existingStepContent?.includes("## Implementation Guidance")) {
+      console.log(`[PLAN] Resuming: skipping enricher for ${story.id}`);
+      agentsSkipped++;
+      continue;
+    }
+
     // Filter role-reports by rolesUsed
     const filteredRoleReports = roleReportPaths.filter((rp) =>
       story.rolesUsed.some((role) => rp.includes(`${role}-report.md`)),
@@ -337,6 +404,7 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
         memoryContent: feedbackMemory,
       }, config);
       tracker?.recordAgentCost("PLAN", "enricher", enricherResult.costUsd, enricherResult.durationMs);
+      agentsRan++;
 
       // Validate step file still has required sections
       const enrichedContent = readFileSafe(stepFilePath);
@@ -364,7 +432,35 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   if (highComplexityStories.length > 0) {
     console.log(`Running decomposer for ${highComplexityStories.length} high-complexity stories...`);
     for (const story of highComplexityStories) {
+      // Resume: skip decomposer if subtasks JSON already exists
+      const subtasksPath = join(stepsDir, `${story.id}-subtasks.json`);
+      if (outputReady(subtasksPath)) {
+        const existingSubtasks = readFileSafe(subtasksPath);
+        if (existingSubtasks) {
+          try {
+            const parsed = JSON.parse(existingSubtasks) as Record<string, unknown>;
+            if (Array.isArray(parsed.subTasks) && parsed.subTasks.length > 0) {
+              story.subTasks = (parsed.subTasks as Array<Record<string, unknown>>).map((st, i) => ({
+                id: typeof st.id === "string" ? st.id : `${story.id}.${i + 1}`,
+                title: typeof st.title === "string" ? st.title : `Sub-task ${i + 1}`,
+                description: typeof st.description === "string" ? st.description : "",
+                sourceFiles: Array.isArray(st.sourceFiles) ? st.sourceFiles as string[] : [],
+                status: "not-started" as const,
+                attempts: 0,
+                maxAttempts: story.maxAttempts,
+              }));
+              console.log(`[PLAN] Resuming: skipping decomposer for ${story.id} (${story.subTasks.length} sub-tasks loaded)`);
+            }
+          } catch {
+            console.debug(`[PLAN] Could not parse existing subtasks for ${story.id}, re-running decomposer`);
+          }
+        }
+        agentsSkipped++;
+        continue;
+      }
+
       const subTasks = await decomposeStory(story, stepsDir, feedbackMemory, config, tracker);
+      agentsRan++;
       if (subTasks.length > 0) {
         story.subTasks = subTasks;
         console.log(`  ${story.id}: decomposed into ${subTasks.length} sub-tasks`);
@@ -376,21 +472,32 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   }
 
   // Step 4: AC consolidator
-  console.log("Running AC consolidator...");
   const acPath = join(plansDir, "acceptance-criteria.md");
-  const synthResult = await spawnAgentWithRetry({
-    type: "synthesizer",
-    model: "opus",
-    inputFiles: [stepsDir],
-    outputFile: acPath,
-    rules: [
-      "CONSOLIDATE: Collect all ACs and ECs from step files into one acceptance-criteria.md document.",
-    ],
-    memoryContent: feedbackMemory,
-  }, config);
-  tracker?.recordAgentCost("PLAN", "synthesizer", synthResult.costUsd, synthResult.durationMs);
 
-  console.log("PLAN stage complete.");
+  if (!outputReady(acPath)) {
+    console.log("Running AC consolidator...");
+    const synthResult = await spawnAgentWithRetry({
+      type: "synthesizer",
+      model: "opus",
+      inputFiles: [stepsDir],
+      outputFile: acPath,
+      rules: [
+        "CONSOLIDATE: Collect all ACs and ECs from step files into one acceptance-criteria.md document.",
+      ],
+      memoryContent: feedbackMemory,
+    }, config);
+    tracker?.recordAgentCost("PLAN", "synthesizer", synthResult.costUsd, synthResult.durationMs);
+    agentsRan++;
+  } else {
+    console.log("[PLAN] Resuming: skipping AC consolidator");
+    agentsSkipped++;
+  }
+
+  if (agentsSkipped > 0) {
+    console.log(`[PLAN] Complete. Ran ${agentsRan} agent(s), skipped ${agentsSkipped} (resume).`);
+  } else {
+    console.log("PLAN stage complete.");
+  }
   return { registryGapsFixed };
 }
 
