@@ -275,6 +275,20 @@ async function runSpecThenCheckpoint(
         const fileCount = getSourceFilePaths(s.sourceFiles).length;
         console.log(`  ${s.id}: ${s.title} (${fileCount} files)`);
       }
+
+      // Show deferred stories if any
+      const deferredFilePath = join(dirs.workingDir, "plans", "deferred-stories.md");
+      const deferredFileContent = readFileSafe(deferredFilePath);
+      if (deferredFileContent) {
+        const deferredLines = deferredFileContent.split("\n").filter(l => l.startsWith("- "));
+        if (deferredLines.length > 0) {
+          console.log(`\nDeferred (requires manual execution): ${deferredLines.length}`);
+          for (const line of deferredLines) {
+            console.log(`  ${line}`);
+          }
+        }
+      }
+
       console.log("\nPipeline stopped after PLAN. No EXECUTE agents were spawned.");
     }
 
