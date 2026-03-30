@@ -8,6 +8,7 @@
 - [Raw Research](../harness-improvement-roadmap.md) -- 1920-line analysis
 - [Anthropic Comparison](../harness-comparison-anthropic.md) -- 8 key differences
 - [Pillar Definitions](../hive-mind-roadmap-v2.md) -- 6 strategic pillars
+- [Standalone Projects](roadmap-standalone-projects.md) -- reusable projects/skills not tied to pipeline (Remotion, Stitch, browser automation, etc.)
 
 ---
 
