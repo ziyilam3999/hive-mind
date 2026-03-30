@@ -463,4 +463,172 @@ describe("spec-stage", () => {
     expect(greenfieldSteps).not.toContain("relevance-map.md");
     expect(greenfieldSteps).not.toContain("spec-existing.md");
   });
+
+  // --- Resume / skip guard tests ---
+
+  it("greenfield resume: skips agents whose output already exists", async () => {
+    setup();
+    try {
+      const specDir = join(hmDir, "spec");
+      mkdirSync(specDir, { recursive: true });
+      // Pre-create researcher output (simulates crash after researcher completed)
+      writeFileSync(join(specDir, "research-report.md"), "# Prior research");
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runSpecStage(prdPath, dirs, config, undefined, true);
+
+      // Researcher should NOT have been spawned
+      const seqTypes = vi.mocked(spawnAgentWithRetry).mock.calls.map((c) => c[0].type);
+      expect(seqTypes).not.toContain("researcher");
+
+      // But drafter + critique pipeline should still run (5 agents)
+      expect(seqTypes.length).toBe(5);
+      expect(seqTypes).toContain("feature-spec-drafter");
+
+      // Log should mention skip
+      const logCalls = consoleSpy.mock.calls.map((c) => c.join(" "));
+      expect(logCalls.some((l) => l.includes("Skipping researcher"))).toBe(true);
+      consoleSpy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("critique pipeline resume: skips agents with existing output", async () => {
+    setup();
+    try {
+      const specDir = join(hmDir, "spec");
+      mkdirSync(specDir, { recursive: true });
+      // Pre-create all pre-critique outputs + critique-1
+      writeFileSync(join(specDir, "research-report.md"), "# Research");
+      writeFileSync(join(specDir, "spec-new-features.md"), "# Features");
+      writeFileSync(join(specDir, "SPEC-draft.md"), "# Draft");
+      writeFileSync(join(specDir, "critique-1.md"), "# Critique round 1");
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runSpecStage(prdPath, dirs, config, undefined, true);
+
+      const seqTypes = vi.mocked(spawnAgentWithRetry).mock.calls.map((c) => c[0].type);
+      // Only spec-corrector (S.6), critic R2 (S.7), spec-corrector final (S.8) should run
+      expect(seqTypes).toEqual(["spec-corrector", "critic", "spec-corrector"]);
+
+      const logCalls = consoleSpy.mock.calls.map((c) => c.join(" "));
+      expect(logCalls.some((l) => l.includes("Skipping critic (round 1)"))).toBe(true);
+      consoleSpy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("all outputs exist: zero agents spawned on resume", async () => {
+    setup();
+    try {
+      const specDir = join(hmDir, "spec");
+      mkdirSync(specDir, { recursive: true });
+      // Pre-create all greenfield outputs
+      for (const step of getSpecSteps(true)) {
+        writeFileSync(join(specDir, step), `# Mock ${step}`);
+      }
+      writeFileSync(join(specDir, "SPEC-draft.md"), "# Draft");
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runSpecStage(prdPath, dirs, config, undefined, true);
+
+      expect(vi.mocked(spawnAgentWithRetry).mock.calls.length).toBe(0);
+      expect(vi.mocked(spawnAgentsParallel).mock.calls.length).toBe(0);
+
+      // Log should show skip count
+      const logCalls = consoleSpy.mock.calls.map((c) => c.join(" "));
+      expect(logCalls.some((l) => l.includes("skipped (resume)"))).toBe(true);
+      consoleSpy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("feedback re-run: drafter and subsequent agents run even if output exists", async () => {
+    setup();
+    try {
+      const specDir = join(hmDir, "spec");
+      mkdirSync(specDir, { recursive: true });
+      // Pre-create all outputs (simulates prior completed run)
+      writeFileSync(join(specDir, "research-report.md"), "# Research");
+      writeFileSync(join(specDir, "spec-new-features.md"), "# Old features");
+      writeFileSync(join(specDir, "SPEC-draft.md"), "# Old draft");
+      writeFileSync(join(specDir, "critique-1.md"), "# Old critique");
+      writeFileSync(join(specDir, "SPEC-v0.2.md"), "# Old v0.2");
+      writeFileSync(join(specDir, "critique-2.md"), "# Old critique 2");
+      writeFileSync(join(specDir, "SPEC-v1.0.md"), "# Old v1.0");
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      // Feedback provided + fromStep=drafter — should re-run drafter onwards
+      await runSpecStage(prdPath, dirs, config, "fix the API section", true, undefined, "drafter");
+      consoleSpy.mockRestore();
+
+      // All 5 agents from drafter onwards should run (no skipping)
+      const seqTypes = vi.mocked(spawnAgentWithRetry).mock.calls.map((c) => c[0].type);
+      expect(seqTypes.length).toBe(5);
+      expect(seqTypes).toContain("feature-spec-drafter");
+      expect(seqTypes).toContain("critic");
+      expect(seqTypes).toContain("spec-corrector");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("non-greenfield resume: parallel agents filtered to only missing outputs", async () => {
+    setup();
+    try {
+      const specDir = join(hmDir, "spec");
+      mkdirSync(specDir, { recursive: true });
+      // Pre-create relevance-map and research-report (scanner + researcher done)
+      writeFileSync(join(specDir, "relevance-map.md"), "# Relevance map");
+      writeFileSync(join(specDir, "research-report.md"), "# Research");
+      // spec-existing.md is missing — only codebase-analyzer should run
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runSpecStage(prdPath, dirs, config);
+
+      // Scanner should be skipped
+      const seqTypes = vi.mocked(spawnAgentWithRetry).mock.calls.map((c) => c[0].type);
+      expect(seqTypes).not.toContain("relevance-scanner");
+
+      // Parallel batch should only contain codebase-analyzer (researcher skipped)
+      const parallelCalls = vi.mocked(spawnAgentsParallel).mock.calls;
+      expect(parallelCalls.length).toBe(1);
+      const parallelTypes = parallelCalls[0][0].map((c: { type: string }) => c.type);
+      expect(parallelTypes).toEqual(["codebase-analyzer"]);
+
+      const logCalls = consoleSpy.mock.calls.map((c) => c.join(" "));
+      expect(logCalls.some((l) => l.includes("Skipping") && l.includes("parallel"))).toBe(true);
+      consoleSpy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("non-greenfield resume: all parallel outputs exist skips entire parallel batch", async () => {
+    setup();
+    try {
+      const specDir = join(hmDir, "spec");
+      mkdirSync(specDir, { recursive: true });
+      writeFileSync(join(specDir, "relevance-map.md"), "# Relevance map");
+      writeFileSync(join(specDir, "research-report.md"), "# Research");
+      writeFileSync(join(specDir, "spec-existing.md"), "# Existing");
+
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runSpecStage(prdPath, dirs, config);
+      consoleSpy.mockRestore();
+
+      // No parallel batch should be called
+      expect(vi.mocked(spawnAgentsParallel).mock.calls.length).toBe(0);
+
+      // Scanner skipped, parallel skipped — only drafter + reconciler + critique (6 agents)
+      const seqTypes = vi.mocked(spawnAgentWithRetry).mock.calls.map((c) => c[0].type);
+      expect(seqTypes).not.toContain("relevance-scanner");
+      expect(seqTypes.length).toBe(6);
+    } finally {
+      cleanup();
+    }
+  });
 });

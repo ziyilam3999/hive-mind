@@ -31,6 +31,11 @@ export function getSpecSteps(greenfield: boolean): readonly string[] {
   return greenfield ? SPEC_STEPS_GREENFIELD : SPEC_STEPS_FULL;
 }
 
+/** Check if an agent's output file already exists with non-empty content (resume support). */
+function outputReady(path: string): boolean {
+  return fileExists(path) && (readFileSafe(path) ?? "").length > 0;
+}
+
 // Backwards-compatible export for existing test consumers
 const SPEC_STEPS = SPEC_STEPS_FULL;
 
@@ -195,50 +200,79 @@ async function runGreenfieldFlow(
   multiModuleRule: string | undefined,
   designContextBlock: { heading: string; content: string } | null = null,
 ): Promise<void> {
+  let agentsSkipped = 0;
+  let agentsSpawned = 0;
+  // When feedback is provided (SPEC rejection), skip guards are disabled — everything from drafter onwards must re-run
+  const canSkip = !feedback;
+
   if (!fromStep) {
-    // S.1: Researcher
-    console.log("S.1: Running researcher...");
-    await spawnStep({
-      type: "researcher",
-      model: "opus",
-      inputFiles: [prdPath, ...kbFiles],
-      outputFile: join(specDir, "research-report.md"),
-      rules: getAgentRules("researcher"),
-      instructionBlocks: [ENVIRONMENT_CONTEXT_BLOCK, DEPLOYMENT_CONTEXT_BLOCK, GREENFIELD_CONTEXT_BLOCK],
-      memoryContent,
-    }, config, constitutionContent, tracker);
+    const researchOutput = join(specDir, "research-report.md");
+    if (canSkip && outputReady(researchOutput)) {
+      console.log("[SPEC] Skipping researcher — output already exists (resume).");
+      agentsSkipped++;
+    } else {
+      // S.1: Researcher
+      console.log("S.1: Running researcher...");
+      await spawnStep({
+        type: "researcher",
+        model: "opus",
+        inputFiles: [prdPath, ...kbFiles],
+        outputFile: researchOutput,
+        rules: getAgentRules("researcher"),
+        instructionBlocks: [ENVIRONMENT_CONTEXT_BLOCK, DEPLOYMENT_CONTEXT_BLOCK, GREENFIELD_CONTEXT_BLOCK],
+        memoryContent,
+      }, config, constitutionContent, tracker);
+      agentsSpawned++;
+    }
   }
 
   const researchReport = join(specDir, "research-report.md");
+  const specNewFeaturesPath = join(specDir, "spec-new-features.md");
 
-  // S.3: Feature Spec Drafter — input is research-report + PRD only
-  console.log("S.3: Running feature-spec-drafter...");
-  const drafterRules = [...getAgentRules("feature-spec-drafter")];
-  if (multiModuleRule) drafterRules.push(multiModuleRule);
+  if (canSkip && outputReady(specNewFeaturesPath)) {
+    console.log("[SPEC] Skipping feature-spec-drafter — output already exists (resume).");
+    agentsSkipped++;
+  } else {
+    // S.3: Feature Spec Drafter — input is research-report + PRD only
+    console.log("S.3: Running feature-spec-drafter...");
+    const drafterRules = [...getAgentRules("feature-spec-drafter")];
+    if (multiModuleRule) drafterRules.push(multiModuleRule);
 
-  const drafterBlocks: Array<{ heading: string; content: string }> = [SELF_REVIEW_BLOCK, GREENFIELD_CONTEXT_BLOCK];
-  if (designContextBlock) drafterBlocks.push(designContextBlock);
-  await spawnStep({
-    type: "feature-spec-drafter",
-    model: "opus",
-    inputFiles: [researchReport, prdPath],
-    outputFile: join(specDir, "spec-new-features.md"),
-    rules: drafterRules,
-    instructionBlocks: drafterBlocks,
-    memoryContent: feedback
-      ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
-      : memoryContent,
-  }, config, constitutionContent, tracker);
-
-  // File copy: spec-new-features.md -> SPEC-draft.md (keeps critique pipeline input consistent)
-  const specNewFeatures = readFileSafe(join(specDir, "spec-new-features.md"));
-  if (specNewFeatures) {
-    writeFileAtomic(join(specDir, "SPEC-draft.md"), specNewFeatures);
+    const drafterBlocks: Array<{ heading: string; content: string }> = [SELF_REVIEW_BLOCK, GREENFIELD_CONTEXT_BLOCK];
+    if (designContextBlock) drafterBlocks.push(designContextBlock);
+    await spawnStep({
+      type: "feature-spec-drafter",
+      model: "opus",
+      inputFiles: [researchReport, prdPath],
+      outputFile: specNewFeaturesPath,
+      rules: drafterRules,
+      instructionBlocks: drafterBlocks,
+      memoryContent: feedback
+        ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
+        : memoryContent,
+    }, config, constitutionContent, tracker);
+    agentsSpawned++;
   }
 
-  await runCritiquePipeline(specDir, memoryContent, constitutionContent, config, tracker);
+  // File copy: spec-new-features.md -> SPEC-draft.md (keeps critique pipeline input consistent)
+  const specDraftPath = join(specDir, "SPEC-draft.md");
+  if (!outputReady(specDraftPath)) {
+    const specNewFeatures = readFileSafe(specNewFeaturesPath);
+    if (specNewFeatures) {
+      writeFileAtomic(specDraftPath, specNewFeatures);
+    }
+  }
 
-  console.log("SPEC stage complete (greenfield). 6 agents spawned.");
+  const critiqueResult = await runCritiquePipeline(specDir, memoryContent, constitutionContent, config, tracker, canSkip);
+  agentsSpawned += critiqueResult.spawned;
+  agentsSkipped += critiqueResult.skipped;
+
+  const total = agentsSpawned + agentsSkipped;
+  if (agentsSkipped > 0) {
+    console.log(`SPEC stage complete (greenfield). ${agentsSpawned} agents spawned, ${agentsSkipped} skipped (resume). ${total} total.`);
+  } else {
+    console.log(`SPEC stage complete (greenfield). ${agentsSpawned} agents spawned.`);
+  }
 }
 
 async function runNonGreenfieldFlow(
@@ -256,24 +290,34 @@ async function runNonGreenfieldFlow(
   multiModuleRule: string | undefined,
   designContextBlock: { heading: string; content: string } | null = null,
 ): Promise<void> {
+  let agentsSkipped = 0;
+  let agentsSpawned = 0;
+  const canSkip = !feedback;
+
   if (!fromStep) {
     // Write project-listing.txt BEFORE spawning the scanner
     const projectListing = collectProjectFileListing({ root: process.cwd() });
     writeFileAtomic(join(specDir, "project-listing.txt"), projectListing);
 
-    // S.0: Relevance Scanner
-    console.log("S.0: Running relevance-scanner...");
-    await spawnStep({
-      type: "relevance-scanner",
-      model: "sonnet",
-      inputFiles: [join(specDir, "project-listing.txt"), prdPath],
-      outputFile: join(specDir, "relevance-map.md"),
-      rules: getAgentRules("relevance-scanner"),
-      memoryContent,
-    }, config, constitutionContent, tracker);
+    const relevanceMapPath = join(specDir, "relevance-map.md");
+    if (canSkip && outputReady(relevanceMapPath)) {
+      console.log("[SPEC] Skipping relevance-scanner — output already exists (resume).");
+      agentsSkipped++;
+    } else {
+      // S.0: Relevance Scanner
+      console.log("S.0: Running relevance-scanner...");
+      await spawnStep({
+        type: "relevance-scanner",
+        model: "sonnet",
+        inputFiles: [join(specDir, "project-listing.txt"), prdPath],
+        outputFile: relevanceMapPath,
+        rules: getAgentRules("relevance-scanner"),
+        memoryContent,
+      }, config, constitutionContent, tracker);
+      agentsSpawned++;
+    }
 
-    // S.1 + S.2 in PARALLEL
-    console.log("S.1+S.2: Running researcher + codebase-analyzer in parallel...");
+    // S.1 + S.2 in PARALLEL — filter to only agents whose output is missing
     const researcherConfig: AgentConfig = {
       type: "researcher",
       model: "opus",
@@ -294,57 +338,92 @@ async function runNonGreenfieldFlow(
       cwd: process.cwd(),
     };
 
-    const parallelConfigs = [researcherConfig, analyzerConfig].map((c) =>
-      constitutionContent ? { ...c, constitutionContent } : c,
-    );
-    const parallelResults = await spawnAgentsParallel(parallelConfigs, config);
+    const allParallelConfigs = [researcherConfig, analyzerConfig];
+    const pendingConfigs = canSkip
+      ? allParallelConfigs.filter((c) => !outputReady(c.outputFile))
+      : allParallelConfigs;
+    const skippedCount = allParallelConfigs.length - pendingConfigs.length;
+    if (skippedCount > 0) {
+      console.log(`[SPEC] Skipping ${skippedCount} parallel agent(s) — output already exists (resume).`);
+      agentsSkipped += skippedCount;
+    }
 
-    for (let i = 0; i < parallelResults.length; i++) {
-      const r = parallelResults[i];
-      const c = parallelConfigs[i];
-      tracker?.recordAgentCost("SPEC", c.type, r.costUsd, r.durationMs);
-      if (!r.success) {
-        throw new Error(`Agent ${c.type} failed: ${r.error}`);
+    if (pendingConfigs.length > 0) {
+      console.log(`S.1+S.2: Running ${pendingConfigs.map((c) => c.type).join(" + ")} in parallel...`);
+      const parallelConfigs = pendingConfigs.map((c) =>
+        constitutionContent ? { ...c, constitutionContent } : c,
+      );
+      const parallelResults = await spawnAgentsParallel(parallelConfigs, config);
+
+      for (let i = 0; i < parallelResults.length; i++) {
+        const r = parallelResults[i];
+        const c = parallelConfigs[i];
+        tracker?.recordAgentCost("SPEC", c.type, r.costUsd, r.durationMs);
+        if (!r.success) {
+          throw new Error(`Agent ${c.type} failed: ${r.error}`);
+        }
       }
+      agentsSpawned += parallelResults.length;
     }
   }
 
   const researchReport = join(specDir, "research-report.md");
+  const specNewFeaturesPath = join(specDir, "spec-new-features.md");
 
-  // S.3: Feature Spec Drafter — NO codebase files
-  console.log("S.3: Running feature-spec-drafter...");
-  const drafterRules = [...getAgentRules("feature-spec-drafter")];
-  if (multiModuleRule) drafterRules.push(multiModuleRule);
+  if (canSkip && outputReady(specNewFeaturesPath)) {
+    console.log("[SPEC] Skipping feature-spec-drafter — output already exists (resume).");
+    agentsSkipped++;
+  } else {
+    // S.3: Feature Spec Drafter — NO codebase files
+    console.log("S.3: Running feature-spec-drafter...");
+    const drafterRules = [...getAgentRules("feature-spec-drafter")];
+    if (multiModuleRule) drafterRules.push(multiModuleRule);
 
-  const nonGfDrafterBlocks: Array<{ heading: string; content: string }> = [SELF_REVIEW_BLOCK];
-  if (designContextBlock) nonGfDrafterBlocks.push(designContextBlock);
-  await spawnStep({
-    type: "feature-spec-drafter",
-    model: "opus",
-    inputFiles: [researchReport, prdPath],
-    outputFile: join(specDir, "spec-new-features.md"),
-    rules: drafterRules,
-    instructionBlocks: nonGfDrafterBlocks,
-    memoryContent: feedback
-      ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
-      : memoryContent,
-  }, config, constitutionContent, tracker);
+    const nonGfDrafterBlocks: Array<{ heading: string; content: string }> = [SELF_REVIEW_BLOCK];
+    if (designContextBlock) nonGfDrafterBlocks.push(designContextBlock);
+    await spawnStep({
+      type: "feature-spec-drafter",
+      model: "opus",
+      inputFiles: [researchReport, prdPath],
+      outputFile: specNewFeaturesPath,
+      rules: drafterRules,
+      instructionBlocks: nonGfDrafterBlocks,
+      memoryContent: feedback
+        ? `${memoryContent}\n\n## HUMAN FEEDBACK (from rejection)\n${feedback}`
+        : memoryContent,
+    }, config, constitutionContent, tracker);
+    agentsSpawned++;
+  }
 
-  // S.4: Reconciler — merges spec-existing + spec-new-features
-  console.log("S.4: Running reconciler...");
-  await spawnStep({
-    type: "reconciler",
-    model: "opus",
-    inputFiles: [join(specDir, "spec-existing.md"), join(specDir, "spec-new-features.md")],
-    outputFile: join(specDir, "SPEC-draft.md"),
-    rules: getAgentRules("reconciler"),
-    instructionBlocks: [SELF_REVIEW_BLOCK],
-    memoryContent,
-  }, config, constitutionContent, tracker);
+  const specDraftPath = join(specDir, "SPEC-draft.md");
+  if (canSkip && outputReady(specDraftPath)) {
+    console.log("[SPEC] Skipping reconciler — output already exists (resume).");
+    agentsSkipped++;
+  } else {
+    // S.4: Reconciler — merges spec-existing + spec-new-features
+    console.log("S.4: Running reconciler...");
+    await spawnStep({
+      type: "reconciler",
+      model: "opus",
+      inputFiles: [join(specDir, "spec-existing.md"), specNewFeaturesPath],
+      outputFile: specDraftPath,
+      rules: getAgentRules("reconciler"),
+      instructionBlocks: [SELF_REVIEW_BLOCK],
+      memoryContent,
+    }, config, constitutionContent, tracker);
+    agentsSpawned++;
+  }
 
-  await runCritiquePipeline(specDir, memoryContent, constitutionContent, config, tracker);
+  const critiqueResult = await runCritiquePipeline(specDir, memoryContent, constitutionContent, config, tracker, canSkip);
+  agentsSpawned += critiqueResult.spawned;
+  agentsSkipped += critiqueResult.skipped;
 
-  console.log("SPEC stage complete. 9 agents spawned.");
+  const total = agentsSpawned + agentsSkipped;
+  if (agentsSkipped > 0) {
+    console.log(`SPEC stage complete. ${agentsSpawned} agents spawned, ${agentsSkipped} skipped (resume). ${total} total.`);
+  } else {
+    console.log(`SPEC stage complete. ${agentsSpawned} agents spawned.`);
+  }
 }
 
 async function runCritiquePipeline(
@@ -353,66 +432,93 @@ async function runCritiquePipeline(
   constitutionContent: string | undefined,
   config: HiveMindConfig,
   tracker: CostTracker | undefined,
-): Promise<void> {
+  canSkip = false,
+): Promise<{ spawned: number; skipped: number }> {
+  let spawned = 0;
+  let skipped = 0;
   const specDraft = join(specDir, "SPEC-draft.md");
+  const critique1Path = join(specDir, "critique-1.md");
+  const specV02Path = join(specDir, "SPEC-v0.2.md");
+  const critique2Path = join(specDir, "critique-2.md");
+  const specV1Path = join(specDir, "SPEC-v1.0.md");
 
   // S.5: Critic round 1 — ONLY receives SPEC-draft.md (isolation)
-  console.log("S.5: Running critic (round 1)...");
-  await spawnStep({
-    type: "critic",
-    model: "sonnet",
-    inputFiles: [specDraft],
-    outputFile: join(specDir, "critique-1.md"),
-    rules: getAgentRules("critic"),
-    memoryContent,
-  }, config, constitutionContent, tracker);
-
-  const critique1 = join(specDir, "critique-1.md");
+  if (canSkip && outputReady(critique1Path)) {
+    console.log("[SPEC] Skipping critic (round 1) — output already exists (resume).");
+    skipped++;
+  } else {
+    console.log("S.5: Running critic (round 1)...");
+    await spawnStep({
+      type: "critic",
+      model: "sonnet",
+      inputFiles: [specDraft],
+      outputFile: critique1Path,
+      rules: getAgentRules("critic"),
+      memoryContent,
+    }, config, constitutionContent, tracker);
+    spawned++;
+  }
 
   // S.6: Spec-corrector
-  console.log("S.6: Running spec-corrector...");
-  await spawnStep({
-    type: "spec-corrector",
-    model: "opus",
-    inputFiles: [specDraft, critique1],
-    outputFile: join(specDir, "SPEC-v0.2.md"),
-    rules: getAgentRules("spec-corrector"),
-    instructionBlocks: [SELF_REVIEW_BLOCK],
-    memoryContent,
-  }, config, constitutionContent, tracker);
-
-  const specV02 = join(specDir, "SPEC-v0.2.md");
+  if (canSkip && outputReady(specV02Path)) {
+    console.log("[SPEC] Skipping spec-corrector — output already exists (resume).");
+    skipped++;
+  } else {
+    console.log("S.6: Running spec-corrector...");
+    await spawnStep({
+      type: "spec-corrector",
+      model: "opus",
+      inputFiles: [specDraft, critique1Path],
+      outputFile: specV02Path,
+      rules: getAgentRules("spec-corrector"),
+      instructionBlocks: [SELF_REVIEW_BLOCK],
+      memoryContent,
+    }, config, constitutionContent, tracker);
+    spawned++;
+  }
 
   // S.7: Critic round 2 — ONLY receives SPEC-v0.2.md (isolation) + regression check
-  console.log("S.7: Running critic (round 2)...");
-  await spawnStep({
-    type: "critic",
-    model: "sonnet",
-    inputFiles: [specV02],
-    outputFile: join(specDir, "critique-2.md"),
-    rules: [
-      ...getAgentRules("critic"),
-      "REGRESSION-CHECK: You are Round 2. The document you're reviewing was corrected after Round 1. Actively look for NEW problems introduced by the corrections — inconsistencies between fixed sections and untouched sections, broken cross-references, or overcorrections that lost important content. Flag regressions with severity CRITICAL and tag them [REGRESSION].",
-    ],
-    memoryContent,
-  }, config, constitutionContent, tracker);
-
-  const critique2 = join(specDir, "critique-2.md");
+  if (canSkip && outputReady(critique2Path)) {
+    console.log("[SPEC] Skipping critic (round 2) — output already exists (resume).");
+    skipped++;
+  } else {
+    console.log("S.7: Running critic (round 2)...");
+    await spawnStep({
+      type: "critic",
+      model: "sonnet",
+      inputFiles: [specV02Path],
+      outputFile: critique2Path,
+      rules: [
+        ...getAgentRules("critic"),
+        "REGRESSION-CHECK: You are Round 2. The document you're reviewing was corrected after Round 1. Actively look for NEW problems introduced by the corrections — inconsistencies between fixed sections and untouched sections, broken cross-references, or overcorrections that lost important content. Flag regressions with severity CRITICAL and tag them [REGRESSION].",
+      ],
+      memoryContent,
+    }, config, constitutionContent, tracker);
+    spawned++;
+  }
 
   // S.8: Spec-corrector (final)
-  console.log("S.8: Running spec-corrector (final)...");
-  await spawnStep({
-    type: "spec-corrector",
-    model: "opus",
-    inputFiles: [specV02, critique2],
-    outputFile: join(specDir, "SPEC-v1.0.md"),
-    rules: getAgentRules("spec-corrector"),
-    instructionBlocks: [SELF_REVIEW_BLOCK],
-    memoryContent,
-  }, config, constitutionContent, tracker);
+  if (canSkip && outputReady(specV1Path)) {
+    console.log("[SPEC] Skipping spec-corrector (final) — output already exists (resume).");
+    skipped++;
+  } else {
+    console.log("S.8: Running spec-corrector (final)...");
+    await spawnStep({
+      type: "spec-corrector",
+      model: "opus",
+      inputFiles: [specV02Path, critique2Path],
+      outputFile: specV1Path,
+      rules: getAgentRules("spec-corrector"),
+      instructionBlocks: [SELF_REVIEW_BLOCK],
+      memoryContent,
+    }, config, constitutionContent, tracker);
+    spawned++;
+  }
 
   // Compile critique log from both rounds (non-agent, local file-write)
   compileCritiqueLog(specDir);
+
+  return { spawned, skipped };
 }
 
 function compileCritiqueLog(specDir: string): void {
