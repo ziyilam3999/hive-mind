@@ -19,3 +19,11 @@ Parking lot for new ideas that come up between releases. During release planning
 - BL-008 [P3] Chain-of-thoughts prompting in GAN loop -- extend current SPEC multi-role CoT to GAN pattern: evaluator reasons step-by-step before verdict, fixer reasons through diagnosis before fix. Systematize prompting techniques (temperature, think-first, output constraints, role/persona, few-shot) as skill library
 - BL-009 [P5] Multi-instance coordination (cowork pattern) -- Claude Code multi-instance coordination for parallel agent sessions within pipeline. Agents coordinate like coworkers. Ref: Anthropic cowork feature
 - BL-010 [P2] Google Stitch integration for AI design generation -- use Stitch's "vibe design" (intent+mood prompts) to generate UI mockups during SPEC/PLAN, feed into visual verification loop. Ref: Google Stitch March 2026 "vibe design" update
+- BL-011 [P1] Complexity-based stage scaling -- detect trivial PRDs (single file, <50 LOC), run "light" pipeline: fewer SPEC agents, no role reports, 1 story. Source: R1 Run 1 diagnosis (RC-2, RC-3)
+- BL-012 [P1] Collapse impl + tests into 1 story by default -- eliminates duplicate EXECUTE waves of 7 agents each. Source: R1 Run 1 diagnosis (RC-3)
+- BL-013 [P2] Skip security role report for non-security PRDs -- gate on keyword detection (auth, credentials, network, API keys). Source: R1 Run 1 diagnosis
+- BL-014 [P2] Reduce SPEC critique cycles for trivial PRDs -- 1 round instead of 2 when complexity is low. Source: R1 Run 1 diagnosis
+- BL-015 [P2] Improve first-attempt pass rate -- investigate spec context passed to implementer, both stories failed attempt 1. Source: R1 Run 1 diagnosis
+- BL-016 [P3] Skip refactorer for test-only stories -- test files rarely benefit from refactoring in same pass. Source: R1 Run 1 diagnosis
+- BL-017 [P3] Add cost/time budget field to PRD format -- let user signal expected complexity for pipeline self-tuning. Source: R1 Run 1 diagnosis
+- BL-018 [P3] Log fix-unverified agent costs in cost-log.jsonl -- currently untracked, hard to see full cost of fix cycles. Source: R1 Run 1 diagnosis

@@ -754,7 +754,7 @@ interactivity: static
       expect(vi.mocked(appendLogEntry)).toHaveBeenCalled();
     });
 
-    it("writes approve-design-skip checkpoint when no UI keywords detected", async () => {
+    it("does NOT write checkpoint when no UI keywords detected (auto-skip)", async () => {
       mkdirSync(join(workingDir, "normalize"), { recursive: true });
       writeFileSync(
         join(workingDir, "normalize", "normalized-prd.md"),
@@ -765,12 +765,7 @@ interactivity: static
 
       await runDesignStage(dirs, config);
 
-      expect(vi.mocked(mockCheckpoint)).toHaveBeenCalledWith(
-        workingDir,
-        expect.objectContaining({
-          awaiting: "approve-design-skip",
-        }),
-      );
+      expect(vi.mocked(mockCheckpoint)).not.toHaveBeenCalled();
     });
 
     it("writes approve-design-questionnaire checkpoint when UI keywords detected", async () => {
