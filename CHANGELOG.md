@@ -1,3 +1,9 @@
+## [0.21.4](https://github.com/ziyilam3999/hive-mind/compare/v0.21.3...v0.21.4) (2026-03-30)
+
+### Bug Fixes
+
+* fix: shut down stale dashboard on approve/reject/resume (#192)
+
 ## [0.21.3](https://github.com/ziyilam3999/hive-mind/compare/v0.21.2...v0.21.3) (2026-03-30)
 
 ### Bug Fixes
