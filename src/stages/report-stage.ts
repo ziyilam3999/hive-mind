@@ -355,6 +355,13 @@ export function buildStatusSummary(planPath: string, outputPath: string): boolea
       .map(([status, count]) => `- ${status}: ${count}`)
       .join("\n");
 
+    // Check for deferred stories file
+    const deferredPath = planPath.replace("execution-plan.json", "deferred-stories.md");
+    const deferredContent = readFileSafe(deferredPath);
+    const deferredSection = deferredContent
+      ? `\n## Deferred Stories (Excluded from Execution)\n\n${deferredContent.split("\n").filter(l => l.startsWith("- ")).join("\n")}\n`
+      : "";
+
     const md = `# Story Status Summary (AUTHORITATIVE — computed from execution-plan.json)
 
 | Story | Status | Attempts | Committed |
@@ -365,7 +372,7 @@ ${rows}
 - Total stories: ${total}
 - Passed: ${passed} (${pct}%)
 - Failed: ${failed}${otherStatuses ? "\n" + otherStatuses : ""}${uncommittedPassed > 0 ? `\n- **WARNING: ${uncommittedPassed} passed story(ies) NOT committed to git**` : ""}
-`;
+${deferredSection}`;
 
     writeFileSync(outputPath, md, "utf-8");
     console.log(`Wrote authoritative status summary: ${passed}/${total} passed (${pct}%)`);
