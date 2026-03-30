@@ -235,9 +235,20 @@ describe("startDashboard", () => {
     // Server should be shutting down — clear handle so afterEach doesn't double-stop
     handle = null;
 
-    // Give server time to close
-    await new Promise((r) => setTimeout(r, 100));
-    await expect(fetch(`${url}/api/status`)).rejects.toThrow();
+    // Wait for server to fully close — server.close() is async
+    // Retry until fetch fails or times out after 2s
+    const deadline = Date.now() + 2000;
+    let closed = false;
+    while (Date.now() < deadline) {
+      try {
+        await fetch(`${url}/api/status`);
+        await new Promise((r) => setTimeout(r, 50));
+      } catch {
+        closed = true;
+        break;
+      }
+    }
+    expect(closed).toBe(true);
   });
 
   it("POST /api/shutdown with wrong workingDir returns 403", async () => {
@@ -267,9 +278,19 @@ describe("startDashboard", () => {
 
     expect(existsSync(portFile)).toBe(false);
 
-    // Give server time to close
-    await new Promise((r) => setTimeout(r, 100));
-    await expect(fetch(`${url}/api/status`)).rejects.toThrow();
+    // Wait for server to fully close
+    const deadline = Date.now() + 2000;
+    let closed = false;
+    while (Date.now() < deadline) {
+      try {
+        await fetch(`${url}/api/status`);
+        await new Promise((r) => setTimeout(r, 50));
+      } catch {
+        closed = true;
+        break;
+      }
+    }
+    expect(closed).toBe(true);
   });
 
   it("shutdownExistingDashboard cleans up port file even if no server is running", async () => {
