@@ -1,3 +1,9 @@
+## [0.21.2](https://github.com/ziyilam3999/hive-mind/compare/v0.21.1...v0.21.2) (2026-03-30)
+
+### Miscellaneous
+
+* docs: add 12 new ideas to harness roadmap and standalone projects (#188)
+
 ## [0.21.1](https://github.com/ziyilam3999/hive-mind/compare/v0.21.0...v0.21.1) (2026-03-30)
 
 ### Bug Fixes
