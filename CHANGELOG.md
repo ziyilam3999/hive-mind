@@ -1,3 +1,9 @@
+## [0.20.0](https://github.com/ziyilam3999/hive-mind/compare/v0.19.2...v0.20.0) (2026-03-30)
+
+### Features
+
+* show project name in dashboard header and browser tab (#179)
+
 ## [0.19.2](https://github.com/ziyilam3999/hive-mind/compare/v0.19.1...v0.19.2) (2026-03-30)
 
 ### Bug Fixes
