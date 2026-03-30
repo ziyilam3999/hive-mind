@@ -18,9 +18,9 @@ function logEntry(action: string, timestamp: string) {
 }
 
 describe("deriveStages", () => {
-  it("returns 4 pending stages when log is empty", () => {
+  it("returns 5 pending stages when log is empty", () => {
     const stages = deriveStages(makeInput(), NOW);
-    expect(stages).toHaveLength(4);
+    expect(stages).toHaveLength(5);
     expect(stages.every((s) => s.status === "pending")).toBe(true);
   });
 
@@ -31,8 +31,8 @@ describe("deriveStages", () => {
       ],
     });
     const stages = deriveStages(input, NOW);
-    expect(stages[0].status).toBe("running");
-    expect(stages[0].durationMs).toBeGreaterThan(0);
+    expect(stages[1].status).toBe("running");
+    expect(stages[1].durationMs).toBeGreaterThan(0);
   });
 
   it("uses fallbackStart when primary is missing", () => {
@@ -42,7 +42,7 @@ describe("deriveStages", () => {
       ],
     });
     const stages = deriveStages(input, NOW);
-    // PIPELINE_START is fallback for spec
+    // PIPELINE_START is fallback for design (index 0) and spec (index 1)
     expect(stages[0].status).toBe("running");
   });
 
@@ -55,8 +55,8 @@ describe("deriveStages", () => {
     });
     const stages = deriveStages(input, NOW);
     // Execute should use first WAVE_START occurrence
-    expect(stages[2].status).toBe("running");
-    expect(stages[2].durationMs).toBe(NOW - new Date("2026-03-25T10:30:00Z").getTime());
+    expect(stages[3].status).toBe("running");
+    expect(stages[3].durationMs).toBe(NOW - new Date("2026-03-25T10:30:00Z").getTime());
   });
 
   it("uses first occurrence of secondaryFallback, not last", () => {
@@ -69,7 +69,7 @@ describe("deriveStages", () => {
       ],
     });
     const stages = deriveStages(input, NOW);
-    expect(stages[2].durationMs).toBe(NOW - firstTs);
+    expect(stages[3].durationMs).toBe(NOW - firstTs);
   });
 
   it("execute stays pending when no WAVE_START and no primary/fallback", () => {
@@ -79,7 +79,7 @@ describe("deriveStages", () => {
       ],
     });
     const stages = deriveStages(input, NOW);
-    expect(stages[2].status).toBe("pending");
+    expect(stages[3].status).toBe("pending");
   });
 
   it("returns paused status for checkpoint-gated stage with startTs", () => {
@@ -92,8 +92,8 @@ describe("deriveStages", () => {
       checkpoint: { awaiting: "approve-spec" },
     });
     const stages = deriveStages(input, NOW);
-    expect(stages[0].status).toBe("done"); // spec done
-    expect(stages[1].status).toBe("paused"); // plan is gated by approve-spec
+    expect(stages[1].status).toBe("done"); // spec done
+    expect(stages[2].status).toBe("paused"); // plan is gated by approve-spec
   });
 
   it("returns paused status for checkpoint-gated stage even without startTs", () => {
@@ -104,9 +104,8 @@ describe("deriveStages", () => {
       checkpoint: { awaiting: "approve-normalize" },
     });
     const stages = deriveStages(input, NOW);
-    // spec is gated by approve-normalize; SPEC_START not in log, PIPELINE_START is fallback
-    // so spec has startTs via fallback -- but let's test with no fallback either
-    expect(stages[0].status).toBe("paused");
+    // approve-normalize gates spec (index 1); design (index 0) runs via PIPELINE_START fallback
+    expect(stages[1].status).toBe("paused");
   });
 
   it("returns paused when gated stage has zero log entries for its start", () => {
@@ -116,7 +115,7 @@ describe("deriveStages", () => {
     });
     const stages = deriveStages(input, NOW);
     // execute is gated by approve-plan, but no log entries at all
-    expect(stages[2].status).toBe("paused");
+    expect(stages[3].status).toBe("paused");
   });
 
   it("marks stage as done when start and end actions both present", () => {
@@ -127,8 +126,8 @@ describe("deriveStages", () => {
       ],
     });
     const stages = deriveStages(input, NOW);
-    expect(stages[0].status).toBe("done");
-    expect(stages[0].durationMs).toBe(30 * 60 * 1000);
+    expect(stages[1].status).toBe("done");
+    expect(stages[1].durationMs).toBe(30 * 60 * 1000);
   });
 
   it("marks execute as done via story completion even without EXECUTE_COMPLETE", () => {
@@ -143,7 +142,7 @@ describe("deriveStages", () => {
       ],
     });
     const stages = deriveStages(input, NOW);
-    expect(stages[2].status).toBe("done");
+    expect(stages[3].status).toBe("done");
   });
 
   it("marks execute as failed when stories have failures", () => {
@@ -158,13 +157,15 @@ describe("deriveStages", () => {
       ],
     });
     const stages = deriveStages(input, NOW);
-    expect(stages[2].status).toBe("failed");
+    expect(stages[3].status).toBe("failed");
   });
 
   it("full pipeline: all stages done", () => {
     const input = makeInput({
       managerLog: [
         logEntry("PIPELINE_START", "2026-03-25T08:00:00Z"),
+        logEntry("DESIGN_START", "2026-03-25T08:05:00Z"),
+        logEntry("DESIGN_PROTOTYPE_APPROVED", "2026-03-25T08:08:00Z"),
         logEntry("SPEC_START", "2026-03-25T08:10:00Z"),
         logEntry("SPEC_COMPLETE", "2026-03-25T08:30:00Z"),
         logEntry("PLAN_START", "2026-03-25T08:35:00Z"),
