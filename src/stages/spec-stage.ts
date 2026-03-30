@@ -255,8 +255,9 @@ async function runGreenfieldFlow(
   }
 
   // File copy: spec-new-features.md -> SPEC-draft.md (keeps critique pipeline input consistent)
+  // Always copy when feedback provided (canSkip=false) — drafter output is fresh
   const specDraftPath = join(specDir, "SPEC-draft.md");
-  if (!outputReady(specDraftPath)) {
+  if (!canSkip || !outputReady(specDraftPath)) {
     const specNewFeatures = readFileSafe(specNewFeaturesPath);
     if (specNewFeatures) {
       writeFileAtomic(specDraftPath, specNewFeatures);
