@@ -135,6 +135,44 @@ describe("crash recovery checkpoints", () => {
   });
 });
 
+describe("approve-plan baseline failure", () => {
+  it("recovery checkpoint survives when baseline check fails after approve", async () => {
+    const { resumeFromCheckpoint } = await import("../../orchestrator.js");
+    const { runBaselineCheck } = await import("../../stages/baseline-check.js");
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { testDir, dirs, cleanup } = makeTestDir("baseline-fail");
+    try {
+      writeManagerLog(testDir);
+      mkdirSync(join(testDir, "plans"), { recursive: true });
+      writeFileSync(join(testDir, "plans", "execution-plan.json"), JSON.stringify({ stories: [] }));
+
+      // Make baseline throw (simulates test/build failure)
+      vi.mocked(runBaselineCheck).mockRejectedValueOnce(new Error("npm test failed — baseline broken"));
+
+      const checkpoint: Checkpoint = {
+        awaiting: "approve-plan",
+        message: "test",
+        timestamp: "2026-03-30T00:00:00Z",
+        feedback: null,
+      };
+
+      // Should throw because baseline fails
+      await expect(resumeFromCheckpoint(checkpoint, dirs, config)).rejects.toThrow("npm test failed");
+
+      // Recovery checkpoint must exist so user can retry
+      expect(existsSync(join(testDir, ".checkpoint"))).toBe(true);
+      const recovered = JSON.parse(readFileSync(join(testDir, ".checkpoint"), "utf-8"));
+      expect(recovered.awaiting).toBe("approve-plan");
+      expect(recovered.message).toContain("recovery checkpoint");
+    } finally {
+      consoleSpy.mockRestore();
+      cleanup();
+    }
+  });
+});
+
 describe("start command checkpoint guard", () => {
   it("start throws when checkpoint exists and --force not set", async () => {
     const { runPipeline } = await import("../../orchestrator.js");

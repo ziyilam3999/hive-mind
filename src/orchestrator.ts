@@ -484,20 +484,20 @@ export async function resumeFromCheckpoint(
     case "approve-plan": {
       const startDataPlan = getPipelineStartData(dirs.workingDir);
 
-      // Baseline check FIRST — checkpoint preserved on failure so user can re-approve
-      // Greenfield projects skip baseline automatically (no existing code to check)
-      if (!options?.skipBaseline && !startDataPlan.greenfield) {
-        await runBaselineCheck(config);
-      }
-      deleteCheckpoint(dirs.workingDir);
-
-      // Recovery checkpoint — survives crash so user can retry via approve/resume
+      // Recovery checkpoint FIRST — approveCheckpoint() already deleted .checkpoint,
+      // so we must write this before any potentially-failing operation (e.g. baseline).
+      // If baseline throws, this checkpoint survives so user can retry via approve/resume.
       writeCheckpoint(dirs.workingDir, {
         awaiting: "approve-plan",
         message: "PLAN approved — EXECUTE stage in progress (recovery checkpoint)",
         timestamp: isoTimestamp(),
         feedback: null,
       });
+
+      // Greenfield projects skip baseline automatically (no existing code to check)
+      if (!options?.skipBaseline && !startDataPlan.greenfield) {
+        await runBaselineCheck(config);
+      }
 
       const execCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const tracker = CostTracker.loadFromDisk(execCostLogPath, startDataPlan.budget);
