@@ -196,6 +196,13 @@ export function updateLiveReport(
     const resolved = passed + failed;
     const pct = total > 0 ? Math.round((resolved / total) * 100) : 0;
 
+    // Check for deferred stories
+    const deferredPath = join(workingDir, "plans", "deferred-stories.md");
+    const deferredContent = readFileSafe(deferredPath);
+    const deferredCount = deferredContent
+      ? deferredContent.split("\n").filter(l => l.startsWith("- ")).length
+      : 0;
+
     // 5. Wave groups
     const waveGroups = buildWaveGroups(logEntries);
     const currentWave = waveGroups.length;
@@ -231,7 +238,7 @@ export function updateLiveReport(
       "",
       `[${progressBar}] ${pct}% — ${resolved}/${total} resolved`,
       "",
-      `  Passed: ${passed} | Failed: ${failed} | In Progress: ${inProgress} | Pending: ${pending}`,
+      `  Passed: ${passed} | Failed: ${failed} | In Progress: ${inProgress} | Pending: ${pending}${deferredCount > 0 ? ` | Deferred: ${deferredCount}` : ""}`,
       "",
       "## Hardening Fix Tracker",
       "| Fix | Count | Details |",

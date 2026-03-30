@@ -129,7 +129,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentRegistryEntry> = {
     tools: DEV_TOOLS,
     job: "Review + improve code quality, produce refactor-report.md",
     rules: [
-      "FILE-SCOPE: Only modify files listed in your ## INPUT section. Do NOT create or modify files outside this set. [Wrong: editing app.ts when it is not listed in ## INPUT] [Right: refactoring only the files provided as input]",
+      "FILE-SCOPE: Only modify files listed in your ## INPUT section. Do NOT create or modify files outside this set. For files with changeType REMOVED, delete the file. [Wrong: editing app.ts when it is not listed in ## INPUT] [Right: refactoring only the files provided as input]",
       "NO-FUNCTIONAL-CHANGE: Preserve all existing behavior. Refactoring must not change what the code does. [Wrong: altering return values or adding side effects] [Right: renaming internal variables, extracting helpers within the same file, reorganizing imports]",
       "NO-NEW-DEPS: Do not add new external dependencies or imports that the implementer did not already introduce.",
       "REPORT-FORMAT: Output must follow refactor-report.md template exactly.",
@@ -227,7 +227,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentRegistryEntry> = {
     rules: [
       "SKELETON-ONLY: Produce story skeletons with GOAL, SPEC REFS, INPUT, OUTPUT. Do NOT generate ACs or ECs.",
       "STRUCTURED-OUTPUT: Output must be valid JSON matching EXECUTION_PLAN_SCHEMA.",
-      "COMPLETE-COVERAGE: Every requirement in the spec must map to at least one story.",
+      "COMPLETE-COVERAGE: Every requirement in the spec must map to at least one story. INFRA-GATE: Do NOT create stories for integration tests, E2E tests, smoke tests, or any test story requiring runtime infrastructure (databases, Docker, mock servers, message queues, running services) — these cannot pass in isolation. Instead, add a top-level \"deferred\" array: {\"deferred\": [{\"title\": \"...\", \"reason\": \"Requires runtime infrastructure: ...\"}]}. Unit test stories that mock dependencies are fine.",
       "DEPENDENCY-ORDER: Stories must be ordered so dependencies are resolved before dependents.",
       "ROLE-AWARE: Reference which role-reports informed each story via rolesUsed field.",
     ],

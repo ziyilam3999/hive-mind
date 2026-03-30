@@ -45,6 +45,48 @@ export function scanForRoleKeywords(specContent: string): string[] {
   return roles;
 }
 
+// --- Integration/E2E test story detection (safety net for INFRA-GATE) ---
+
+const INTEGRATION_TEST_PATTERNS: RegExp[] = [
+  /\bintegration\s+test/i,
+  /\be2e\s+test/i,
+  /\bend[- ]to[- ]end\s+test/i,
+  /\bsystem\s+test/i,
+  /\bsmoke\s+test/i,
+];
+
+const INFRA_KEYWORDS: string[] = [
+  "docker", "docker-compose", "testcontainers",
+  "database", "postgres", "mysql", "sqlite", "mongo", "redis",
+  "mock server", "test server", "dev server",
+  "selenium", "playwright", "cypress", "puppeteer",
+  "supertest", "http server",
+];
+
+/**
+ * Returns a reason string if the story title indicates an integration/E2E test
+ * that requires runtime infrastructure, or null if it's safe to execute in isolation.
+ */
+export function isIntegrationTestStory(title: string): string | null {
+  for (const pattern of INTEGRATION_TEST_PATTERNS) {
+    if (pattern.test(title)) {
+      return `Matches "${pattern.source}" — requires runtime infrastructure unavailable in isolated agent environment`;
+    }
+  }
+
+  const hasTestInTitle = /\btest/i.test(title);
+  if (hasTestInTitle) {
+    const lowerTitle = title.toLowerCase();
+    for (const kw of INFRA_KEYWORDS) {
+      if (lowerTitle.includes(kw.toLowerCase())) {
+        return `Title contains "test" + infrastructure keyword "${kw}" — requires manual execution`;
+      }
+    }
+  }
+
+  return null;
+}
+
 /** Check if an agent's output file already exists with non-empty content (resume support). */
 function outputReady(path: string): boolean {
   return fileExists(path) && (readFileSafe(path) ?? "").length > 0;
@@ -225,6 +267,44 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
     throw new Error("execution-plan.json contains no stories");
   }
 
+  // Extract deferred stories from planner output (INFRA-GATE rule)
+  const deferredFromPlanner: Array<{ title: string; reason: string }> =
+    Array.isArray((planData as Record<string, unknown>).deferred)
+      ? ((planData as Record<string, unknown>).deferred as Array<{ title: string; reason: string }>)
+      : [];
+
+  // Safety-net: catch integration/E2E test stories the planner missed
+  const safetyNetDeferred: Array<{ title: string; reason: string }> = [];
+  stories = stories.filter((story) => {
+    const reason = isIntegrationTestStory(story.title);
+    if (reason) {
+      safetyNetDeferred.push({ title: story.title, reason });
+      console.log(`[PLAN] Safety-net: removing "${story.title}" — ${reason}`);
+      return false;
+    }
+    return true;
+  });
+  planData.stories = stories;
+
+  // Write deferred stories to file for manual follow-up
+  const allDeferred = [...deferredFromPlanner, ...safetyNetDeferred];
+  if (allDeferred.length > 0) {
+    const deferredPath = join(dirs.workingDir, "plans", "deferred-stories.md");
+    const deferredMd = [
+      "# Deferred Stories (Requires Manual Execution)",
+      "",
+      "These stories were excluded from the execution plan because they require",
+      "runtime infrastructure unavailable in the isolated agent environment.",
+      "",
+      ...allDeferred.map((d) => `- **${d.title}** -- ${d.reason}`),
+      "",
+    ].join("\n");
+    writeFileAtomic(deferredPath, deferredMd);
+    console.log(`[PLAN] Deferred ${allDeferred.length} story(ies) — see plans/deferred-stories.md`);
+    // Re-save execution plan without deferred stories
+    writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
+  }
+
   // Parse and wire modules from SPEC content
   const parsedModules = parseModules(specContent);
   if (parsedModules.length > 0) {
@@ -298,6 +378,19 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
       console.log(`[PLAN] Auto-fixed registry gap: added ${gap.registryFile} to ${gap.suggestedOwner} sourceFiles`);
     }
     // Re-save execution plan with patched sourceFiles
+    planData.stories = stories;
+    writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
+  }
+
+  // Detect module path conflicts: foo.ts vs foo/index.ts
+  const moduleConflicts = detectModulePathConflicts(stories, workspaceRoot);
+  if (moduleConflicts.length > 0) {
+    for (const conflict of moduleConflicts) {
+      const ownerStory = stories.find(s => s.id === conflict.ownerStoryId);
+      if (!ownerStory) continue;
+      ownerStory.sourceFiles.push({ path: conflict.staleFile, changeType: "REMOVED" });
+      console.log(`[PLAN] Auto-fixed module path conflict: added REMOVED ${conflict.staleFile} to ${conflict.ownerStoryId} (conflicts with ${conflict.newFile})`);
+    }
     planData.stories = stories;
     writeFileAtomic(planJsonPath, JSON.stringify(planData, null, 2) + "\n");
   }
@@ -712,4 +805,71 @@ export function warnRegistryGaps(stories: Story[], workspaceRoot: string, hasMod
   }
 
   return gaps;
+}
+
+export interface ModulePathConflict {
+  staleFile: string;
+  newFile: string;
+  ownerStoryId: string;
+}
+
+/**
+ * Detect module path conflicts where a story creates `foo/index.{ts,js}` but
+ * `foo.{ts,js}` already exists (from an earlier story or on disk). This causes
+ * TypeScript to treat `import("./foo")` as ambiguous between the two files.
+ *
+ * Returns conflicts found. Caller should inject REMOVED entries into the owner story.
+ */
+export function detectModulePathConflicts(
+  stories: Story[],
+  workspaceRoot: string,
+): ModulePathConflict[] {
+  const INDEX_PATTERN = /^(.+)\/index\.(ts|js|mjs)$/;
+  const conflicts: ModulePathConflict[] = [];
+
+  // Build a set of all ADDED files from earlier stories (by index in story order)
+  const addedFilesByStoryOrder = new Map<string, string>(); // file path -> story id
+  for (const story of stories) {
+    for (const sf of story.sourceFiles) {
+      const entry = typeof sf === "string" ? { path: sf, changeType: "MODIFIED" as const } : sf;
+      if (entry.changeType === "ADDED") {
+        addedFilesByStoryOrder.set(entry.path, story.id);
+      }
+    }
+  }
+
+  for (const story of stories) {
+    for (const sf of story.sourceFiles) {
+      const entry = typeof sf === "string" ? { path: sf, changeType: "MODIFIED" as const } : sf;
+      if (entry.changeType !== "ADDED") continue;
+
+      const match = INDEX_PATTERN.exec(entry.path);
+      if (!match) continue;
+
+      const base = match[1]; // e.g., "src/config"
+      const ext = match[2];  // e.g., "ts"
+      const staleFile = `${base}.${ext}`;
+
+      // Check if stale file exists on filesystem or in any story's sourceFiles
+      const existsOnDisk = fileExists(join(workspaceRoot, staleFile));
+      const existsInPlan = addedFilesByStoryOrder.has(staleFile);
+
+      if (existsOnDisk || existsInPlan) {
+        // Check the stale file isn't already marked REMOVED in this story
+        const alreadyRemoved = story.sourceFiles.some((s) => {
+          const e = typeof s === "string" ? { path: s, changeType: "MODIFIED" as const } : s;
+          return e.path === staleFile && e.changeType === "REMOVED";
+        });
+        if (alreadyRemoved) continue;
+
+        conflicts.push({
+          staleFile,
+          newFile: entry.path,
+          ownerStoryId: story.id,
+        });
+      }
+    }
+  }
+
+  return conflicts;
 }
