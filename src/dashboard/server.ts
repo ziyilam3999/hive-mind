@@ -271,6 +271,26 @@ function buildDashboardHtml(bundleJs: string): string {
 
   .logo span { color: var(--green); }
 
+  .project-sep {
+    color: var(--border);
+    font-size: 14px;
+    font-weight: 300;
+    margin: 0 -4px;
+    user-select: none;
+  }
+
+  .project-name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--green);
+    letter-spacing: 0.01em;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .run-id {
     font-family: var(--font-mono);
     font-size: 12px;
@@ -1154,6 +1174,8 @@ function buildDashboardHtml(bundleJs: string): string {
       <circle cx="22" cy="24" r="3" fill="#5a6e5a"/>
     </svg>
     <div class="logo">Hive <span>Mind</span></div>
+    <span class="project-sep">/</span>
+    <span class="project-name" id="projectName"></span>
     <span class="run-id" id="runId">--</span>
   </div>
   <div class="header-right">
@@ -1642,6 +1664,15 @@ function renderAll() {
   var counts = deriveCounts(stories);
   var costTotals = deriveCostTotals(costLog);
 
+  /* Derive project name from workingDir */
+  var projectName = '';
+  if (state && state.workingDir) {
+    var parts = state.workingDir.replace(/\\\\/g, '/').split('/').filter(Boolean);
+    projectName = parts[parts.length - 1] || '';
+  }
+  var projEl = document.getElementById('projectName');
+  if (projEl) projEl.textContent = projectName;
+
   /* Derive run-id from working directory or first log entry */
   var runIdEl = document.getElementById('runId');
   if (runIdEl && managerLog.length > 0 && managerLog[0].runId) {
@@ -1979,13 +2010,19 @@ function pollStatus() {
           previousCheckpoint = null;
         }
 
-        /* Update title */
+        /* Update title with project name */
+        var titleProject = '';
+        if (data.workingDir) {
+          var tp = data.workingDir.replace(/\\\\/g, '/').split('/').filter(Boolean);
+          titleProject = tp[tp.length - 1] || '';
+        }
+        var pn = titleProject || 'Hive Mind';
         if (data.checkpoint && data.checkpoint.awaiting) {
-          document.title = 'ACTION REQUIRED — Hive Mind';
+          document.title = pn + ' \u2014 ACTION REQUIRED';
         } else if (data.shutdownAt) {
-          document.title = 'Hive Mind - Complete';
+          document.title = pn + ' \u2014 Complete';
         } else {
-          document.title = 'Hive Mind // Pipeline Dashboard';
+          document.title = titleProject ? titleProject + ' // Hive Mind' : 'Hive Mind // Pipeline Dashboard';
         }
 
         /* Start shutdown countdown if present */
