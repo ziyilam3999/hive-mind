@@ -25,6 +25,8 @@ export interface HiveMindConfig {
   skipNormalize: boolean;
   liveReport: boolean;
   labDir?: string;
+  designSystemPath?: string;
+  designRulesPath?: string;
 }
 
 /** Derived from the central AGENT_REGISTRY — kept as a named export for backward compatibility. */
@@ -51,4 +53,6 @@ export const DEFAULT_CONFIG: HiveMindConfig = {
   skipNormalize: false,
   liveReport: true,
   modelAssignments: { ...DEFAULT_MODEL_ASSIGNMENTS },
+  designSystemPath: undefined,
+  designRulesPath: undefined,
 };

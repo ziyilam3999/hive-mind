@@ -39,7 +39,9 @@ export type AgentType =
   | "feature-spec-drafter"
   | "reconciler"
   | "scorecard"
-  | "plan-validator";
+  | "plan-validator"
+  | "design-prototype"
+  | "design-token-extractor";
 
 export interface AgentConfig {
   type: AgentType;

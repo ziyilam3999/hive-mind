@@ -1,5 +1,5 @@
 export type PipelineStage =
-  | "NORMALIZE" | "SPEC" | "PLAN" | "EXECUTE" | "REPORT" | "COMPLETE";
+  | "NORMALIZE" | "SPEC" | "PLAN" | "EXECUTE" | "REPORT" | "COMPLETE" | "DESIGN";
 
 export interface TimelineEntry {
   timestamp: string;   // ISO 8601

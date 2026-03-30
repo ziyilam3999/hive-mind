@@ -38,6 +38,7 @@ export interface DeriveStagesInput {
 }
 
 export const STAGE_DEFS: StageDef[] = [
+  { key: "design", label: "Design", startAction: "DESIGN_START", fallbackStart: "PIPELINE_START", endAction: "DESIGN_PROTOTYPE_APPROVED", secondaryFallback: "DESIGN_SKIPPED" },
   { key: "spec", label: "Spec", startAction: "SPEC_START", fallbackStart: "PIPELINE_START", endAction: "SPEC_COMPLETE", secondaryFallback: null },
   { key: "plan", label: "Plan", startAction: "PLAN_START", fallbackStart: "SPEC_COMPLETE", endAction: "PLAN_COMPLETE", secondaryFallback: null },
   { key: "execute", label: "Execute", startAction: "EXECUTE_START", fallbackStart: "PLAN_COMPLETE", endAction: "EXECUTE_COMPLETE", secondaryFallback: "WAVE_START" },
@@ -51,6 +52,9 @@ const CHECKPOINT_TO_STAGE: Record<string, string> = {
   "approve-preflight": "execute",
   "approve-integration": "report",
   "approve-diagnosis": "execute",
+  "approve-design-skip": "design",
+  "approve-design-questionnaire": "design",
+  "approve-design-prototype": "design",
 };
 
 export function deriveStages(input: DeriveStagesInput, now?: number): DerivedStage[] {
