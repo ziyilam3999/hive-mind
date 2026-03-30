@@ -10,6 +10,10 @@ function makeTempDir(suffix: string): string {
   return dir;
 }
 
+function makeError(message: string, code: string): Error {
+  return Object.assign(new Error(message), { code });
+}
+
 describe("archiveWorkspace", () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;
   let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -138,7 +142,7 @@ describe("archiveWorkspace", () => {
       fs.writeFileSync(join(aiWorkspace, "file.txt"), "content");
 
       const mockOps: ArchiveFsOps = {
-        renameSync: () => { throw Object.assign(new Error("operation not permitted"), { code: "EPERM" }); },
+        renameSync: () => { throw makeError("operation not permitted", "EPERM"); },
         cpSync: fs.cpSync,
         rmSync: fs.rmSync,
       };
@@ -163,9 +167,9 @@ describe("archiveWorkspace", () => {
       fs.writeFileSync(join(aiWorkspace, "data.txt"), "important");
 
       const mockOps: ArchiveFsOps = {
-        renameSync: () => { throw Object.assign(new Error("EPERM"), { code: "EPERM" }); },
+        renameSync: () => { throw makeError("EPERM", "EPERM"); },
         cpSync: fs.cpSync,
-        rmSync: () => { throw Object.assign(new Error("EBUSY"), { code: "EBUSY" }); },
+        rmSync: () => { throw makeError("EBUSY", "EBUSY"); },
       };
 
       archiveWorkspace(workingDir, mockOps);
@@ -181,7 +185,7 @@ describe("archiveWorkspace", () => {
     }
   });
 
-  it("both renameSync and cpSync fail — warning logged, could not archive, fresh dir created", { retry: 2 }, () => {
+  it("both renameSync and cpSync fail — warning logged, could not archive, original directory persists", { retry: 2 }, () => {
     const tempDir = makeTempDir("bothfail");
     try {
       const workingDir = join(tempDir, ".hive-mind-working");
@@ -190,8 +194,8 @@ describe("archiveWorkspace", () => {
       fs.mkdirSync(aiWorkspace, { recursive: true });
 
       const mockOps: ArchiveFsOps = {
-        renameSync: () => { throw Object.assign(new Error("EPERM"), { code: "EPERM" }); },
-        cpSync: () => { throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" }); },
+        renameSync: () => { throw makeError("EPERM", "EPERM"); },
+        cpSync: () => { throw makeError("ENOSPC", "ENOSPC"); },
         rmSync: fs.rmSync,
       };
 
