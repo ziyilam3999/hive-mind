@@ -8,8 +8,8 @@ vi.mock("../../utils/file-io.js", async (importOriginal) => {
       const normalized = p.replace(/\\/g, "/");
       // Only src/commands/index.ts exists on disk for registry-gap tests
       if (normalized.endsWith("src/commands/index.ts")) return true;
-      // Let plan-stage's own fileExists calls for execution-plan.json pass
-      if (normalized.endsWith("execution-plan.json")) return actual.fileExists(p);
+      // Delegate to real fileExists for test dirs (resume tests pre-create files)
+      if (normalized.includes(".test-plan-stage")) return actual.fileExists(p);
       return false;
     }),
   };
@@ -324,6 +324,220 @@ describe("warnRegistryGaps", () => {
     warnRegistryGaps(stories, workspaceRoot, true);
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+});
+
+describe("plan-stage resume support", () => {
+  const testDir = join(process.cwd(), ".test-plan-stage");
+  const hmDir = join(testDir, ".hive-mind");
+  const dirs: PipelineDirs = { workingDir: hmDir, knowledgeDir: hmDir, labDir: hmDir };
+
+  const MOCK_PLAN = {
+    schemaVersion: "2.0.0",
+    prdPath: "PRD.md",
+    specPath: "spec/SPEC-v1.0.md",
+    stories: [
+      {
+        id: "US-01", title: "Story One", specSections: ["§1.1"],
+        dependencies: [], sourceFiles: ["src/one.ts"], complexity: "low",
+        rolesUsed: ["analyst"], stepFile: "plans/steps/US-01.md",
+        status: "not-started", attempts: 0, maxAttempts: 3,
+        committed: false, commitHash: null,
+      },
+      {
+        id: "US-02", title: "Story Two", specSections: ["§1.2"],
+        dependencies: [], sourceFiles: ["src/two.ts"], complexity: "low",
+        rolesUsed: ["analyst"], stepFile: "plans/steps/US-02.md",
+        status: "not-started", attempts: 0, maxAttempts: 3,
+        committed: false, commitHash: null,
+      },
+    ],
+  };
+
+  function setup() {
+    mkdirSync(join(hmDir, "spec"), { recursive: true });
+    mkdirSync(join(hmDir, "plans", "role-reports"), { recursive: true });
+    mkdirSync(join(hmDir, "plans", "steps"), { recursive: true });
+    writeFileSync(
+      join(hmDir, "spec", "SPEC-v1.0.md"),
+      "# SPEC\n## Requirements\n- Build a function to export data",
+    );
+    vi.mocked(spawnAgentWithRetry).mockClear();
+    vi.mocked(spawnAgentsParallel).mockClear();
+  }
+
+  function cleanup() {
+    rmSync(testDir, { recursive: true, force: true });
+  }
+
+  /** Pre-create a file with non-empty content */
+  function preCreate(path: string, content = "# Pre-existing output") {
+    mkdirSync(join(path, "..").replace(/[/\\][^/\\]+$/, ""), { recursive: true });
+    writeFileSync(path, content);
+  }
+
+  it("TC-resume-1: skips role agents when their outputs exist", async () => {
+    setup();
+    try {
+      // Pre-create role report files (SPEC triggers analyst, reviewer, tester-role, security)
+      const roles = ["analyst", "reviewer", "tester-role", "security"];
+      for (const role of roles) {
+        preCreate(join(hmDir, "plans", "role-reports", `${role}-report.md`));
+      }
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runPlanStage(dirs, config);
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+
+      // spawnAgentsParallel should NOT have been called for role agents
+      // (first call would be role agents in fresh run)
+      // Check that the first parallel call (if any) is for AC or EC generators, not roles
+      const parallelCalls = vi.mocked(spawnAgentsParallel).mock.calls;
+      for (const call of parallelCalls) {
+        const types = call[0].map((c: { type: string }) => c.type);
+        expect(types).not.toContain("analyst");
+        expect(types).not.toContain("reviewer");
+      }
+
+      // But planner should still have been called
+      const plannerCall = vi.mocked(spawnAgentWithRetry).mock.calls.find(
+        (c) => c[0].type === "planner",
+      );
+      expect(plannerCall).toBeDefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("TC-resume-2: skips planner when execution-plan.json exists", async () => {
+    setup();
+    try {
+      // Pre-create execution-plan.json
+      preCreate(join(hmDir, "plans", "execution-plan.json"), JSON.stringify(MOCK_PLAN, null, 2));
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runPlanStage(dirs, config);
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+
+      // Planner should NOT have been called
+      const plannerCall = vi.mocked(spawnAgentWithRetry).mock.calls.find(
+        (c) => c[0].type === "planner",
+      );
+      expect(plannerCall).toBeUndefined();
+
+      // But AC/EC generators should run (their outputs don't exist)
+      const parallelCalls = vi.mocked(spawnAgentsParallel).mock.calls;
+      const acCall = parallelCalls.find((c) => c[0].some((cfg: { type: string }) => cfg.type === "ac-generator"));
+      expect(acCall).toBeDefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("TC-resume-3: skips enricher for stories with Implementation Guidance marker", async () => {
+    setup();
+    try {
+      // Pre-create all upstream outputs
+      for (const role of ["analyst", "reviewer", "tester-role", "security"]) {
+        preCreate(join(hmDir, "plans", "role-reports", `${role}-report.md`));
+      }
+      preCreate(join(hmDir, "plans", "execution-plan.json"), JSON.stringify(MOCK_PLAN, null, 2));
+      preCreate(join(hmDir, "plans", "plan-validation-report.md"));
+
+      // Pre-create AC/EC files for both stories
+      for (const id of ["US-01", "US-02"]) {
+        preCreate(join(hmDir, "plans", "steps", `${id}-acs.md`));
+        preCreate(join(hmDir, "plans", "steps", `${id}-ecs.md`));
+      }
+
+      // Pre-create enriched step file for US-01 only (with marker)
+      preCreate(
+        join(hmDir, "plans", "steps", "US-01.md"),
+        "# US-01\n## ACCEPTANCE CRITERIA\n...\n## EXIT CRITERIA\n...\n## Implementation Guidance\nDo X.",
+      );
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runPlanStage(dirs, config);
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+
+      // Enricher should have been called for US-02 but not US-01
+      const enricherCalls = vi.mocked(spawnAgentWithRetry).mock.calls.filter(
+        (c) => c[0].type === "enricher",
+      );
+      // US-02 enricher should run (step file won't have marker since assembly regenerates it)
+      // US-01 was skipped because its step file already had the marker
+      const enrichedStoryIds = enricherCalls.map((c) => {
+        const outFile = c[0].outputFile as string;
+        return outFile.match(/([A-Z]+-\d+)\.md/)?.[1];
+      });
+      expect(enrichedStoryIds).not.toContain("US-01");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("TC-resume-4: skips all agents when all outputs exist", async () => {
+    setup();
+    try {
+      // Pre-create ALL outputs: role reports, plan, validator, AC/EC, step files, consolidator
+      // SPEC "Build a function to export data" triggers: analyst, reviewer, tester-role, security
+      for (const role of ["analyst", "reviewer", "tester-role", "security"]) {
+        preCreate(join(hmDir, "plans", "role-reports", `${role}-report.md`));
+      }
+      preCreate(join(hmDir, "plans", "execution-plan.json"), JSON.stringify(MOCK_PLAN, null, 2));
+      preCreate(join(hmDir, "plans", "plan-validation-report.md"));
+      preCreate(join(hmDir, "plans", "acceptance-criteria.md"));
+
+      for (const id of ["US-01", "US-02"]) {
+        preCreate(join(hmDir, "plans", "steps", `${id}-acs.md`));
+        preCreate(join(hmDir, "plans", "steps", `${id}-ecs.md`));
+        preCreate(
+          join(hmDir, "plans", "steps", `${id}.md`),
+          `# ${id}\n## ACCEPTANCE CRITERIA\n...\n## EXIT CRITERIA\n...\n## Implementation Guidance\nDone.`,
+        );
+      }
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runPlanStage(dirs, config);
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+
+      // No agent spawns should have occurred
+      expect(vi.mocked(spawnAgentWithRetry).mock.calls).toHaveLength(0);
+      // No parallel spawns either (role agents and AC/EC all skipped)
+      expect(vi.mocked(spawnAgentsParallel).mock.calls).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("TC-resume-5: outputReady returns false for empty files — agent re-runs", async () => {
+    setup();
+    try {
+      // Pre-create execution-plan.json as EMPTY file
+      writeFileSync(join(hmDir, "plans", "execution-plan.json"), "");
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runPlanStage(dirs, config);
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+
+      // Planner SHOULD have been called (empty file = not ready)
+      const plannerCall = vi.mocked(spawnAgentWithRetry).mock.calls.find(
+        (c) => c[0].type === "planner",
+      );
+      expect(plannerCall).toBeDefined();
+    } finally {
+      cleanup();
+    }
   });
 });
 
