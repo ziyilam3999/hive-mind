@@ -10,7 +10,7 @@ import { HiveMindError } from "./utils/errors.js";
 import { join } from "node:path";
 import { realpathSync, existsSync, readFileSync } from "node:fs";
 import { approveCheckpoint, rejectCheckpoint } from "./state/checkpoint-ops.js";
-import { startDashboard, isDashboardRunning } from "./dashboard/server.js";
+import { startDashboard, isDashboardRunning, shutdownExistingDashboard } from "./dashboard/server.js";
 import type { DashboardHandle } from "./dashboard/server.js";
 
 export type ParsedCommand =
@@ -121,6 +121,13 @@ export async function main(): Promise<void> {
   const dashboardCommands = new Set(["start", "approve", "reject", "resume", "retry"]);
   const wantsDashboard = dashboardCommands.has(parsed.command) && !("noDashboard" in parsed && parsed.noDashboard);
   let dashboardHandle: DashboardHandle | null = null;
+
+  // Kill stale dashboard from a prior `start` process before spawning a fresh one
+  const resumeCommands = new Set(["approve", "reject", "resume"]);
+  if (resumeCommands.has(parsed.command)) {
+    await shutdownExistingDashboard(dirs.workingDir);
+  }
+
   if (wantsDashboard) {
     const dashboardAlive = await isDashboardRunning(dirs.workingDir);
     if (dashboardAlive) {
