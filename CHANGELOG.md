@@ -1,3 +1,9 @@
+## [0.21.3](https://github.com/ziyilam3999/hive-mind/compare/v0.21.2...v0.21.3) (2026-03-30)
+
+### Bug Fixes
+
+* fix: SPEC stage crash recovery via outputReady skip guards (#189)
+
 ## [0.21.2](https://github.com/ziyilam3999/hive-mind/compare/v0.21.1...v0.21.2) (2026-03-30)
 
 ### Miscellaneous
