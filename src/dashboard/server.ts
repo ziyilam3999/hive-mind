@@ -2087,6 +2087,7 @@ export async function startDashboard(
     if (pathname === "/api/status") {
       withTimeout(res, async () => {
         const statusPayload: Record<string, unknown> = {
+          workingDir,
           executionPlan: cached.executionPlan,
           managerLog: cached.managerLog,
           costLog: cached.costLog,
@@ -2206,11 +2207,23 @@ export async function isDashboardRunning(workingDir: string): Promise<boolean> {
     const port = parseInt(readFileSync(portFile, "utf-8").trim(), 10);
     if (isNaN(port)) return false;
 
+    const { resolve: resolvePath } = await import("node:path");
+    const expected = resolvePath(workingDir);
+
     const { request } = await import("node:http");
     return new Promise((resolve) => {
       const req = request({ hostname: "localhost", port, path: "/api/status", method: "GET", timeout: 1000 }, (res) => {
-        res.resume();
-        resolve(res.statusCode === 200);
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => {
+          if (res.statusCode !== 200) { resolve(false); return; }
+          try {
+            const body = JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>;
+            resolve(typeof body.workingDir === "string" && resolvePath(body.workingDir) === expected);
+          } catch {
+            resolve(false);
+          }
+        });
       });
       req.on("error", () => resolve(false));
       req.on("timeout", () => { req.destroy(); resolve(false); });

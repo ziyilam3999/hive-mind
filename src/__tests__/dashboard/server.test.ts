@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { startDashboard } from "../../dashboard/server.js";
+import { startDashboard, isDashboardRunning } from "../../dashboard/server.js";
 import type { PipelineDirs } from "../../types/pipeline-dirs.js";
 import type { HiveMindConfig } from "../../config/schema.js";
 import { DEFAULT_CONFIG } from "../../config/schema.js";
@@ -81,7 +81,7 @@ describe("startDashboard", () => {
     expect(body).toContain("Hive Mind");
   });
 
-  it("GET /api/status returns cached state", async () => {
+  it("GET /api/status returns cached state with workingDir", async () => {
     // Write execution plan
     writeFileSync(
       join(workingDir, "plans", "execution-plan.json"),
@@ -104,6 +104,8 @@ describe("startDashboard", () => {
     expect(body).toHaveProperty("managerLog");
     expect(body).toHaveProperty("costLog");
     expect(body).toHaveProperty("checkpoint");
+    expect(body).toHaveProperty("workingDir");
+    expect(body.workingDir).toBe(workingDir);
   });
 
   it("signalShutdown stores shutdownAt in status response", async () => {
@@ -193,5 +195,27 @@ describe("startDashboard", () => {
 
     // Server should be closed
     await expect(fetch(`${url}/api/status`)).rejects.toThrow();
+  });
+
+  it("isDashboardRunning returns true for matching workingDir", async () => {
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
+    // .dashboard-port is written by startDashboard
+    expect(await isDashboardRunning(workingDir)).toBe(true);
+  });
+
+  it("isDashboardRunning returns false for different workingDir", async () => {
+    handle = await startDashboard(makeDirs(workingDir), makeConfig(), 0);
+    // Read the port from the dashboard that's running for workingDir
+    const port = readFileSync(join(workingDir, ".dashboard-port"), "utf-8").trim();
+
+    // Create a second temp dir and plant the same port file there
+    const otherDir = mkdtempSync(join(tmpdir(), "hive-mind-dashboard-other-"));
+    try {
+      writeFileSync(join(otherDir, ".dashboard-port"), port);
+      // Should return false because the running dashboard serves workingDir, not otherDir
+      expect(await isDashboardRunning(otherDir)).toBe(false);
+    } finally {
+      rmSync(otherDir, { recursive: true, force: true });
+    }
   });
 });
