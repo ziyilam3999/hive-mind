@@ -840,13 +840,7 @@ export async function runDesignStage(
 
   if (!hasUI) {
     appendLogEntry(logPath, createLogEntry("DESIGN_SKIPPED", { reason: "No UI keywords detected in PRD" }));
-    writeCheckpoint(checkpointDir, {
-      awaiting: "approve-design-skip",
-      message: "No UI keywords detected in the PRD. Skip design stage?",
-      timestamp: new Date().toISOString(),
-      feedback: null,
-      metadata: { customMessage: "No UI keywords detected in PRD — design stage will be skipped." },
-    });
+    console.log("[design] No UI keywords detected — skipping design stage.");
     return;
   }
 

@@ -163,25 +163,16 @@ describe("pipeline smoke test (e2e)", () => {
     const logEntries = readLogEntries(hmDir);
     expect(logEntries.some((e) => e.action === "PIPELINE_START")).toBe(true);
 
-    // Step 2: Approve normalize → checkpoint at approve-design-skip (no UI keywords)
+    // Step 2: Approve normalize → DESIGN auto-skips (no UI keywords) → checkpoint at approve-spec
     await resumeFromCheckpoint(
       { awaiting: "approve-normalize", message: "", timestamp: "2026-03-18T00:00:00Z", feedback: null },
       dirs, config,
     );
 
     cp = readCheckpointFile(hmDir);
-    expect(cp?.awaiting).toBe("approve-design-skip");
+    expect(cp?.awaiting).toBe("approve-spec");
     const logEntries2 = readLogEntries(hmDir);
     expect(logEntries2.some((e) => e.action === "DESIGN_SKIPPED")).toBe(true);
-
-    // Step 2b: Approve design-skip → checkpoint at approve-spec
-    await resumeFromCheckpoint(
-      { awaiting: "approve-design-skip", message: "", timestamp: "2026-03-18T00:00:00Z", feedback: null },
-      dirs, config,
-    );
-
-    cp = readCheckpointFile(hmDir);
-    expect(cp?.awaiting).toBe("approve-spec");
     expect(existsSync(join(hmDir, "spec"))).toBe(true);
     const logEntries2b = readLogEntries(hmDir);
     expect(logEntries2b.some((e) => e.action === "SPEC_COMPLETE")).toBe(true);
@@ -282,24 +273,14 @@ describe("pipeline smoke test (e2e)", () => {
     let cp = readCheckpointFile(hmDir);
     expect(cp?.awaiting).toBe("approve-normalize");
 
-    // Resume — DESIGN stage runs (no UI keywords → approve-design-skip)
+    // Resume — DESIGN auto-skips (no UI keywords) → SPEC + PLAN run, stopAfterPlan honored → exits with no checkpoint
     await resumeFromCheckpoint(
       { awaiting: "approve-normalize", message: "", timestamp: "2026-03-18T00:00:00Z", feedback: null },
       dirs, config,
     );
 
     cp = readCheckpointFile(hmDir);
-    expect(cp?.awaiting).toBe("approve-design-skip");
-
-    // Resume design-skip — flags should persist across normalize+design boundary
-    await resumeFromCheckpoint(
-      { awaiting: "approve-design-skip", message: "", timestamp: "2026-03-18T00:00:00Z", feedback: null },
-      dirs, config,
-    );
-
-    // stopAfterPlan honored — pipeline should run SPEC + PLAN and exit
-    cp = readCheckpointFile(hmDir);
-    expect(cp).toBeNull(); // no approve-plan checkpoint written
+    expect(cp).toBeNull(); // stopAfterPlan: no checkpoint, pipeline exited after PLAN
 
     const logs = getLogs();
     expect(logs.some((l) => l.includes("Plan Preview"))).toBe(true);

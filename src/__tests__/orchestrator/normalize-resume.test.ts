@@ -59,31 +59,24 @@ describe("normalize resume", () => {
     writeFileSync(join(testDir, "original.md"), "# Original PRD");
   });
 
-  it("approve-normalize without feedback proceeds to DESIGN then SPEC", async () => {
+  it("approve-normalize without feedback proceeds through DESIGN (auto-skip) to SPEC", async () => {
     const { resumeFromCheckpoint } = await import("../../orchestrator.js");
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    // Resume from approve-normalize → DESIGN stage runs (no UI keywords → approve-design-skip)
+    // Resume from approve-normalize → DESIGN auto-skips (no UI keywords) → flows to SPEC checkpoint
     await resumeFromCheckpoint(
       { awaiting: "approve-normalize", message: "test", timestamp: "2026-03-18T00:00:00Z", feedback: null },
       dirs,
       config,
     );
 
-    // Checkpoint should be approve-design-skip (DESIGN gates SPEC)
+    // Checkpoint should be approve-spec (DESIGN auto-skipped, no checkpoint written)
     expect(existsSync(join(hmDir, ".checkpoint"))).toBe(true);
     const cp = JSON.parse(readFileSync(join(hmDir, ".checkpoint"), "utf-8"));
-    expect(cp.awaiting).toBe("approve-design-skip");
-
-    // Resume from design-skip → SPEC stage runs
-    await resumeFromCheckpoint(
-      { awaiting: "approve-design-skip", message: "test", timestamp: "2026-03-18T00:00:00Z", feedback: null },
-      dirs,
-      config,
-    );
+    expect(cp.awaiting).toBe("approve-spec");
 
     const calls = consoleSpy.mock.calls.map((c) => c[0]);
-    expect(calls.some((c) => typeof c === "string" && c.includes("Running SPEC stage"))).toBe(true);
+    expect(calls.some((c) => typeof c === "string" && c.includes("No UI keywords detected"))).toBe(true);
 
     consoleSpy.mockRestore();
   });
