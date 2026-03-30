@@ -13,6 +13,7 @@ import type { HiveMindConfig } from "../config/schema.js";
 import type { CostTracker } from "../utils/cost-tracker.js";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import { join, resolve } from "node:path";
+import { filterTscErrorsByScope } from "../utils/tsc-error-filter.js";
 import { existsSync, readFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -136,9 +137,26 @@ export async function runBuild(
       if (execErr.killed || execErr.signal) {
         console.debug(`[${story.id}] tsc gate skipped (timeout/signal): ${execErr.signal}`);
       } else {
-        const tscOutput = (execErr.stdout || execErr.stderr || "").slice(0, 2000);
-        console.warn(`[${story.id}] tsc --noEmit failed after BUILD:\n${tscOutput}`);
-        throw new BuildPipelineError("typecheck", `BUILD type-check gate failed:\n${tscOutput}`);
+        const tscOutput = (execErr.stdout || "") + "\n" + (execErr.stderr || "");
+        const { ownedErrors, foreignErrors } = filterTscErrorsByScope(
+          tscOutput,
+          effectiveSourceFilePaths,
+          targetDir,
+        );
+
+        if (foreignErrors.length > 0) {
+          console.debug(
+            `[${story.id}] tsc gate: ${foreignErrors.length} error(s) in files outside scope (ignored):\n${foreignErrors.slice(0, 5).join("\n")}${foreignErrors.length > 5 ? `\n... and ${foreignErrors.length - 5} more` : ""}`,
+          );
+        }
+
+        if (ownedErrors.length > 0) {
+          const truncated = ownedErrors.join("\n").slice(0, 2000);
+          console.warn(`[${story.id}] tsc --noEmit failed after BUILD (${ownedErrors.length} error(s) in scope):\n${truncated}`);
+          throw new BuildPipelineError("typecheck", `BUILD type-check gate failed:\n${truncated}`);
+        } else {
+          console.debug(`[${story.id}] tsc gate: all ${foreignErrors.length} error(s) are outside scope — passing`);
+        }
       }
     }
   } else if (existsSync(pkgJsonPath)) {

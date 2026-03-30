@@ -1,5 +1,26 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Story } from "../../types/execution-plan.js";
+import { BuildPipelineError } from "../../utils/errors.js";
+
+// Track tsc mock behavior — default: pass (no typescript dep detected)
+let tscMockError: Error | null = null;
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    execFile: (...args: unknown[]) => {
+      const cmdArgs = args[1] as string[];
+      const cb = args[args.length - 1] as (err: Error | null, stdout: string, stderr: string) => void;
+      if (cmdArgs?.[0] === "tsc" && tscMockError) {
+        cb(tscMockError, "", "");
+        return;
+      }
+      // For non-tsc calls, use real execFile
+      return actual.execFile(...(args as Parameters<typeof actual.execFile>));
+    },
+  };
+});
 
 vi.mock("../../agents/spawner.js", () => ({
   spawnAgentWithRetry: vi.fn(async (config: { outputFile: string; type: string; cwd?: string }) => {
@@ -208,6 +229,52 @@ describe("execute-build", () => {
     } finally {
       cleanup();
       rmSync(extDir, { recursive: true, force: true });
+    }
+  });
+
+  it("TC7: tsc gate passes when all errors are in foreign files", async () => {
+    setup();
+    // Add package.json with typescript dep so tsc gate activates
+    writeFileSync(join(testDir, "package.json"), JSON.stringify({ devDependencies: { typescript: "^5.0.0" } }));
+    // Mock tsc to fail with errors only in files outside story scope
+    const foreignError = Object.assign(new Error("tsc failed"), {
+      stdout: "src/other.ts(3,5): error TS2304: Cannot find name 'X'.\nsrc/another.ts(1,1): error TS1005: ';' expected.",
+      stderr: "",
+      code: 2,
+    });
+    tscMockError = foreignError;
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+      // Should NOT throw — foreign errors are ignored
+      await runBuild(testStory, dirs, config);
+      consoleSpy.mockRestore();
+      debugSpy.mockRestore();
+    } finally {
+      tscMockError = null;
+      cleanup();
+    }
+  });
+
+  it("TC8: tsc gate throws when errors are in owned files", async () => {
+    setup();
+    writeFileSync(join(testDir, "package.json"), JSON.stringify({ devDependencies: { typescript: "^5.0.0" } }));
+    // Mock tsc to fail with errors in story's owned file (src/test.ts)
+    const ownedError = Object.assign(new Error("tsc failed"), {
+      stdout: "src/test.ts(3,5): error TS2304: Cannot find name 'X'.",
+      stderr: "",
+      code: 2,
+    });
+    tscMockError = ownedError;
+    try {
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await expect(runBuild(testStory, dirs, config)).rejects.toThrow(BuildPipelineError);
+      consoleSpy.mockRestore();
+      warnSpy.mockRestore();
+    } finally {
+      tscMockError = null;
+      cleanup();
     }
   });
 });
