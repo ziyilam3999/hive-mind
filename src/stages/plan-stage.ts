@@ -286,6 +286,10 @@ DELTA MARKERS: Every sourceFiles entry MUST be an object with "path" (file path)
   });
   planData.stories = stories;
 
+  if (stories.length === 0) {
+    throw new Error("All stories were deferred — no executable stories remain in the plan");
+  }
+
   // Write deferred stories to file for manual follow-up
   const allDeferred = [...deferredFromPlanner, ...safetyNetDeferred];
   if (allDeferred.length > 0) {
