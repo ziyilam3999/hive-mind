@@ -67,5 +67,11 @@ export function getCheckpointMessage(type: CheckpointType): string {
       return "Review consolidated report and retrospective. Run: hive-mind approve OR hive-mind reject --feedback '...'";
     case "ship":
       return "Final confirmation. Run: hive-mind approve to complete the pipeline.";
+    case "approve-design-skip":
+      return "No UI components detected in this PRD. Run: hive-mind approve to skip design and proceed to SPEC, or hive-mind reject --feedback '...' to run the design stage anyway.";
+    case "approve-design-questionnaire":
+      return "Review and edit the design questionnaire at design/design-questionnaire.yaml, then run: hive-mind approve to generate prototype, or hive-mind reject --feedback '...' to regenerate.";
+    case "approve-design-prototype":
+      return "Review the generated design prototype. Run: hive-mind approve to extract tokens and proceed, or hive-mind reject --feedback '...' to iterate.";
   }
 }

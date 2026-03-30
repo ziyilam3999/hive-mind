@@ -7,8 +7,7 @@
  * from this registry for backward compatibility.
  */
 
-import type { ModelTier } from "../types/agents.js";
-import type { AgentType } from "../types/agents.js";
+import type { ModelTier, AgentType } from "../types/agents.js";
 import {
   READ_ONLY_TOOLS,
   OUTPUT_TOOLS,
@@ -433,6 +432,28 @@ export const AGENT_REGISTRY: Record<AgentType, AgentRegistryEntry> = {
       "DATA-DRIVEN: Cite exact numbers from input files. No vague claims. Use markdown tables for metrics.",
       "FAILURE-CATEGORIES: When story results are available, group failures by pattern (verification, build, blocked by deps, etc.).",
       "CONCISE: Each stage section should be 15-25 lines. The full report card should fit on 2 screens max.",
+    ],
+  },
+  "design-prototype": {
+    modelTier: "sonnet",
+    tools: OUTPUT_TOOLS,
+    job: "Generate a single-file HTML prototype from the design questionnaire, design rules, and PRD context",
+    rules: [
+      "Single HTML file with all CSS inline in a <style> block. No external dependencies.",
+      "Follow design-rules.md constraints for layout, color contrast, and responsive breakpoints.",
+      "Use semantic HTML elements. Include ARIA attributes for interactive components.",
+      "The prototype must be self-contained and render correctly when opened in any modern browser.",
+    ],
+  },
+  "design-token-extractor": {
+    modelTier: "sonnet",
+    tools: OUTPUT_TOOLS,
+    job: "Extract design tokens (colors, typography, spacing, layout) from an approved HTML prototype into a structured JSON file",
+    rules: [
+      "Extract CSS custom properties and inline styles from the prototype HTML.",
+      "Output must be valid JSON matching the DesignTokens interface.",
+      "Map CSS values to semantic token names (e.g., --primary-color to colors.primary).",
+      "Include fallback values when CSS custom properties are not found.",
     ],
   },
   "plan-validator": {

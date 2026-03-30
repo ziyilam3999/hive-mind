@@ -190,5 +190,7 @@ export function loadConfig(projectRoot: string): HiveMindConfig {
     workingDir: (obj.workingDir as string | undefined) ?? undefined,
     knowledgeDir: (obj.knowledgeDir as string | undefined) ?? undefined,
     labDir: (obj.labDir as string | undefined) ?? undefined,
+    designSystemPath: (obj.designSystemPath as string | undefined) ?? defaults.designSystemPath,
+    designRulesPath: (obj.designRulesPath as string | undefined) ?? defaults.designRulesPath,
   };
 }

@@ -1,10 +1,23 @@
-export type CheckpointType = "approve-normalize" | "approve-spec" | "approve-plan" | "approve-integration" | "approve-diagnosis" | "approve-preflight" | "approve-usage-limit" | "verify" | "ship";
+export type CheckpointType =
+  | "approve-normalize"
+  | "approve-spec"
+  | "approve-plan"
+  | "approve-integration"
+  | "approve-diagnosis"
+  | "approve-preflight"
+  | "approve-usage-limit"
+  | "verify"
+  | "ship"
+  | "approve-design-skip"
+  | "approve-design-questionnaire"
+  | "approve-design-prototype";
 
 export interface Checkpoint {
   awaiting: CheckpointType;
   message: string;
   timestamp: string;
   feedback: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 /** Sub-stage values for feature pipeline mid-story checkpointing (RD-07) */
