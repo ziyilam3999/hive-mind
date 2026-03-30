@@ -115,10 +115,21 @@ export async function runPipeline(
   prdPath: string,
   dirs: PipelineDirs,
   config: HiveMindConfig,
-  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean },
+  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean; force?: boolean },
 ): Promise<void> {
   if (!fileExists(prdPath)) {
     throw new HiveMindError(`PRD file not found: ${prdPath}`);
+  }
+
+  // Guard: don't wipe working directory if an active checkpoint exists (crash recovery)
+  if (existsSync(dirs.workingDir)) {
+    const checkpointPath = join(dirs.workingDir, ".checkpoint");
+    if (existsSync(checkpointPath) && !options?.force) {
+      throw new HiveMindError(
+        "Active checkpoint found — pipeline has partial progress. " +
+        "Run 'hive-mind approve' to resume, or 'hive-mind start --force --prd <path>' to discard and restart.",
+      );
+    }
   }
 
   // Clean stale working directory from previous runs
@@ -250,6 +261,7 @@ async function runSpecThenCheckpoint(
       printTimingSummary(tracker);
       writeTimingReport(tracker, dirs.workingDir);
     }
+    deleteCheckpoint(dirs.workingDir); // Clean up recovery checkpoint — clean exit
     return;
   }
 
@@ -311,6 +323,14 @@ export async function resumeFromCheckpoint(
     case "approve-normalize": {
       deleteCheckpoint(dirs.workingDir);
 
+      // Recovery checkpoint — survives crash so user can retry via approve/resume
+      writeCheckpoint(dirs.workingDir, {
+        awaiting: "approve-normalize",
+        message: "NORMALIZE approved — SPEC stage in progress (recovery checkpoint)",
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
+
       const normalizedPrd = join(dirs.workingDir, "normalize", "normalized-prd.md");
       const normalizedContent = readFileSafe(normalizedPrd);
       if (normalizedContent === null) {
@@ -348,6 +368,15 @@ export async function resumeFromCheckpoint(
     }
     case "approve-spec": {
       deleteCheckpoint(dirs.workingDir);
+
+      // Recovery checkpoint — survives crash so user can retry via approve/resume
+      writeCheckpoint(dirs.workingDir, {
+        awaiting: "approve-spec",
+        message: "SPEC approved — PLAN stage in progress (recovery checkpoint)",
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
+
       const startDataSpec = getPipelineStartData(dirs.workingDir);
 
       if (feedback) {
@@ -436,6 +465,7 @@ export async function resumeFromCheckpoint(
         if (config.liveReport) updateLiveReport(dirs.workingDir, "COMPLETE", "Pipeline stopped after PLAN");
         printTimingSummary(specTracker);
         writeTimingReport(specTracker, dirs.workingDir);
+        deleteCheckpoint(dirs.workingDir); // Clean up recovery checkpoint — clean exit
         break;
       }
 
@@ -460,6 +490,14 @@ export async function resumeFromCheckpoint(
         await runBaselineCheck(config);
       }
       deleteCheckpoint(dirs.workingDir);
+
+      // Recovery checkpoint — survives crash so user can retry via approve/resume
+      writeCheckpoint(dirs.workingDir, {
+        awaiting: "approve-plan",
+        message: "PLAN approved — EXECUTE stage in progress (recovery checkpoint)",
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
 
       const execCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const tracker = CostTracker.loadFromDisk(execCostLogPath, startDataPlan.budget);
@@ -504,6 +542,15 @@ export async function resumeFromCheckpoint(
     }
     case "approve-usage-limit": {
       deleteCheckpoint(dirs.workingDir);
+
+      // Recovery checkpoint — survives crash so user can retry via approve/resume
+      writeCheckpoint(dirs.workingDir, {
+        awaiting: "approve-usage-limit",
+        message: "Usage limit approved — resuming EXECUTE (recovery checkpoint)",
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
+
       usageLimitTracker.reset();
 
       const startDataLimit = getPipelineStartData(dirs.workingDir);
@@ -544,6 +591,14 @@ export async function resumeFromCheckpoint(
     case "approve-diagnosis": {
       deleteCheckpoint(dirs.workingDir);
 
+      // Recovery checkpoint — survives crash so user can retry via approve/resume
+      writeCheckpoint(dirs.workingDir, {
+        awaiting: "approve-diagnosis",
+        message: "Diagnosis approved — FIX stage in progress (recovery checkpoint)",
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
+
       const exitCode = await resumeBugFixPipeline(dirs, config, { silent });
       if (exitCode !== 0) {
         console.error("Bug fix pipeline failed.");
@@ -554,6 +609,14 @@ export async function resumeFromCheckpoint(
     }
     case "approve-integration": {
       deleteCheckpoint(dirs.workingDir);
+
+      // Recovery checkpoint — survives crash so user can retry via approve/resume
+      writeCheckpoint(dirs.workingDir, {
+        awaiting: "approve-integration",
+        message: "Integration approved — REPORT stage in progress (recovery checkpoint)",
+        timestamp: isoTimestamp(),
+        feedback: null,
+      });
 
       await writeReportAndCheckpoint(dirs, config, silent, "REPORT stage complete. Awaiting verification.");
       break;
