@@ -10,8 +10,8 @@ Release targets: `[R2]`, `[R3]`, `[post-R1]` etc. Omit if not yet triaged.
 
 ## Backlog Items
 
-- BL-001 [P5] One PR per story in pipeline -- each story gets own branch/PR instead of one big branch (candidate for R2)
-- BL-002 [P4] Evaluate which stages/prompts should be skills -- audit during R2 planning: Normalize (73 lines, 1 agent) is a strong candidate for full skill conversion; Spec/Plan too complex (orchestration logic) but their prompt text can be extracted into skills. Deferred to R2.
+- BL-001 [P5] [R2] **RESOLVED** One PR per story in pipeline -- new `execute-ship.ts` stage with `shipMode: "pr-per-story"`. Per story: branch, commit, push, PR, CI poll. No self-review (2 review layers sufficient). PRs left open; squash-merge all at final `ship` checkpoint. Resolved 2026-03-31.
+- BL-002 [P4] [Pre-R2/R2] **RESOLVED** Evaluate which stages/prompts should be skills -- confirmed hybrid prompt model: static identity (ROLE, RULES, few-shot) in SKILL.md files, dynamic context (INPUT, OUTPUT, MEMORY) in `buildPrompt()`. `AGENT_REGISTRY` remains single source of truth; skills are generated via `generateSkills()` build step. ~21 Tier 1 agents convert in R2. Skill packaging (Pre-R2) is prerequisite. Resolved 2026-03-31.
 - BL-003 [P4] 3-tier memory model: persistent (brand voice, SOP), per-session (user query, chat history), searchable (knowledge-base, vector DB) -- aligns with R3 memory items (SQL DB, Claude-Mem)
 - BL-004 [P6] Cost breakdown by agent and model type in pipeline run -- extend CostTracker to track model field per AgentCostEntry (candidate for R2)
 - BL-005 [P2] Dashboard visible from Normalize stage -- show stage progress from pipeline start, not just EXECUTE; use frontend design skill for UI (candidate for R2)

@@ -50,6 +50,21 @@ SP-NNN | Type | One-line description
 **Description:** Create a demo video of current hive-mind capabilities using the Remotion skill (SP-001). Do this before R1 harness improvements to showcase the baseline product.
 **Depends on:** SP-001
 
+### SP-008: RAG MCP Server
+**Type:** Standalone MCP server (separate repo)
+**Description:** Reusable semantic search over markdown knowledge bases. Any Claude Code session can use it via `mcpServers` config. Ingests documents into sqlite-vec vector store, provides semantic search with collection/filter scoping. MVP: `rag_ingest` (add docs) + `rag_search` (query) tools, markdown-aware chunking, sqlite-vec storage (zero external deps).
+**Timeline:** Build after R1 (needs MCP Phase 1 for integration path). Integrate into hive-mind pipeline in R3 by replacing static KB reads with `rag_search` calls.
+**Architecture:**
+```
+@hive-mind/rag-server
+  src/server.ts            -- MCP entry point
+  src/tools/ingest.ts      -- rag_ingest tool
+  src/tools/search.ts      -- rag_search tool
+  src/pipeline/chunker.ts  -- markdown-aware splitting
+  src/pipeline/embedder.ts -- embedding API calls
+  src/store/sqlite-vec.ts  -- SQLite + sqlite-vec
+```
+
 ---
 
 ## How to Use This List

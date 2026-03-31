@@ -49,5 +49,14 @@ TypeScript ESM project. npm-publishable CLI tool.
 - Check for renamed types/exports via Grep before importing in test files
 - Run `npx tsc --noEmit` after writing tests to catch mismatches before `npm test`
 
+## Agent Prompt Architecture (Hybrid Model)
+- Agent identity (ROLE, RULES, few-shot examples) lives in `.claude/skills/` SKILL.md files
+- Dynamic context (INPUT, OUTPUT, MEMORY, CONSTITUTION, ROLE REPORTS) stays in `buildPrompt()` in `src/agents/prompts.ts`
+- `AGENT_REGISTRY` in `src/agents/registry.ts` is the single source of truth for agent metadata
+- Skills are generated from registry via `src/skills/builder.ts` (not hand-maintained)
+- Pipeline injects skills into target project via `src/skills/installer.ts` at pipeline start
+- ~21 Tier 1 agents convert to skills; ~15 Tier 3 agents (empty rules, JSON output) stay as code
+- See `docs/harness-roadmap/roadmap-releases.md` Pre-R2 + R2 for implementation timeline
+
 ## Diagnostic Logs
 - `.hive-mind-dashboard.log` (project root) — dashboard lifecycle events (DASHBOARD_START, DASHBOARD_STOP, DASHBOARD_SHUTDOWN, DASHBOARD_DECISION, DASHBOARD_REUSE, BROWSER_OPEN, BROWSER_SKIP, BROWSER_MARKER_WRITTEN)
