@@ -37,7 +37,8 @@ export type LogAction =
   | "DESIGN_START"
   | "DESIGN_QUESTIONNAIRE_COMPLETE"
   | "DESIGN_PROTOTYPE_APPROVED"
-  | "DESIGN_SKIPPED";
+  | "DESIGN_SKIPPED"
+  | "DESIGN_CHOICE_PENDING";
 
 export interface ManagerLogEntry {
   timestamp: string;

@@ -754,7 +754,7 @@ interactivity: static
       expect(vi.mocked(appendLogEntry)).toHaveBeenCalled();
     });
 
-    it("does NOT write checkpoint when no UI keywords detected (auto-skip)", async () => {
+    it("writes approve-design-skip checkpoint with skip hint when no UI keywords detected", async () => {
       mkdirSync(join(workingDir, "normalize"), { recursive: true });
       writeFileSync(
         join(workingDir, "normalize", "normalized-prd.md"),
@@ -765,10 +765,16 @@ interactivity: static
 
       await runDesignStage(dirs, config);
 
-      expect(vi.mocked(mockCheckpoint)).not.toHaveBeenCalled();
+      expect(vi.mocked(mockCheckpoint)).toHaveBeenCalledWith(
+        workingDir,
+        expect.objectContaining({
+          awaiting: "approve-design-skip",
+          message: expect.stringContaining("No UI keywords detected"),
+        }),
+      );
     });
 
-    it("writes approve-design-questionnaire checkpoint when UI keywords detected", async () => {
+    it("writes approve-design-skip checkpoint with design hint when UI keywords detected", async () => {
       mkdirSync(join(workingDir, "normalize"), { recursive: true });
       writeFileSync(
         join(workingDir, "normalize", "normalized-prd.md"),
@@ -782,7 +788,8 @@ interactivity: static
       expect(vi.mocked(mockCheckpoint)).toHaveBeenCalledWith(
         workingDir,
         expect.objectContaining({
-          awaiting: "approve-design-questionnaire",
+          awaiting: "approve-design-skip",
+          message: expect.stringContaining("UI keywords detected"),
         }),
       );
     });
@@ -910,13 +917,13 @@ interactivity: static
 
       await runDesignStage(dirs, config);
 
-      // Verify that checkpoint was written with metadata.customMessage
+      // Verify that approve-design-skip checkpoint was written with metadata.customMessage
       const calls = vi.mocked(mockCheckpoint).mock.calls;
-      const questionnaireCall = calls.find(
-        (c) => (c[1] as { awaiting: string }).awaiting === "approve-design-questionnaire",
+      const designChoiceCall = calls.find(
+        (c) => (c[1] as { awaiting: string }).awaiting === "approve-design-skip",
       );
-      expect(questionnaireCall).toBeDefined();
-      const checkpoint = questionnaireCall![1] as { metadata?: { customMessage?: string } };
+      expect(designChoiceCall).toBeDefined();
+      const checkpoint = designChoiceCall![1] as { metadata?: { customMessage?: string } };
       expect(checkpoint.metadata).toBeDefined();
       expect(checkpoint.metadata!.customMessage).toBeDefined();
       expect(typeof checkpoint.metadata!.customMessage).toBe("string");
