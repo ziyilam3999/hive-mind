@@ -145,9 +145,10 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
     if (options.outputFile) {
       const interval = options.outputPollIntervalMs ?? 5000;
       pollTimer = setInterval(() => {
-        if (existsSync(options.outputFile!)) {
+        if (!killedByOutputDetection && existsSync(options.outputFile!)) {
           killedByOutputDetection = true;
           console.debug(`[spawnClaude] Output file detected, terminating process early: ${options.outputFile}`);
+          clearInterval(pollTimer);
           child.kill("SIGTERM");
         }
       }, interval);

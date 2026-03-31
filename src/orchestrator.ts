@@ -457,6 +457,9 @@ export async function resumeFromCheckpoint(
         notifyCheckpoint(silent, getCheckpointMessage("approve-design-questionnaire"));
       } else {
         // Approved skip — proceed directly to SPEC
+        appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("DESIGN_SKIPPED", {
+          reason: "User approved design skip",
+        }));
         const skipCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
         const skipTracker = CostTracker.loadFromDisk(skipCostLogPath, startDataDesignSkip.budget);
         const normalizedPrdSkip = join(dirs.workingDir, "normalize", "normalized-prd.md");
