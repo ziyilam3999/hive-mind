@@ -1,3 +1,13 @@
+## [0.23.1](https://github.com/ziyilam3999/hive-mind/compare/v0.23.0...v0.23.1) (2026-03-31)
+
+### Bug Fixes
+
+* fix: prevent concurrent pipeline processes with PID lock file (#210)
+* fix: log design agent errors to logs/design-agent-error.log (#210)
+* fix: replace auto UI detection with user-choice checkpoint (#206)
+* fix: align tests with approve-design-choice removal (#210)
+* fix: restore Windows EBUSY/EPERM fallback for rmSync (#210)
+
 ## [0.23.0](https://github.com/ziyilam3999/hive-mind/compare/v0.22.0...v0.23.0) (2026-03-31)
 
 ### Features
