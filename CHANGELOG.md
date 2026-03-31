@@ -1,3 +1,9 @@
+## [0.24.1](https://github.com/ziyilam3999/hive-mind/compare/v0.24.0...v0.24.1) (2026-03-31)
+
+### Miscellaneous
+
+* docs: integrate 5 harness improvement ideas into roadmap (#227)
+
 ## [0.24.0](https://github.com/ziyilam3999/hive-mind/compare/v0.23.4...v0.24.0) (2026-03-31)
 
 ### Features
