@@ -1,3 +1,9 @@
+## [0.23.2](https://github.com/ziyilam3999/hive-mind/compare/v0.23.1...v0.23.2) (2026-03-31)
+
+### Bug Fixes
+
+* fix: replace auto UI keyword detection with user-choice design checkpoint (#213)
+
 ## [0.23.1](https://github.com/ziyilam3999/hive-mind/compare/v0.23.0...v0.23.1) (2026-03-31)
 
 ### Bug Fixes
