@@ -40,7 +40,6 @@ import { runBuild } from "./stages/execute-build.js";
 import { runVerify } from "./stages/execute-verify.js";
 import { runCommit } from "./stages/execute-commit.js";
 import { runLearn } from "./stages/execute-learn.js";
-import { runComplianceCheck } from "./stages/execute-compliance.js";
 import { parseRequiredTooling, detectAllTools, scanStepFileForTools, detectToolBySpawn } from "./tooling/detect.js";
 import { runToolingSetup } from "./tooling/setup.js";
 import { runReportStage as reportStage, type ReportStageResult } from "./stages/report-stage.js";
@@ -1034,7 +1033,7 @@ export interface StoryExecutionResult {
 }
 
 /**
- * Executes a single story: BUILD → COMPLIANCE → VERIFY.
+ * Executes a single story: BUILD → VERIFY.
  * If story has sub-tasks (FW-01), iterates through each sub-task with
  * independent BUILD → VERIFY cycles. Sub-task exhausting maxAttempts fails the story.
  * Pure function — returns results, never writes to execution plan.
@@ -1175,18 +1174,6 @@ async function executeWholeStory(
     storyId: story.id,
   }));
 
-  // COMPLIANCE check — between BUILD and VERIFY (ENH-17)
-  // Non-fatal (P39): failure → proceed to VERIFY
-  const complianceResult = await runComplianceCheck(story, dirs, config, costTracker, roleReportsDir, moduleCwd);
-  if (!complianceResult.skipped) {
-    appendLogEntry(logPath, createLogEntry("COMPLIANCE_CHECK", {
-      storyId: story.id,
-      passed: complianceResult.passed,
-      missing: complianceResult.result?.missing ?? 0,
-      done: complianceResult.result?.done ?? 0,
-    }));
-  }
-
   // VERIFY sub-pipeline (US-14) — no plan writes (refactored in Step 5)
   if (!completedSubStages.has("VERIFY")) {
     console.log(`[${story.id}] VERIFY: Starting...`);
@@ -1283,7 +1270,7 @@ async function executeStoryWithSubTasks(
     }
   }
 
-  // If any sub-task failed, skip compliance and return aggregated failure
+  // If any sub-task failed, return aggregated failure
   if (failedSubTasks.length > 0) {
     return {
       storyId: story.id,
@@ -1291,17 +1278,6 @@ async function executeStoryWithSubTasks(
       attempts: totalAttempts,
       errorMessage: `Sub-tasks failed: ${failedSubTasks.join(", ")}`,
     };
-  }
-
-  // All sub-tasks passed — run compliance on the whole story
-  const complianceResult = await runComplianceCheck(story, dirs, config, costTracker, roleReportsDir, moduleCwd);
-  if (!complianceResult.skipped) {
-    appendLogEntry(logPath, createLogEntry("COMPLIANCE_CHECK", {
-      storyId: story.id,
-      passed: complianceResult.passed,
-      missing: complianceResult.result?.missing ?? 0,
-      done: complianceResult.result?.done ?? 0,
-    }));
   }
 
   return {

@@ -15,7 +15,7 @@ async function defaultMockSpawn(config: { type: string; outputFile: string; cwd?
   } else if (config.type === "evaluator") {
     writeFileSync(config.outputFile, `<!-- STATUS: {"verdict": "PASS", "ecsPassed": 1, "ecsFailed": 0} -->\n# Eval Report\nAll passed`);
   } else if (config.type === "compliance-reviewer") {
-    writeFileSync(config.outputFile, `<!-- STATUS: {"result": "PASS", "done": 3, "missing": 0, "uncertain": 0} -->\n# Compliance Report`);
+    writeFileSync(config.outputFile, `# Mock compliance-reviewer report`);
   } else {
     writeFileSync(config.outputFile, `# Mock ${config.type} report`);
   }
@@ -124,7 +124,7 @@ describe("sub-task execution (FW-01)", () => {
       consoleSpy.mockRestore();
 
       expect(result.passed).toBe(true);
-      // Should have: implementer×2 + refactorer×2 + tester×2 + evaluator×2 + compliance-reviewer×1
+      // Should have: implementer×2 + refactorer×2 + tester×2 + evaluator×2
       const implementerCalls = spawnCalls.filter((c) => c.type === "implementer");
       expect(implementerCalls.length).toBe(2); // one per sub-task
       const testerCalls = spawnCalls.filter((c) => c.type === "tester-exec");
@@ -190,8 +190,6 @@ describe("sub-task execution (FW-01)", () => {
           wf(cfg.outputFile, `<!-- STATUS: {"verdict": "PASS", "ecsPassed": 1, "ecsFailed": 0} -->\n# Eval PASS`);
         } else if (cfg.type === "diagnostician" || cfg.type === "fixer") {
           wf(cfg.outputFile, `<!-- STATUS: {"result": "PASS"} -->\n**Files Changed:** src/a.ts\n# Fix`);
-        } else if (cfg.type === "compliance-reviewer") {
-          wf(cfg.outputFile, `<!-- STATUS: {"result": "PASS", "done": 3, "missing": 0, "uncertain": 0} -->\n# Compliance`);
         } else {
           wf(cfg.outputFile, `# Mock ${cfg.type}`);
         }
@@ -223,20 +221,6 @@ describe("sub-task execution (FW-01)", () => {
       expect(result.passed).toBe(true);
       const implementerCalls = spawnCalls.filter((c) => c.type === "implementer");
       expect(implementerCalls.length).toBe(1); // whole story
-    } finally {
-      cleanup();
-    }
-  });
-
-  it("compliance runs on whole story after all sub-tasks pass", async () => {
-    await setup();
-    try {
-      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      await executeOneStory(makeStoryWithSubTasks(), dirs, config);
-      consoleSpy.mockRestore();
-
-      const complianceCalls = spawnCalls.filter((c) => c.type === "compliance-reviewer");
-      expect(complianceCalls.length).toBe(1); // runs once on whole story
     } finally {
       cleanup();
     }
@@ -274,9 +258,6 @@ describe("sub-task execution (FW-01)", () => {
       expect(result.attempts).toBe(6);
       expect(result.errorMessage).toContain("T1");
       expect(result.errorMessage).toContain("T2");
-      // Compliance should NOT have run since sub-tasks failed
-      const complianceCalls = spawnCalls.filter((c) => c.type === "compliance-reviewer");
-      expect(complianceCalls.length).toBe(0);
     } finally {
       cleanup();
     }
