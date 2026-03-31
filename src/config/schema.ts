@@ -20,6 +20,13 @@ export interface HiveMindConfig {
   baselineBuildCommand: string;
   baselineTestCommand: string;
   modelAssignments: Record<string, ModelTier>;
+  stageTimeouts: {
+    preplan: number;
+    planDecompose: number;
+    postExecute: number;
+    hardCap: number;
+  };
+  pipelineTimeout?: number;
   workingDir?: string;
   knowledgeDir?: string;
   skipNormalize: boolean;
@@ -53,6 +60,12 @@ export const DEFAULT_CONFIG: HiveMindConfig = {
   skipNormalize: false,
   liveReport: true,
   modelAssignments: { ...DEFAULT_MODEL_ASSIGNMENTS },
+  stageTimeouts: {
+    preplan: 7_200_000,       // 2 hours — default per-story timeout before rolling average is available
+    planDecompose: 7_200_000, // 2 hours — covers PLAN + DECOMPOSE stages
+    postExecute: 3_600_000,   // 1 hour — post-execute stages (REPORT, etc.)
+    hardCap: 172_800_000,     // 48 hours — safety net: absolute pipeline wall-clock limit
+  },
   designSystemPath: undefined,
   designRulesPath: undefined,
 };

@@ -8,7 +8,7 @@ import { isAbsolute, join, resolve } from "node:path";
 const CONFIG_FILENAME = ".hivemindrc.json";
 
 export function getDefaultConfig(): HiveMindConfig {
-  return { ...DEFAULT_CONFIG, modelAssignments: { ...DEFAULT_CONFIG.modelAssignments } };
+  return { ...DEFAULT_CONFIG, modelAssignments: { ...DEFAULT_CONFIG.modelAssignments }, stageTimeouts: { ...DEFAULT_CONFIG.stageTimeouts } };
 }
 
 export interface ValidationResult {
@@ -45,6 +45,7 @@ export function validateConfig(raw: unknown): ValidationResult {
     "reportExcerptLength",
     "retryBaseDelayMs",
     "retryMaxDelayMs",
+    "pipelineTimeout",
   ];
 
   for (const key of positiveNumbers) {
@@ -95,6 +96,29 @@ export function validateConfig(raw: unknown): ValidationResult {
       for (const [agent, model] of Object.entries(ma as Record<string, unknown>)) {
         if (typeof model !== "string" || !validModels.has(model)) {
           errors.push(`modelAssignments.${agent} must be "opus", "sonnet", or "haiku", got: ${JSON.stringify(model)}`);
+        }
+      }
+    }
+  }
+
+  if ("stageTimeouts" in obj) {
+    const st = obj.stageTimeouts;
+    if (typeof st !== "object" || st === null || Array.isArray(st)) {
+      errors.push("stageTimeouts must be an object");
+    } else {
+      const knownStageKeys = new Set(["preplan", "planDecompose", "postExecute", "hardCap"]);
+      for (const key of Object.keys(st as Record<string, unknown>)) {
+        if (!knownStageKeys.has(key)) {
+          warnings.push(`Unknown stageTimeouts key: "${key}" (allowed: ${[...knownStageKeys].join(", ")})`);
+        }
+      }
+      const stObj = st as Record<string, unknown>;
+      for (const key of knownStageKeys) {
+        if (key in stObj) {
+          const val = stObj[key];
+          if (typeof val !== "number" || !Number.isFinite(val) || val <= 0) {
+            errors.push(`stageTimeouts.${key} must be a positive finite number, got: ${JSON.stringify(val)}`);
+          }
         }
       }
     }
@@ -161,10 +185,14 @@ export function loadConfig(projectRoot: string): HiveMindConfig {
 
   const obj = raw as Record<string, unknown>;
 
-  // Deep merge: modelAssignments merges with defaults, other keys override
+  // Deep merge: modelAssignments and stageTimeouts merge with defaults, other keys override
   const modelAssignments: Record<string, ModelTier> = typeof obj.modelAssignments === "object" && obj.modelAssignments !== null
     ? { ...defaults.modelAssignments, ...(obj.modelAssignments as Record<string, ModelTier>) }
     : { ...defaults.modelAssignments };
+
+  const stageTimeouts = typeof obj.stageTimeouts === "object" && obj.stageTimeouts !== null
+    ? { ...defaults.stageTimeouts, ...(obj.stageTimeouts as Record<string, number>) }
+    : { ...defaults.stageTimeouts };
 
   return {
     agentTimeout: (obj.agentTimeout as number | undefined) ?? defaults.agentTimeout,
@@ -187,6 +215,8 @@ export function loadConfig(projectRoot: string): HiveMindConfig {
     skipNormalize: (obj.skipNormalize as boolean | undefined) ?? defaults.skipNormalize,
     liveReport: (obj.liveReport as boolean | undefined) ?? defaults.liveReport,
     modelAssignments,
+    stageTimeouts,
+    pipelineTimeout: (obj.pipelineTimeout as number | undefined) ?? undefined,
     workingDir: (obj.workingDir as string | undefined) ?? undefined,
     knowledgeDir: (obj.knowledgeDir as string | undefined) ?? undefined,
     labDir: (obj.labDir as string | undefined) ?? undefined,

@@ -22,6 +22,8 @@ describe("getDefaultConfig", () => {
     expect(config.reportExcerptLength).toBe(200);
     expect(config.modelAssignments.critic).toBe("sonnet");
     expect(config.modelAssignments.implementer).toBe("opus");
+    expect(config.stageTimeouts.preplan).toBe(7_200_000);
+    expect(config.stageTimeouts.hardCap).toBe(172_800_000);
   });
 
   it("returns a fresh copy each time", () => {
@@ -76,6 +78,50 @@ describe("validateConfig", () => {
     expect(result.valid).toBe(true);
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toContain("unknownKey");
+  });
+
+  it("rejects negative stageTimeouts values", () => {
+    const result = validateConfig({ stageTimeouts: { preplan: -1 } });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("stageTimeouts.preplan");
+    expect(result.errors[0]).toContain("positive");
+  });
+
+  it("rejects non-object stageTimeouts", () => {
+    const result = validateConfig({ stageTimeouts: "fast" });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("stageTimeouts must be an object");
+  });
+
+  it("rejects array stageTimeouts", () => {
+    const result = validateConfig({ stageTimeouts: [1, 2] });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("stageTimeouts must be an object");
+  });
+
+  it("accepts valid stageTimeouts override without error", () => {
+    const result = validateConfig({ stageTimeouts: { preplan: 7200000 } });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("warns on unknown stageTimeouts sub-keys", () => {
+    const result = validateConfig({ stageTimeouts: { preplan: 5000, bogusKey: 999 } });
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("bogusKey");
+  });
+
+  it("rejects zero stageTimeouts value", () => {
+    const result = validateConfig({ stageTimeouts: { hardCap: 0 } });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("stageTimeouts.hardCap");
+  });
+
+  it("rejects Infinity stageTimeouts value", () => {
+    const result = validateConfig({ stageTimeouts: { hardCap: Infinity } });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toContain("stageTimeouts.hardCap");
   });
 
   it("rejects invalid model in modelAssignments", () => {
@@ -173,6 +219,31 @@ describe("loadConfig", () => {
   it("defaults skipNormalize to false", () => {
     const config = loadConfig(tmpDir);
     expect(config.skipNormalize).toBe(false);
+  });
+
+  it("deep merges partial stageTimeouts with defaults", () => {
+    writeFileSync(
+      join(tmpDir, ".hivemindrc.json"),
+      JSON.stringify({ stageTimeouts: { hardCap: 60000 } }),
+    );
+    const config = loadConfig(tmpDir);
+    expect(config.stageTimeouts.hardCap).toBe(60000);
+    // Other stageTimeouts sub-fields retain default values
+    expect(config.stageTimeouts.preplan).toBe(7_200_000);
+    expect(config.stageTimeouts.planDecompose).toBe(7_200_000);
+    expect(config.stageTimeouts.postExecute).toBe(3_600_000);
+  });
+
+  it("returns default stageTimeouts when config omits stageTimeouts entirely", () => {
+    writeFileSync(
+      join(tmpDir, ".hivemindrc.json"),
+      JSON.stringify({ agentTimeout: 300_000 }),
+    );
+    const config = loadConfig(tmpDir);
+    expect(config.stageTimeouts.preplan).toBe(7_200_000);
+    expect(config.stageTimeouts.planDecompose).toBe(7_200_000);
+    expect(config.stageTimeouts.postExecute).toBe(3_600_000);
+    expect(config.stageTimeouts.hardCap).toBe(172_800_000);
   });
 
   it("accepts full valid config", () => {
