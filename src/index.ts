@@ -8,7 +8,7 @@ import { runPipeline, resumeFromCheckpoint, runBugFixPipeline } from "./orchestr
 import { loadConfig, resolvePipelineDirs } from "./config/loader.js";
 import { HiveMindError } from "./utils/errors.js";
 import { join } from "node:path";
-import { realpathSync, existsSync, readFileSync } from "node:fs";
+import { realpathSync, existsSync, readFileSync, writeFileSync, unlinkSync as unlinkSyncFs, mkdirSync } from "node:fs";
 import { approveCheckpoint, rejectCheckpoint } from "./state/checkpoint-ops.js";
 import { startDashboard, isDashboardRunning, shutdownExistingDashboard, dashLog } from "./dashboard/server.js";
 import type { DashboardHandle } from "./dashboard/server.js";
@@ -112,10 +112,50 @@ export function parseArgs(argv: string[]): ParsedCommand {
   }
 }
 
+// ── Pipeline lock ────────────────────────────────────────────────────────
+const LOCK_FILE = ".pipeline-lock";
+
+function isProcessAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+function acquirePipelineLock(workingDir: string): void {
+  const lockPath = join(workingDir, LOCK_FILE);
+  if (existsSync(lockPath)) {
+    const raw = readFileSync(lockPath, "utf-8").trim();
+    const pid = parseInt(raw, 10);
+    if (!isNaN(pid) && isProcessAlive(pid) && pid !== process.pid) {
+      throw new HiveMindError(`Another pipeline process is running (PID: ${pid}). Kill it or wait for it to finish.`);
+    }
+  }
+  writeFileSync(lockPath, String(process.pid));
+}
+
+function releasePipelineLock(workingDir: string): void {
+  const lockPath = join(workingDir, LOCK_FILE);
+  try {
+    if (existsSync(lockPath)) {
+      const raw = readFileSync(lockPath, "utf-8").trim();
+      if (parseInt(raw, 10) === process.pid) unlinkSyncFs(lockPath);
+    }
+  } catch { /* best-effort cleanup */ }
+}
+
 export async function main(): Promise<void> {
   const parsed = parseArgs(process.argv);
   const config = loadConfig(process.cwd());
   const dirs = resolvePipelineDirs(config, process.cwd());
+
+  // Acquire pipeline lock for commands that run pipeline stages
+  const pipelineCommands = new Set(["start", "approve", "reject", "resume", "retry"]);
+  const needsLock = pipelineCommands.has(parsed.command);
+  if (needsLock) {
+    acquirePipelineLock(dirs.workingDir);
+    const cleanup = () => releasePipelineLock(dirs.workingDir);
+    process.on("exit", cleanup);
+    process.on("SIGINT", () => { cleanup(); process.exit(130); });
+    process.on("SIGTERM", () => { cleanup(); process.exit(143); });
+  }
 
   // Start dashboard for commands that run pipeline stages (skip if one is already running)
   const dashboardCommands = new Set(["start", "approve", "reject", "resume", "retry"]);
