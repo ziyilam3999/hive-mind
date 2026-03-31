@@ -1,3 +1,9 @@
+## [0.24.0](https://github.com/ziyilam3999/hive-mind/compare/v0.23.4...v0.24.0) (2026-03-31)
+
+### Features
+
+* feat: dynamic pipeline timeout + cost velocity alert (R1 Story 6) (#224)
+
 ## [0.23.4](https://github.com/ziyilam3999/hive-mind/compare/v0.23.3...v0.23.4) (2026-03-31)
 
 ### Bug Fixes
