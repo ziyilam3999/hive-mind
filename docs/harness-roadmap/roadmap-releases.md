@@ -43,11 +43,38 @@
 
 ---
 
+## Pre-R2: "Wire the Skills"
+
+**Theme:** Prerequisite infrastructure for R2's skill-based architecture.
+
+**Timeline:** 1 week (between R1 completion and R2 start)
+
+**What ships:**
+| # | Item | Effort | Ref |
+|---|---|---|---|
+| 1 | Bundle pipeline skills in npm package + runtime injection | Small | BL-002 |
+
+**Details:**
+- Add `skills/` directory to hive-mind repo with pipeline `.md` files + `manifest.json`
+- Implement `ensurePipelineSkills(projectRoot)` in `src/skills/installer.ts`
+- Called at pipeline start: copies skills into `{projectRoot}/.claude/skills/` with `hive-mind-` prefix
+- Version-tracked via `.hive-mind-skills-version` marker file
+- Bundled: skeptical-critic, skeptical-evaluator, skeptical-code-reviewer, compliance-ec-rules, future generated agent skills
+- NOT bundled: user-facing skills (ship, prd, mailbox, etc.)
+
+**Exit criteria:**
+- `npm pack` includes `skills/` directory with all pipeline skill `.md` files
+- `ensurePipelineSkills()` copies skills to target project's `.claude/skills/` at pipeline start
+- Skill version marker tracks which hive-mind version installed the skills
+- Existing pipeline behavior unchanged (backward compatible)
+
+---
+
 ## Release 2: "Sharpen the Loop"
 
-**Theme:** Make the GAN loop cheaper, smarter, and safer.
+**Theme:** Make the GAN loop cheaper, smarter, and safer. Migrate agent prompts to skills.
 
-**Timeline:** 2-3 weeks (after R1)
+**Timeline:** 2-3 weeks (after Pre-R2)
 
 **Candidate items:**
 | # | Item | Pillar | Effort | Ref |
@@ -59,14 +86,25 @@
 | 5 | Memory summarization between waves | P4 | Small | P4 ss4.1 |
 | 6 | Multi-dimensional scorecard with rubric | P3 | Medium | P3 ss3.3 |
 | 7 | Command blocklist + path-scoped writes | P6 | Small | P6 ss6.4 |
+| 8 | Hybrid prompt model: prompts → skills | P4 | Medium | BL-002 |
+| 9 | Ship stage: per-story branch/PR/CI | P6 | Medium | BL-001 |
+| 10 | Skill run data recording (pipeline agents) | P4 | Small | -- |
 
-**Why second:** Reduces cost per pipeline run by 30-50%. Quality improvements compound with every run after this.
+**Why second:** Reduces cost per pipeline run by 30-50%. Quality improvements compound with every run after this. Skill migration makes agent behavior editable and measurable.
+
+**New items explained:**
+- **Item 8 (Hybrid prompt model):** Split agent prompts into static identity (SKILL.md files generated from `AGENT_REGISTRY`) and dynamic context (`buildPrompt()` handles INPUT, OUTPUT, MEMORY only). ~21 Tier 1 agents convert incrementally via `SKILL_AGENTS` gate in `prompts.ts`. Registry remains single source of truth; skills are derived via `generateSkills()` build step.
+- **Item 9 (Ship stage):** New `execute-ship.ts` replaces `execute-commit.ts` when `shipMode: "pr-per-story"`. Per story: branch, commit, push, PR, CI poll. No self-review (VERIFY + REPORT code-reviewer = 2 layers sufficient). PRs left open; squash-merge all at final `ship` checkpoint.
+- **Item 10 (Skill run data):** Instrument `spawnAgent()` to record which skills were loaded per agent run. Write to `skill-run-log.jsonl`. REPORT stage generates `skill-effectiveness.md`. Cross-run history accumulates in `{knowledgeDir}/skill-run-history.jsonl` for R3's SELF-IMPROVE.
 
 **Exit criteria:** (to be detailed when R1 nears completion)
 - VERIFY only re-tests failed ACs/ECs on retry
 - Hooks provide tsc/lint feedback during BUILD without separate agent
 - Scorecard grades 7 dimensions with weighted rubric
 - Memory.md summarized between waves
+- ~21 agent types have SKILL.md files generated from registry
+- `shipMode: "pr-per-story"` produces per-story PRs with CI validation
+- `skill-run-log.jsonl` captures skills loaded, duration, cost, and success per agent run
 
 ---
 
@@ -133,6 +171,6 @@
 
 ## Deferred (v2+)
 Items explicitly deferred beyond R4:
-- **Full RAG + SQL memory with embeddings (P4)** -- LLM-driven consolidation (R3) gets 80% of value without vector infra
+- **RAG standalone MCP server (P4)** -- Build as standalone project (SP-008) after R1. Integrate into pipeline in R3 via `mcpServers` config. See [roadmap-standalone-projects.md](roadmap-standalone-projects.md) SP-008.
 - **MCP Phase 2: expose Hive Mind as MCP server (P1)** -- no demand yet; build consumer side first (R1), expose when orchestration layer needs it
 - **NotebookLLM-py integration (P6)** -- unofficial API using undocumented Google endpoints, zero production reliability
