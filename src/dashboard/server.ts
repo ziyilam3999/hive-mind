@@ -2076,6 +2076,7 @@ export async function startDashboard(
   dirs: PipelineDirs,
   _config: HiveMindConfig,
   portOverride?: number,
+  wantOpenBrowser = true,
 ): Promise<DashboardHandle> {
   const workingDir = dirs.workingDir;
 
@@ -2190,8 +2191,9 @@ export async function startDashboard(
   }
 
   function shouldOpenBrowser(): boolean {
-    // Only open browser if no port file exists (first dashboard start this run)
-    return !existsSync(portFilePath);
+    // Caller decides whether to open the browser (e.g. `start` = yes, `approve` = no).
+    // Fall back to port-file check so existing callers that don't pass the flag still work.
+    return wantOpenBrowser && !existsSync(portFilePath);
   }
 
   function tryListen(port: number, attempt: number): Promise<DashboardHandle> {
