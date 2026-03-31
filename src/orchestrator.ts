@@ -1461,11 +1461,37 @@ export async function runExecuteStage(
     return;
   }
 
+  // §M-10 §1: Compute totalPlanStories once at entry — not recomputed during wave loop
+  const totalPlanStories = plan.stories.length;
+
+  // Recover pipelineStartTime for story-level hardCap abort (§M-09, §M-13)
+  // Use try/catch because getPipelineStartData throws if manager-log.jsonl is missing
+  // (e.g. when runExecuteStage is called directly in tests without a prior PIPELINE_START)
+  let pipelineStartTime = Date.now();
+  try {
+    const startData = getPipelineStartData(dirs.workingDir);
+    pipelineStartTime = startData.pipelineStartTime ?? Date.now();
+  } catch {
+    // No manager-log or no PIPELINE_START entry — use fresh timestamp
+  }
+
+  // §M-17b: effectiveHardCap uses CLI timeout when set, otherwise config hardCap
+  const effectiveHardCap = timeoutMs ?? config.stageTimeouts.hardCap;
+
   // Wave executor: process stories in waves of non-overlapping, dependency-ready stories
   while (true) {
     const ready = getReadyStories(plan);
     const wave = filterNonOverlapping(ready, plan);
     if (wave.length === 0) break;
+
+    // §M-10 §3, §M-20: Story-level hardCap abort — check BEFORE launching new batch
+    const now = Date.now();
+    if (now - pipelineStartTime > effectiveHardCap) {
+      const elapsed = now - pipelineStartTime;
+      const skippedCount = plan.stories.filter((s) => s.status === "not-started" || s.status === "in-progress").length;
+      console.log(`[timeout] Pipeline hard cap exceeded in EXECUTE (${Math.round(elapsed / 1000)}s elapsed) — ${skippedCount} stories skipped`);
+      break;
+    }
 
     const waveStoryIds = wave.map((s) => s.id);
     console.log(`\nWave ${waveNumber}: executing ${waveStoryIds.join(", ")}`);
@@ -1478,10 +1504,38 @@ export async function runExecuteStage(
     }
     saveExecutionPlan(planPath, plan);
 
+    // §M-10 §2, §M-15, §M-17: Timeout selection state machine
+    // Compute effectiveTimeout ONCE per batch — all stories in a batch share the same value
+    const remainingStories = totalPlanStories - (costTracker?.getCompletedStoryCount() ?? 0);
+    let effectiveTimeout: number;
+    if (timeoutMs !== undefined) {
+      // CLI --timeout overrides all dynamic computation (§M-17)
+      effectiveTimeout = timeoutMs;
+    } else if (costTracker && costTracker.getRollingAverageDuration() > 0) {
+      // Dynamic: projected timeout capped at hardCap (§M-15)
+      effectiveTimeout = Math.min(
+        costTracker.projectRemainingTimeout(remainingStories),
+        config.stageTimeouts.hardCap,
+      );
+    } else {
+      // No data yet: use preplan default (§Timeout Selection State Machine)
+      effectiveTimeout = config.stageTimeouts.preplan;
+    }
+
     // Parallel BUILD+VERIFY (bounded by maxConcurrency)
+    // §M-10 §4: effectiveTimeout passed per-story via config.agentTimeout override
     const tasks = wave.map((s) => () => {
       const moduleCwd = getModuleCwd(plan, s.moduleId);
-      return executeOneStory(s, dirs, config, costTracker, roleReportsDir, moduleCwd);
+      // Per-task config copy — safe for concurrent use (no shared mutation)
+      const storyConfig = { ...config, agentTimeout: effectiveTimeout };
+      // §M-19: Record per-story wall-clock duration
+      const storyStartTime = Date.now();
+      return executeOneStory(s, dirs, storyConfig, costTracker, roleReportsDir, moduleCwd)
+        .then((result) => {
+          // §M-19: Duration always recorded regardless of --timeout mode (§M-17)
+          costTracker?.recordStoryDuration(Date.now() - storyStartTime);
+          return result;
+        });
     });
     const settled = await runWithConcurrency(tasks, config.maxConcurrency);
 
@@ -1719,6 +1773,17 @@ export async function runExecuteStage(
     // Budget warning after wave (informational only — no mid-pipeline kills)
     if (costTracker?.checkBudget()) {
       console.warn(`\n[BUDGET] Spending has exceeded budget: $${costTracker.getPipelineTotal().toFixed(2)} spent. Pipeline will continue to completion.`);
+    }
+
+    // §M-10 §6, §M-18: Cost velocity check after each wave
+    const budgetUsd = costTracker?.["budgetUsd"] as number | undefined;
+    if (costTracker && budgetUsd !== undefined && budgetUsd > 0) {
+      const velocityRemaining = totalPlanStories - (costTracker.getCompletedStoryCount());
+      const velocity = costTracker.checkCostVelocity(velocityRemaining, budgetUsd);
+      if (!velocity.insufficient && velocity.overBudget) {
+        console.warn(`[cost-velocity] Projected total $${velocity.projectedUsd.toFixed(2)} exceeds 2x budget $${budgetUsd.toFixed(2)}`);
+      }
+      // insufficient → silent skip (§M-18)
     }
   }
 

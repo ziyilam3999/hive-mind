@@ -281,7 +281,7 @@ describe("wave executor", () => {
       await runExecuteStage(dirs, config);
       const result = loadExecutionPlan(planPath);
       for (const story of result.stories) {
-        expect(["passed", "failed", "skipped"]).toContain(story.status);
+        expect(["passed", "failed", "skipped"], `${story.id} had unexpected status: ${story.status}`).toContain(story.status);
       }
       expect(result.schemaVersion).toBe("2.0.0");
     } finally {
@@ -406,6 +406,137 @@ describe("wave executor", () => {
     const restore = suppressConsole();
     try {
       await runExecuteStage(dirs, config);
+    } finally {
+      restore();
+      cleanup();
+    }
+  });
+
+  it("hardCap abort stops launching new waves when exceeded", async () => {
+    const plan = makePlan([
+      makeStory({ id: "US-01", sourceFiles: ["a.ts"] }),
+      makeStory({ id: "US-02", sourceFiles: ["b.ts"], dependencies: ["US-01"] }),
+    ]);
+    setup(plan);
+
+    // Write a PIPELINE_START log entry with a pipelineStartTime far enough in the past
+    // that the hardCap is exceeded (but still valid per HIGH-01 validation)
+    const logPath = join(testDir, "manager-log.jsonl");
+    const pastTime = Date.now() - 5000; // 5 seconds ago
+    writeFileSync(logPath, JSON.stringify({
+      action: "PIPELINE_START",
+      prdPath: "PRD.md",
+      stopAfterPlan: false,
+      pipelineStartTime: pastTime,
+      timestamp: new Date(pastTime).toISOString(),
+    }) + "\n");
+
+    const logs: string[] = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
+      logs.push(String(args[0]));
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      // Use a short hardCap so the check triggers
+      const shortConfig = {
+        ...config,
+        stageTimeouts: { ...config.stageTimeouts, hardCap: 1000 },
+      };
+      await runExecuteStage(dirs, shortConfig);
+      // Should have logged a timeout message
+      expect(logs.some((l) => l.includes("[timeout]"))).toBe(true);
+      // US-02 should still be not-started (never launched)
+      const result = loadExecutionPlan(planPath);
+      expect(result.stories[1].status).toBe("not-started");
+    } finally {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+      cleanup();
+    }
+  });
+
+  it("effectiveTimeout uses preplan when no duration data exists", async () => {
+    const plan = makePlan([makeStory({ id: "US-01", sourceFiles: ["a.ts"] })]);
+    setup(plan);
+
+    const { CostTracker } = await import("../../utils/cost-tracker.js");
+    const tracker = new CostTracker(100);
+    // No story durations recorded — getRollingAverageDuration() returns 0
+
+    const restore = suppressConsole();
+    try {
+      await runExecuteStage(dirs, config, tracker);
+      const result = loadExecutionPlan(planPath);
+      expect(result.stories[0].status).toBe("passed");
+    } finally {
+      restore();
+      cleanup();
+    }
+  });
+
+  it("duration is recorded after story completes", async () => {
+    const plan = makePlan([makeStory({ id: "US-01", sourceFiles: ["a.ts"] })]);
+    setup(plan);
+
+    const { CostTracker } = await import("../../utils/cost-tracker.js");
+    const tracker = new CostTracker(100);
+
+    const restore = suppressConsole();
+    try {
+      await runExecuteStage(dirs, config, tracker);
+      // After execution, at least one story duration should be recorded
+      expect(tracker.getCompletedStoryCount()).toBe(1);
+      expect(tracker.getRollingAverageDuration()).toBeGreaterThan(0);
+    } finally {
+      restore();
+      cleanup();
+    }
+  });
+
+  it("cost velocity warning logged when overBudget", async () => {
+    const plan = makePlan([
+      makeStory({ id: "US-01", sourceFiles: ["a.ts"] }),
+      makeStory({ id: "US-02", sourceFiles: ["b.ts"], dependencies: ["US-01"] }),
+    ]);
+    setup(plan);
+
+    const { CostTracker } = await import("../../utils/cost-tracker.js");
+    // Budget of $0.01 with $1.00 spent — cost velocity will flag overBudget
+    const tracker = new CostTracker(0.01);
+    tracker.recordAgentCost("US-00", "implementer", 1.0, 1000);
+    // Record one duration so getCompletedStoryCount > 0 for velocity to work
+    tracker.recordStoryDuration(5000);
+
+    const warns: string[] = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation((...args) => {
+      warns.push(String(args[0]));
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runExecuteStage(dirs, config, tracker);
+      expect(warns.some((w) => w.includes("[cost-velocity]"))).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+      cleanup();
+    }
+  });
+
+  it("CLI --timeout overrides dynamic timeout computation", async () => {
+    const plan = makePlan([makeStory({ id: "US-01", sourceFiles: ["a.ts"] })]);
+    setup(plan);
+
+    const { CostTracker } = await import("../../utils/cost-tracker.js");
+    const tracker = new CostTracker(100);
+
+    const restore = suppressConsole();
+    try {
+      // Pass timeoutMs = 60_000 (1 minute) as CLI override
+      await runExecuteStage(dirs, config, tracker, 60_000);
+      const result = loadExecutionPlan(planPath);
+      expect(result.stories[0].status).toBe("passed");
+      // Duration should still be recorded even with --timeout set
+      expect(tracker.getCompletedStoryCount()).toBe(1);
     } finally {
       restore();
       cleanup();
