@@ -147,11 +147,13 @@ export async function main(): Promise<void> {
   const dirs = resolvePipelineDirs(config, process.cwd());
 
   // Acquire pipeline lock for commands that run pipeline stages
+  // Lock lives in CWD (project root), not workingDir, because start --force deletes workingDir
   const pipelineCommands = new Set(["start", "approve", "reject", "resume", "retry"]);
   const needsLock = pipelineCommands.has(parsed.command);
+  const lockDir = process.cwd();
   if (needsLock) {
-    acquirePipelineLock(dirs.workingDir);
-    const cleanup = () => releasePipelineLock(dirs.workingDir);
+    acquirePipelineLock(lockDir);
+    const cleanup = () => releasePipelineLock(lockDir);
     process.on("exit", cleanup);
     process.on("SIGINT", () => { cleanup(); process.exit(130); });
     process.on("SIGTERM", () => { cleanup(); process.exit(143); });

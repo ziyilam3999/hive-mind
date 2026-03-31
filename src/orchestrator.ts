@@ -165,7 +165,22 @@ export async function runPipeline(
     const hasArtifacts = readdirSync(dirs.workingDir).some(f => !f.startsWith("."));
     if (hasArtifacts) {
       console.log("[cleanup] Removing stale working directory from previous run");
-      rmSync(dirs.workingDir, { recursive: true });
+      try {
+        rmSync(dirs.workingDir, { recursive: true });
+      } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "EBUSY" || code === "EPERM") {
+          const stalePath = `${dirs.workingDir}-stale-${Date.now()}`;
+          console.warn(`[cleanup] rmSync failed (${code}), renaming to ${stalePath}`);
+          try {
+            renameSync(dirs.workingDir, stalePath);
+          } catch {
+            console.warn("[cleanup] Rename also failed — continuing with existing directory");
+          }
+        } else {
+          throw err;
+        }
+      }
     }
   }
 
