@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { getDefaultConfig } from "../../config/loader.js";
-import { getToolsForAgent } from "../../agents/tool-permissions.js";
+import { getToolsForAgent, AGENT_TOOL_MAP } from "../../agents/tool-permissions.js";
 import { getAgentRules } from "../../agents/prompts.js";
 import type { AgentConfig } from "../../types/agents.js";
 
@@ -355,6 +355,29 @@ describe("getToolsForAgent", () => {
       r.includes("STEP-FILE-IS-CANONICAL") && r.includes("single source of truth"),
     );
     expect(hasCanonicalRule).toBe(true);
+  });
+
+  it("returns exact tool list for researcher (SC-01)", () => {
+    expect(getToolsForAgent("researcher")).toEqual(["Read", "Glob", "Grep", "Write", "WebSearch", "WebFetch"]);
+  });
+
+  it("returns exact tool list for fixer (SC-02)", () => {
+    expect(getToolsForAgent("fixer")).toEqual(["Read", "Glob", "Grep", "Write", "Edit", "Bash", "WebSearch"]);
+  });
+
+  it("fixer does NOT have WebFetch (C-02)", () => {
+    const fixerTools = getToolsForAgent("fixer");
+    expect(fixerTools).not.toContain("WebFetch");
+  });
+
+  it("no agent other than researcher and fixer has web tools (SC-08)", () => {
+    const webToolAgents = new Set(["researcher", "fixer"]);
+    for (const [agentType, tools] of Object.entries(AGENT_TOOL_MAP)) {
+      if (!webToolAgents.has(agentType)) {
+        expect(tools, `${agentType} should not have WebSearch`).not.toContain("WebSearch");
+        expect(tools, `${agentType} should not have WebFetch`).not.toContain("WebFetch");
+      }
+    }
   });
 
   it("returns tools for every agent type", () => {
