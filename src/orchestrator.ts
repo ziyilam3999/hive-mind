@@ -170,7 +170,6 @@ export async function runPipeline(
       } catch (err: unknown) {
         const code = (err as NodeJS.ErrnoException).code;
         if (code === "EBUSY" || code === "EPERM") {
-          // Windows: directory handle still held — rename as fallback (mv works when rm doesn't)
           const stalePath = `${dirs.workingDir}-stale-${Date.now()}`;
           console.warn(`[cleanup] rmSync failed (${code}), renaming to ${stalePath}`);
           try {
@@ -423,13 +422,20 @@ export async function resumeFromCheckpoint(
         return;
       }
 
-      // Approved — proceed to DESIGN stage (which writes approve-design-choice checkpoint)
+      // Approved — proceed to DESIGN stage (which gates SPEC)
       const normCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const normalizeTracker = CostTracker.loadFromDisk(normCostLogPath, startData.budget);
       await runDesignStage(dirs, config, normalizeTracker);
+
+      // If design auto-skipped (no new checkpoint written), flow directly to SPEC.
+      // The recovery checkpoint (approve-normalize) may still exist — check if design wrote a different one.
+      const postDesignCpPath = join(dirs.workingDir, ".checkpoint");
+      const postDesignCp = existsSync(postDesignCpPath) ? JSON.parse(readFileSafe(postDesignCpPath) ?? "{}") : null;
+      if (!postDesignCp || postDesignCp.awaiting === "approve-normalize") {
+        await runSpecThenCheckpoint(normalizedPrd, dirs, config, silent, startData.stopAfterPlan, startData.greenfield, normalizeTracker);
+      }
       break;
     }
-    case "approve-design-choice":
     case "approve-design-skip": {
       deleteCheckpoint(dirs.workingDir);
       const startDataDesignSkip = getPipelineStartData(dirs.workingDir);

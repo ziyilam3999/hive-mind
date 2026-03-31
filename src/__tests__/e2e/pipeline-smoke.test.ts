@@ -163,23 +163,16 @@ describe("pipeline smoke test (e2e)", () => {
     const logEntries = readLogEntries(hmDir);
     expect(logEntries.some((e) => e.action === "PIPELINE_START")).toBe(true);
 
-    // Step 2: Approve normalize → DESIGN writes approve-design-choice checkpoint
+    // Step 2: Approve normalize → DESIGN auto-skips (no UI keywords) → checkpoint at approve-spec
     await resumeFromCheckpoint(
       { awaiting: "approve-normalize", message: "", timestamp: "2026-03-18T00:00:00Z", feedback: null },
       dirs, config,
     );
 
     cp = readCheckpointFile(hmDir);
-    expect(cp?.awaiting).toBe("approve-design-choice");
-
-    // Step 2b: Approve design-choice (skip design) → flows to SPEC → checkpoint at approve-spec
-    await resumeFromCheckpoint(
-      { awaiting: "approve-design-choice", message: "", timestamp: "2026-03-18T00:00:00Z", feedback: null },
-      dirs, config,
-    );
-
-    cp = readCheckpointFile(hmDir);
     expect(cp?.awaiting).toBe("approve-spec");
+    const logEntries2 = readLogEntries(hmDir);
+    expect(logEntries2.some((e) => e.action === "DESIGN_SKIPPED")).toBe(true);
     expect(existsSync(join(hmDir, "spec"))).toBe(true);
     const logEntries2b = readLogEntries(hmDir);
     expect(logEntries2b.some((e) => e.action === "SPEC_COMPLETE")).toBe(true);
@@ -280,18 +273,9 @@ describe("pipeline smoke test (e2e)", () => {
     let cp = readCheckpointFile(hmDir);
     expect(cp?.awaiting).toBe("approve-normalize");
 
-    // Resume — DESIGN writes approve-design-choice checkpoint
+    // Resume — DESIGN auto-skips (no UI keywords) → SPEC + PLAN run, stopAfterPlan honored → exits with no checkpoint
     await resumeFromCheckpoint(
       { awaiting: "approve-normalize", message: "", timestamp: "2026-03-18T00:00:00Z", feedback: null },
-      dirs, config,
-    );
-
-    cp = readCheckpointFile(hmDir);
-    expect(cp?.awaiting).toBe("approve-design-choice");
-
-    // Approve design-choice (skip) → SPEC + PLAN run, stopAfterPlan honored → exits with no checkpoint
-    await resumeFromCheckpoint(
-      { awaiting: "approve-design-choice", message: "", timestamp: "2026-03-18T00:00:00Z", feedback: null },
       dirs, config,
     );
 
