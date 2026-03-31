@@ -34,6 +34,12 @@ export interface HiveMindConfig {
   labDir?: string;
   designSystemPath?: string;
   designRulesPath?: string;
+  mcpServers?: Record<string, {
+    command: string;
+    args?: string[];
+    env?: Record<string, string>;
+    defer_loading?: boolean;
+  }>;
 }
 
 /** Derived from the central AGENT_REGISTRY — kept as a named export for backward compatibility. */

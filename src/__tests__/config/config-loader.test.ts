@@ -151,6 +151,114 @@ describe("validateConfig", () => {
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
   });
+
+  describe("mcpServers validation", () => {
+    it("accepts valid minimal mcpServers config (command only)", () => {
+      const result = validateConfig({ mcpServers: { test: { command: "echo" } } });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("accepts valid full mcpServers config with all fields", () => {
+      const result = validateConfig({
+        mcpServers: {
+          test: {
+            command: "npx",
+            args: ["-y", "pkg"],
+            env: { KEY: "val" },
+            defer_loading: true,
+          },
+        },
+      });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("rejects missing command field with specific error", () => {
+      const result = validateConfig({ mcpServers: { test: {} } });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("mcpServers.test") && e.includes("command"))).toBe(true);
+    });
+
+    it("rejects empty command string with specific error", () => {
+      const result = validateConfig({ mcpServers: { test: { command: "" } } });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("mcpServers.test") && e.includes("non-empty"))).toBe(true);
+    });
+
+    it("rejects invalid args type (non-array)", () => {
+      const result = validateConfig({ mcpServers: { test: { command: "echo", args: 123 } } });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("args") && e.includes("array"))).toBe(true);
+    });
+
+    it("rejects invalid env type (non-object)", () => {
+      const result = validateConfig({ mcpServers: { test: { command: "echo", env: "bad" } } });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("env") && e.includes("object"))).toBe(true);
+    });
+
+    it("rejects invalid defer_loading type (non-boolean)", () => {
+      const result = validateConfig({ mcpServers: { test: { command: "echo", defer_loading: "yes" } } });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("defer_loading") && e.includes("boolean"))).toBe(true);
+    });
+
+    it("accumulates multiple errors in a single entry without short-circuit", () => {
+      const result = validateConfig({ mcpServers: { test: { command: "", args: 123 } } });
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("isolates errors to the invalid entry when multiple servers present", () => {
+      const result = validateConfig({ mcpServers: { good: { command: "echo" }, bad: {} } });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("mcpServers.bad"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("mcpServers.good"))).toBe(false);
+    });
+
+    it("rejects mcpServers as a string (not an object)", () => {
+      const result = validateConfig({ mcpServers: "bad" });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("mcpServers") && e.includes("object"))).toBe(true);
+    });
+
+    it("rejects mcpServers: null", () => {
+      const result = validateConfig({ mcpServers: null });
+      expect(result.valid).toBe(false);
+    });
+
+    it("rejects mcpServers as an array", () => {
+      const result = validateConfig({ mcpServers: ["echo"] });
+      expect(result.valid).toBe(false);
+    });
+
+    it("produces zero errors when mcpServers is absent (backward compat)", () => {
+      const result = validateConfig({});
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("warns on empty env string values", () => {
+      const result = validateConfig({
+        mcpServers: { test: { command: "echo", env: { API_KEY: "" } } },
+      });
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.includes("API_KEY") && w.includes("empty string"))).toBe(true);
+    });
+
+    it("rejects non-object entry value with clear error", () => {
+      const result = validateConfig({ mcpServers: { test: "echo" } });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("mcpServers.test") && e.includes("non-null object"))).toBe(true);
+    });
+
+    it("accepts mcpServers: {} (empty object) with zero errors", () => {
+      const result = validateConfig({ mcpServers: {} });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+  });
 });
 
 describe("loadConfig", () => {
@@ -244,6 +352,24 @@ describe("loadConfig", () => {
     expect(config.stageTimeouts.planDecompose).toBe(7_200_000);
     expect(config.stageTimeouts.postExecute).toBe(3_600_000);
     expect(config.stageTimeouts.hardCap).toBe(172_800_000);
+  });
+
+  it("extracts and returns mcpServers when present in config", () => {
+    writeFileSync(
+      join(tmpDir, ".hivemindrc.json"),
+      JSON.stringify({ mcpServers: { test: { command: "echo" } } }),
+    );
+    const config = loadConfig(tmpDir);
+    expect(config.mcpServers?.test.command).toBe("echo");
+  });
+
+  it("returns undefined for mcpServers when field is absent", () => {
+    writeFileSync(
+      join(tmpDir, ".hivemindrc.json"),
+      JSON.stringify({ agentTimeout: 300_000 }),
+    );
+    const config = loadConfig(tmpDir);
+    expect(config.mcpServers).toBeUndefined();
   });
 
   it("accepts full valid config", () => {
