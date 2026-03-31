@@ -55,6 +55,7 @@ export function estimatePipelineCost(storyCount: number, maxAttempts: number = 3
 
 export class CostTracker {
   private entries: AgentCostEntry[] = [];
+  private storyDurations: number[] = [];
   private budgetUsd: number | undefined;
   private costLogPath: string | undefined;
 
@@ -166,6 +167,73 @@ export class CostTracker {
         durationMs: e.durationMs, costUsd: e.costUsd,
       })),
     };
+  }
+
+  /**
+   * Record the wall-clock duration of a completed story execution.
+   * Used by the orchestrator after each story finishes, regardless of --timeout mode.
+   */
+  recordStoryDuration(durationMs: number): void {
+    // LOW-02: guard NaN/Infinity — propagation silently disables effectiveTimeout in orchestrator
+    if (!Number.isFinite(durationMs) || durationMs < 0) return;
+    this.storyDurations.push(durationMs);
+  }
+
+  /**
+   * Returns the arithmetic mean of all recorded story durations.
+   * Returns 0 when no durations have been recorded (M-16 "no data" signal).
+   */
+  getRollingAverageDuration(): number {
+    if (this.storyDurations.length === 0) return 0;
+    const total = this.storyDurations.reduce((sum, d) => sum + d, 0);
+    return total / this.storyDurations.length;
+  }
+
+  /**
+   * Returns the number of stories that have completed execution.
+   * Derived from storyDurations.length, not entries.length (which counts per-agent records).
+   */
+  getCompletedStoryCount(): number {
+    return this.storyDurations.length;
+  }
+
+  /**
+   * Project the remaining timeout for unfinished stories based on rolling average.
+   * Formula: avg * remainingStories * bufferMultiplier + graceMs
+   * Returns at least 300_000ms (5-minute floor per M-14/C13).
+   */
+  projectRemainingTimeout(
+    remainingStories: number,
+    bufferMultiplier: number = 1.5,
+    graceMs: number = 3_600_000,
+  ): number {
+    const avg = this.getRollingAverageDuration();
+    const projected = avg * remainingStories * bufferMultiplier + graceMs;
+    return Math.max(projected, 300_000);
+  }
+
+  /**
+   * Check cost velocity: project total pipeline cost and compare against budget.
+   * Returns { overBudget, projectedUsd, insufficient }.
+   *
+   * When budgetUsd <= 0, returns insufficient: true to avoid permanent overBudget spam
+   * (MEDIUM-01: 2 * 0 = 0, any positive spend triggers overBudget).
+   */
+  checkCostVelocity(
+    remainingStories: number,
+    budgetUsd: number,
+  ): { overBudget: boolean; projectedUsd: number; insufficient: boolean } {
+    if (budgetUsd <= 0) {
+      return { overBudget: false, projectedUsd: 0, insufficient: true };
+    }
+    const completedCount = this.getCompletedStoryCount();
+    if (completedCount === 0) {
+      return { overBudget: false, projectedUsd: 0, insufficient: true };
+    }
+    const avgCost = this.getPipelineTotal() / completedCount;
+    const projectedUsd = avgCost * (completedCount + remainingStories);
+    const overBudget = projectedUsd > 2 * budgetUsd;
+    return { overBudget, projectedUsd, insufficient: false };
   }
 
   getSummary(): CostSummary {
