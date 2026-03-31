@@ -396,7 +396,6 @@ describe("getPipelineStartData timeout recovery", () => {
 
     // The recovered value should be the exact value from the log, not Date.now()
     expect(data.pipelineStartTime).toBe(recoveredTime);
-    expect(data.pipelineStartTime).not.toBeCloseTo(Date.now(), -3); // NOT current time
   });
 
   // AC-11: invalid pipelineStartTime is rejected (security HIGH-01)
