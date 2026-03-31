@@ -1,3 +1,20 @@
+## [0.22.0](https://github.com/ziyilam3999/hive-mind/compare/v0.21.4...v0.22.0) (2026-03-31)
+
+### Features
+
+* feat(US-01): implement archiveWorkspace function and integrate into orchestrator
+* feat(US-02): create workspace archive test suite
+* feat(US-01): add WebSearch/WebFetch to researcher and fixer registry entries
+
+### Bug Fixes
+
+* fix: auto-approve design-skip when no UI keywords detected (#196)
+* fix: prevent dashboard from spawning new browser on resume commands (#198)
+
+### Miscellaneous
+
+* docs: add release target tags to backlog items BL-011 to BL-018
+
 ## [0.21.4](https://github.com/ziyilam3999/hive-mind/compare/v0.21.3...v0.21.4) (2026-03-30)
 
 ### Bug Fixes
