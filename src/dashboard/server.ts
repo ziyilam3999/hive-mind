@@ -2080,6 +2080,7 @@ export async function startDashboard(
   portOverride?: number,
   wantOpenBrowser = true,
   reusePort?: number,
+  projectRoot?: string,
 ): Promise<DashboardHandle> {
   const workingDir = dirs.workingDir;
 
@@ -2193,10 +2194,23 @@ export async function startDashboard(
     try { writeFileSync(portFilePath, String(boundPort)); } catch { /* non-fatal */ }
   }
 
+  const logRoot = projectRoot ?? workingDir;
+  const browserMarkerPath = projectRoot ? join(projectRoot, ".browser-opened") : null;
+
   function shouldOpenBrowser(): boolean {
-    // Caller decides whether to open the browser (e.g. `start` = yes, `approve` = no).
-    // Fall back to port-file check so existing callers that don't pass the flag still work.
-    return wantOpenBrowser && !existsSync(portFilePath);
+    if (!wantOpenBrowser) {
+      dashLog(logRoot, `BROWSER_SKIP reason=wantOpenBrowser_false`);
+      return false;
+    }
+    if (existsSync(portFilePath)) {
+      dashLog(logRoot, `BROWSER_SKIP reason=port_file_exists`);
+      return false;
+    }
+    if (browserMarkerPath && existsSync(browserMarkerPath)) {
+      dashLog(logRoot, `BROWSER_SKIP reason=browser_marker_exists path=${browserMarkerPath}`);
+      return false;
+    }
+    return true;
   }
 
   function tryListen(port: number, attempt: number): Promise<DashboardHandle> {
@@ -2218,12 +2232,20 @@ export async function startDashboard(
 
         const wantBrowser = shouldOpenBrowser();
         writeDashboardPort(boundPort);
-        dashLog(workingDir, `DASHBOARD_START port=${boundPort} wantBrowser=${wantBrowser} wantOpenBrowser=${wantOpenBrowser} reusePort=${reusePort}`);
-        if (wantBrowser) openBrowser(url, workingDir);
-        else console.log(`Dashboard: ${url}`);
+        dashLog(logRoot, `DASHBOARD_START port=${boundPort} wantBrowser=${wantBrowser} wantOpenBrowser=${wantOpenBrowser} reusePort=${reusePort}`);
+        if (wantBrowser) {
+          openBrowser(url, workingDir);
+          if (browserMarkerPath) {
+            try { writeFileSync(browserMarkerPath, String(boundPort)); } catch { /* non-fatal */ }
+            dashLog(logRoot, `BROWSER_MARKER_WRITTEN path=${browserMarkerPath}`);
+          }
+        } else {
+          console.log(`Dashboard: ${url}`);
+        }
 
         resolvePromise({
           stop: () => {
+            dashLog(logRoot, `DASHBOARD_STOP port=${boundPort}`);
             clearInterval(pollTimer);
             server.close();
             try { unlinkSync(portFilePath); } catch { /* non-fatal */ }
@@ -2250,11 +2272,18 @@ export async function startDashboard(
         const url = `http://localhost:${boundPort}`;
         const wantBrowser = shouldOpenBrowser();
         writeDashboardPort(boundPort);
-        dashLog(workingDir, `DASHBOARD_START port=${boundPort} wantBrowser=${wantBrowser} wantOpenBrowser=${wantOpenBrowser} portOverride=${portOverride}`);
-        if (wantBrowser) openBrowser(url, workingDir);
-        else console.log(`Dashboard: ${url}`);
+        dashLog(logRoot, `DASHBOARD_START port=${boundPort} wantBrowser=${wantBrowser} wantOpenBrowser=${wantOpenBrowser} portOverride=${portOverride}`);
+        if (wantBrowser) {
+          openBrowser(url, workingDir);
+          if (browserMarkerPath) {
+            try { writeFileSync(browserMarkerPath, String(boundPort)); } catch { /* non-fatal */ }
+            dashLog(logRoot, `BROWSER_MARKER_WRITTEN path=${browserMarkerPath}`);
+          }
+        } else {
+          console.log(`Dashboard: ${url}`);
+        }
         resolvePromise({
-          stop: () => { clearInterval(pollTimer); server.close(); try { unlinkSync(portFilePath); } catch { /* non-fatal */ } },
+          stop: () => { dashLog(logRoot, `DASHBOARD_STOP port=${boundPort}`); clearInterval(pollTimer); server.close(); try { unlinkSync(portFilePath); } catch { /* non-fatal */ } },
           url,
           signalShutdown: (shutdownAt: number) => { cached.shutdownAt = shutdownAt; },
         });
@@ -2312,7 +2341,7 @@ export async function isDashboardRunning(workingDir: string): Promise<boolean> {
 
 /** Send a shutdown request to any existing dashboard and clean up the port file.
  *  Returns the old port number so callers can reuse it, or null if none. */
-export async function shutdownExistingDashboard(workingDir: string): Promise<number | null> {
+export async function shutdownExistingDashboard(workingDir: string, projectRoot?: string): Promise<number | null> {
   const portFile = join(workingDir, ".dashboard-port");
   if (!existsSync(portFile)) return null;
   const portStr = readFileSync(portFile, "utf-8").trim();
@@ -2323,7 +2352,7 @@ export async function shutdownExistingDashboard(workingDir: string): Promise<num
 
   if (isNaN(port)) return null;
 
-  dashLog(workingDir, `DASHBOARD_SHUTDOWN oldPort=${port}`);
+  dashLog(projectRoot ?? workingDir, `DASHBOARD_SHUTDOWN oldPort=${port}`);
 
   const { request } = await import("node:http");
   const payload = JSON.stringify({ workingDir: resolve(workingDir) });

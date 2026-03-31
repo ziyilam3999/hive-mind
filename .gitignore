@@ -11,3 +11,7 @@ CLAUDE.md
 .hive-mind-lab/
 .ai-workspace/
 tmp/
+
+# Dashboard runtime files
+.browser-opened
+.hive-mind-dashboard.log

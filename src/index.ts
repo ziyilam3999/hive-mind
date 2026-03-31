@@ -14,7 +14,7 @@ import { startDashboard, isDashboardRunning, shutdownExistingDashboard, dashLog 
 import type { DashboardHandle } from "./dashboard/server.js";
 
 export type ParsedCommand =
-  | { command: "start"; prdPath: string; silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean; force?: boolean }
+  | { command: "start"; prdPath: string; silent?: boolean; budget?: number; timeout?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean; force?: boolean }
   | { command: "bug"; reportPath: string; silent?: boolean; skipBaseline?: boolean }
   | { command: "approve"; silent?: boolean; skipBaseline?: boolean }
   | { command: "reject"; feedback: string; silent?: boolean }
@@ -59,13 +59,21 @@ export function parseArgs(argv: string[]): ParsedCommand {
       if (budget !== undefined && (isNaN(budget) || budget <= 0)) {
         throw new HiveMindError("--budget requires a positive number (dollars)");
       }
+      const timeoutIdx = args.indexOf("--timeout");
+      const timeout = timeoutIdx !== -1 ? Number(args[timeoutIdx + 1]) : undefined;
+      if (timeout !== undefined && (isNaN(timeout) || timeout <= 0)) {
+        throw new HiveMindError("--timeout requires a positive number (hours)");
+      }
+      if (timeout !== undefined && timeout > 168) {
+        throw new HiveMindError("--timeout cannot exceed 168 hours (1 week)");
+      }
       const skipBaseline = args.includes("--skip-baseline");
       const stopAfterPlan = args.includes("--stop-after-plan");
       const skipNormalize = args.includes("--skip-normalize");
       const greenfield = args.includes("--greenfield");
       const noDashboard = args.includes("--no-dashboard");
       const force = args.includes("--force");
-      return { command: "start", prdPath: args[prdIdx + 1], silent, budget, skipBaseline, stopAfterPlan, skipNormalize, greenfield, noDashboard, force };
+      return { command: "start", prdPath: args[prdIdx + 1], silent, budget, timeout, skipBaseline, stopAfterPlan, skipNormalize, greenfield, noDashboard, force };
     }
     case "bug": {
       const reportIdx = args.indexOf("--report");
@@ -166,9 +174,10 @@ export async function main(): Promise<void> {
 
   // Kill stale dashboard from a prior `start` process before spawning a fresh one
   const resumeCommands = new Set(["approve", "reject", "resume"]);
+  const cwd = process.cwd();
   let previousPort: number | null = null;
   if (resumeCommands.has(parsed.command)) {
-    previousPort = await shutdownExistingDashboard(dirs.workingDir);
+    previousPort = await shutdownExistingDashboard(dirs.workingDir, cwd);
     // Brief delay so the old server releases the port before we rebind
     if (previousPort !== null) await new Promise(r => setTimeout(r, 300));
   }
@@ -176,12 +185,12 @@ export async function main(): Promise<void> {
   if (wantsDashboard) {
     const dashboardAlive = await isDashboardRunning(dirs.workingDir);
     if (dashboardAlive) {
-      // Existing dashboard is serving the same working directory — skip
+      dashLog(cwd, `DASHBOARD_REUSE command=${parsed.command}`);
     } else {
       try {
         const shouldOpenBrowser = !resumeCommands.has(parsed.command);
-        dashLog(dirs.workingDir, `DASHBOARD_DECISION command=${parsed.command} shouldOpenBrowser=${shouldOpenBrowser} previousPort=${previousPort}`);
-        dashboardHandle = await startDashboard(dirs, config, undefined, shouldOpenBrowser, previousPort ?? undefined);
+        dashLog(cwd, `DASHBOARD_DECISION command=${parsed.command} shouldOpenBrowser=${shouldOpenBrowser} previousPort=${previousPort}`);
+        dashboardHandle = await startDashboard(dirs, config, undefined, shouldOpenBrowser, previousPort ?? undefined, cwd);
       } catch (err) {
         process.stderr.write(`Dashboard: ${err instanceof Error ? err.message : String(err)}\n`);
       }
@@ -209,7 +218,8 @@ export async function main(): Promise<void> {
       if (claudeCheck.exitCode !== 0) {
         throw new HiveMindError("claude CLI not found on PATH");
       }
-      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan, skipNormalize: parsed.skipNormalize, greenfield: parsed.greenfield, noDashboard: true, force: parsed.force });
+      const timeoutMs = parsed.timeout ? parsed.timeout * 3_600_000 : undefined;
+      await runPipeline(parsed.prdPath, dirs, config, { silent: parsed.silent, budget: parsed.budget, timeoutMs, skipBaseline: parsed.skipBaseline, stopAfterPlan: parsed.stopAfterPlan, skipNormalize: parsed.skipNormalize, greenfield: parsed.greenfield, noDashboard: true, force: parsed.force } as Parameters<typeof runPipeline>[3]);
       break;
     }
     case "bug": {
@@ -403,6 +413,7 @@ Options:
   --silent               Suppress desktop notifications
   --skip-baseline        Skip pre-execution test baseline capture
   --budget <dollars>     Set cost budget limit (start only)
+  --timeout <hours>      Set pipeline timeout in hours, max 168 (start only)
   --stop-after-plan      Run SPEC + PLAN only, then exit (start only)
   --skip-normalize       Skip normalize stage (start only)
   --greenfield           New project with no existing code (start only)

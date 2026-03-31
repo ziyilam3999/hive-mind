@@ -1,11 +1,10 @@
 import { join } from "node:path";
-import { mkdirSync, appendFileSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 
-/** Append a timestamped line to {workingDir}/logs/dashboard.log */
-export function dashLog(workingDir: string, msg: string): void {
+/** Append a timestamped line to {projectRoot}/.hive-mind-dashboard.log.
+ *  Accepts either a project root or a working directory for backwards compat. */
+export function dashLog(projectRoot: string, msg: string): void {
   try {
-    const logDir = join(workingDir, "logs");
-    mkdirSync(logDir, { recursive: true });
-    appendFileSync(join(logDir, "dashboard.log"), `${new Date().toISOString()} ${msg}\n`);
+    appendFileSync(join(projectRoot, ".hive-mind-dashboard.log"), `${new Date().toISOString()} ${msg}\n`);
   } catch { /* non-fatal — never break the pipeline for logging */ }
 }

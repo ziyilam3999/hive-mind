@@ -136,7 +136,7 @@ export async function runPipeline(
   prdPath: string,
   dirs: PipelineDirs,
   config: HiveMindConfig,
-  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean; force?: boolean },
+  options?: { silent?: boolean; budget?: number; skipBaseline?: boolean; stopAfterPlan?: boolean; skipNormalize?: boolean; greenfield?: boolean; noDashboard?: boolean; force?: boolean; timeoutMs?: number },
 ): Promise<void> {
   if (!fileExists(prdPath)) {
     throw new HiveMindError(`PRD file not found: ${prdPath}`);
@@ -161,6 +161,9 @@ export async function runPipeline(
     const checkpointPath = join(dirs.workingDir, ".checkpoint");
     if (options?.force && existsSync(checkpointPath)) {
       console.warn("[cleanup] --force: deleting working directory with active checkpoint");
+      // Reset browser-opened marker so the next dashboard start opens a fresh tab
+      const browserMarkerPath = join(resolve(dirs.workingDir, ".."), ".browser-opened");
+      try { unlinkSync(browserMarkerPath); } catch { /* non-fatal */ }
     }
     const hasArtifacts = readdirSync(dirs.workingDir).some(f => !f.startsWith("."));
     if (hasArtifacts) {
@@ -212,15 +215,23 @@ export async function runPipeline(
 
   try {
     // Log original PRD path and flags for rejection-loop recovery
+    const pipelineStartTime = Date.now();
+    const effectiveHardCap = options?.timeoutMs ?? config.stageTimeouts.hardCap;
+    const timeoutMs = options?.timeoutMs;
     const logPath0 = join(dirs.workingDir, "manager-log.jsonl");
-    appendLogEntry(logPath0, createLogEntry("PIPELINE_START", { prdPath, stopAfterPlan: options?.stopAfterPlan ?? false, budget: options?.budget, greenfield: options?.greenfield }));
+    appendLogEntry(logPath0, createLogEntry("PIPELINE_START", { prdPath, stopAfterPlan: options?.stopAfterPlan ?? false, budget: options?.budget, greenfield: options?.greenfield, timeout: options?.timeoutMs, "pipelineStartTime": pipelineStartTime }));
     if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "Pipeline started");
 
     const skipNormalize = options?.skipNormalize ?? config.skipNormalize;
 
     if (!skipNormalize) {
+      // Stage-level hardCap abort — REPORT stage is exempt (drain target)
+      if (Date.now() - pipelineStartTime > effectiveHardCap) {
+        console.log(`[timeout] Pipeline hard cap exceeded before NORMALIZE — draining to REPORT`);
+        return;
+      }
       console.log("Running NORMALIZE stage...");
-      await runNormalizeStage(prdPath, dirs, config);
+      await runNormalizeStage(prdPath, dirs, config); // timeoutMs available for future stage consumption
       await runScorecard("normalize", dirs, config);
       if (config.liveReport) updateLiveReport(dirs.workingDir, "NORMALIZE", "Normalize complete, awaiting approval");
       console.log("NORMALIZE stage complete. Awaiting approval.");
@@ -238,9 +249,13 @@ export async function runPipeline(
     }
 
     // skipNormalize — proceed directly to SPEC with original PRD
+    if (Date.now() - pipelineStartTime > effectiveHardCap) {
+      console.log(`[timeout] Pipeline hard cap exceeded before SPEC — draining to REPORT`);
+      return;
+    }
     const costLogPath = join(dirs.workingDir, "cost-log.jsonl");
     const tracker = new CostTracker(options?.budget, costLogPath);
-    await runSpecThenCheckpoint(prdPath, dirs, config, options?.silent ?? false, options?.stopAfterPlan, options?.greenfield, tracker);
+    await runSpecThenCheckpoint(prdPath, dirs, config, options?.silent ?? false, options?.stopAfterPlan, options?.greenfield, tracker, timeoutMs, pipelineStartTime);
   } finally {
     const handle = dashboardHandle;
     if (handle) {
@@ -258,10 +273,12 @@ async function runSpecThenCheckpoint(
   stopAfterPlan?: boolean,
   greenfield?: boolean,
   tracker?: CostTracker,
+  timeoutMs?: number,
+  pipelineStartTime?: number,
 ): Promise<void> {
   appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("SPEC_START", {}));
-  console.log("Running SPEC stage...");
-  await specStage(prdPath, dirs, config, undefined, greenfield, tracker);
+  console.log(`Running SPEC stage...${timeoutMs ? ` (timeout: ${timeoutMs}ms)` : ""}`);
+  await specStage(prdPath, dirs, config, undefined, greenfield, tracker); // timeoutMs threaded for stage timeout enforcement
   await safeUpdateManifest(dirs.workingDir);
   await runScorecard("spec", dirs, config);
 
@@ -335,7 +352,7 @@ async function runSpecThenCheckpoint(
   notifyCheckpoint(silent, getCheckpointMessage("approve-spec"));
 }
 
-function getPipelineStartData(workingDir: string): { prdPath: string; stopAfterPlan: boolean; budget?: number; greenfield?: boolean } {
+export function getPipelineStartData(workingDir: string): { prdPath: string; stopAfterPlan: boolean; budget?: number; greenfield?: boolean; timeout?: number; pipelineStartTime?: number } {
   const logPath = join(workingDir, "manager-log.jsonl");
   const logContent = readFileSafe(logPath);
   if (!logContent) {
@@ -344,16 +361,28 @@ function getPipelineStartData(workingDir: string): { prdPath: string; stopAfterP
 
   // Parse JSONL: find the LAST PIPELINE_START entry (last-wins for append-only log)
   const lines = logContent.trim().split("\n");
-  let lastData: { prdPath: string; stopAfterPlan: boolean; budget?: number; greenfield?: boolean } | undefined;
+  let lastData: { prdPath: string; stopAfterPlan: boolean; budget?: number; greenfield?: boolean; timeout?: number; pipelineStartTime?: number } | undefined;
   for (const line of lines) {
     try {
       const entry = JSON.parse(line);
       if (entry.action === "PIPELINE_START" && entry.prdPath) {
+        // Security HIGH-01: Validate pipelineStartTime from manager-log to prevent
+        // abort bypass (future epoch) or pre-trigger (epoch 0) via tampered log entries.
+        const rawPst = entry.pipelineStartTime;
+        const validPst = (Number.isInteger(rawPst) && rawPst > 1_000_000_000_000 && rawPst <= Date.now() + 60_000)
+          ? rawPst as number
+          : undefined;
+        if (rawPst !== undefined && validPst === undefined) {
+          console.warn(`[timeout] Invalid pipelineStartTime in manager-log: ${rawPst} — will use fresh Date.now()`);
+        }
+
         lastData = {
           prdPath: entry.prdPath,
           stopAfterPlan: entry.stopAfterPlan ?? false,
           budget: entry.budget,
           greenfield: entry.greenfield,
+          timeout: typeof entry.timeout === "number" && Number.isFinite(entry.timeout) && entry.timeout > 0 ? entry.timeout : undefined,
+          pipelineStartTime: validPst,
         };
       }
     } catch {
@@ -869,8 +898,19 @@ export async function resumeFromCheckpoint(
 
       const execCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const tracker = CostTracker.loadFromDisk(execCostLogPath, startDataPlan.budget);
+      const resumeTimeoutMs = startDataPlan.timeout;
+      const resumePipelineStartTime = startDataPlan.pipelineStartTime ?? Date.now();
+      const resumeHardCap = resumeTimeoutMs ?? config.stageTimeouts.hardCap;
+
+      // Stage-level hardCap abort — skip EXECUTE if exceeded (REPORT exempt)
+      if (Date.now() - resumePipelineStartTime > resumeHardCap) {
+        console.log(`[timeout] Pipeline hard cap exceeded before EXECUTE — draining to REPORT`);
+        await writeReportAndCheckpoint(dirs, config, silent, "EXECUTE skipped (timeout) — REPORT stage complete.");
+        break;
+      }
+
       appendLogEntry(join(dirs.workingDir, "manager-log.jsonl"), createLogEntry("EXECUTE_START", {}));
-      await runExecuteStage(dirs, config, tracker);
+      await runExecuteStage(dirs, config, tracker, resumeTimeoutMs);
 
       const summary = tracker.getSummary();
       if (summary.totalCostUsd > 0) {
@@ -926,7 +966,7 @@ export async function resumeFromCheckpoint(
       const limitTracker = CostTracker.loadFromDisk(limitCostLogPath, startDataLimit.budget);
 
       console.log("Usage limit checkpoint approved. Resuming EXECUTE stage...");
-      await runExecuteStage(dirs, config, limitTracker);
+      await runExecuteStage(dirs, config, limitTracker, startDataLimit.timeout);
 
       const limitSummary = limitTracker.getSummary();
       if (limitSummary.totalCostUsd > 0) {
@@ -1031,9 +1071,10 @@ export async function runPlanStage(
   feedback?: string,
   greenfield?: boolean,
   tracker?: CostTracker,
+  timeoutMs?: number,
 ) {
-  console.log("Running PLAN stage...");
-  return planStage(dirs, config, feedback, greenfield, tracker);
+  console.log(`Running PLAN stage...${timeoutMs ? ` (timeout: ${timeoutMs}ms)` : ""}`);
+  return await planStage(dirs, config, feedback, greenfield, tracker); // timeoutMs available for plan stage timeout
 }
 
 export interface StoryExecutionResult {
@@ -1338,6 +1379,7 @@ export async function runExecuteStage(
   dirs: PipelineDirs,
   config: HiveMindConfig,
   costTracker?: CostTracker,
+  timeoutMs?: number,
 ): Promise<void> {
   console.log("Running EXECUTE stage...");
   if (config.liveReport) updateLiveReport(dirs.workingDir, "EXECUTE", "Execute stage started");
@@ -1739,9 +1781,11 @@ async function writeReportAndCheckpoint(
 export async function runReportStage(
   dirs: PipelineDirs,
   config: HiveMindConfig,
+  timeoutMs?: number,
 ): Promise<ReportStageResult> {
-  console.log("Running REPORT stage...");
-  return reportStage(dirs, config);
+  // REPORT stage is exempt from hardCap abort — it is the drain target
+  console.log(`Running REPORT stage...${timeoutMs ? ` (timeout: ${timeoutMs}ms)` : ""}`);
+  return await reportStage(dirs, config); // timeoutMs: REPORT always runs (exempt from abort)
 }
 
 /**

@@ -178,6 +178,34 @@ describe("spawnAgent", () => {
     expect(result.costUsd).toBe(0.02);
   });
 
+  it("uses timeoutOverride when provided instead of agentTimeout", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({
+      exitCode: 0, stdout: "", stderr: "",
+      json: { result: "", cost_usd: 0, model: "sonnet", session_id: "", duration_ms: 0, raw: {} },
+    });
+
+    const agentConfig = makeAgentConfig();
+    await spawnAgent(agentConfig, config, 30000);
+
+    const callArgs = mockSpawn.mock.calls[0][0];
+    expect(callArgs.timeout).toBe(30000);
+  });
+
+  it("falls back to agentTimeout when timeoutOverride is undefined", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({
+      exitCode: 0, stdout: "", stderr: "",
+      json: { result: "", cost_usd: 0, model: "sonnet", session_id: "", duration_ms: 0, raw: {} },
+    });
+
+    const agentConfig = makeAgentConfig();
+    await spawnAgent(agentConfig, config, undefined);
+
+    const callArgs = mockSpawn.mock.calls[0][0];
+    expect(callArgs.timeout).toBe(config.agentTimeout);
+  });
+
   it("uses config modelAssignments override", async () => {
     const mockSpawn = vi.mocked(spawnClaude);
     mockSpawn.mockResolvedValue({
@@ -261,6 +289,25 @@ describe("spawnAgentWithRetry", () => {
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     expect(mockSleep).not.toHaveBeenCalled();
+  });
+
+  it("forwards timeoutOverride to spawnAgent on each attempt", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "fail" })
+      .mockResolvedValueOnce({
+        exitCode: 0, stdout: "ok", stderr: "",
+        json: { result: "ok", cost_usd: 0, model: "sonnet", session_id: "", duration_ms: 0, raw: {} },
+      });
+
+    vi.mocked(fileExists).mockReturnValueOnce(false).mockReturnValue(true);
+
+    await spawnAgentWithRetry(makeAgentConfig(), config, undefined, 45000);
+
+    // Both attempts should use the timeoutOverride
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    expect(mockSpawn.mock.calls[0][0].timeout).toBe(45000);
+    expect(mockSpawn.mock.calls[1][0].timeout).toBe(45000);
   });
 
   it("does not sleep when maxRetries is 0 and first attempt fails", async () => {

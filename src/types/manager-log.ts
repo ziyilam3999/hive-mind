@@ -77,4 +77,6 @@ export interface ManagerLogEntry {
   greenfield?: boolean;
   waveNumber?: number;
   registryFile?: string;
+  timeout?: number;
+  pipelineStartTime?: number;
 }
