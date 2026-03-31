@@ -375,13 +375,10 @@ export async function main(): Promise<void> {
   }
   } finally {
     if (dashboardHandle) {
-      // If pipeline is paused at checkpoint, keep dashboard alive — its HTTP server
-      // keeps the event loop running so the process stays up until next command.
-      const checkpointExists = fileExists(join(dirs.workingDir, ".checkpoint"));
-      if (!checkpointExists) {
-        dashboardHandle.signalShutdown(Date.now() + 60_000);
-        setTimeout(() => dashboardHandle!.stop(), 60_000);
-      }
+      // Always shut down dashboard so the process can exit and release the PID lock.
+      // The next command (approve/reject) will start its own dashboard instance.
+      dashboardHandle.signalShutdown(Date.now() + 5_000);
+      setTimeout(() => dashboardHandle!.stop(), 5_000);
     }
   }
 }
