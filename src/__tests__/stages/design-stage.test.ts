@@ -754,7 +754,7 @@ interactivity: static
       expect(vi.mocked(appendLogEntry)).toHaveBeenCalled();
     });
 
-    it("does NOT write checkpoint when no UI keywords detected (auto-skip)", async () => {
+    it("writes approve-design-choice checkpoint for user to decide", async () => {
       mkdirSync(join(workingDir, "normalize"), { recursive: true });
       writeFileSync(
         join(workingDir, "normalize", "normalized-prd.md"),
@@ -765,10 +765,13 @@ interactivity: static
 
       await runDesignStage(dirs, config);
 
-      expect(vi.mocked(mockCheckpoint)).not.toHaveBeenCalled();
+      expect(vi.mocked(mockCheckpoint)).toHaveBeenCalledWith(
+        workingDir,
+        expect.objectContaining({ awaiting: "approve-design-choice" }),
+      );
     });
 
-    it("writes approve-design-questionnaire checkpoint when UI keywords detected", async () => {
+    it("writes approve-design-choice checkpoint even when UI keywords present", async () => {
       mkdirSync(join(workingDir, "normalize"), { recursive: true });
       writeFileSync(
         join(workingDir, "normalize", "normalized-prd.md"),
@@ -782,7 +785,7 @@ interactivity: static
       expect(vi.mocked(mockCheckpoint)).toHaveBeenCalledWith(
         workingDir,
         expect.objectContaining({
-          awaiting: "approve-design-questionnaire",
+          awaiting: "approve-design-choice",
         }),
       );
     });
@@ -912,11 +915,11 @@ interactivity: static
 
       // Verify that checkpoint was written with metadata.customMessage
       const calls = vi.mocked(mockCheckpoint).mock.calls;
-      const questionnaireCall = calls.find(
-        (c) => (c[1] as { awaiting: string }).awaiting === "approve-design-questionnaire",
+      const designChoiceCall = calls.find(
+        (c) => (c[1] as { awaiting: string }).awaiting === "approve-design-choice",
       );
-      expect(questionnaireCall).toBeDefined();
-      const checkpoint = questionnaireCall![1] as { metadata?: { customMessage?: string } };
+      expect(designChoiceCall).toBeDefined();
+      const checkpoint = designChoiceCall![1] as { metadata?: { customMessage?: string } };
       expect(checkpoint.metadata).toBeDefined();
       expect(checkpoint.metadata!.customMessage).toBeDefined();
       expect(typeof checkpoint.metadata!.customMessage).toBe("string");
