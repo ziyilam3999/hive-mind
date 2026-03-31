@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import type { PipelineDirs } from "../types/pipeline-dirs.js";
 import type { HiveMindConfig } from "../config/schema.js";
 import { openBrowser } from "./browser.js";
+import { dashLog } from "./log.js";
+export { dashLog } from "./log.js";
 
 const POLL_INTERVAL_MS = 2000;
 const PAGE_SIZE = 200;
@@ -2077,6 +2079,7 @@ export async function startDashboard(
   _config: HiveMindConfig,
   portOverride?: number,
   wantOpenBrowser = true,
+  reusePort?: number,
 ): Promise<DashboardHandle> {
   const workingDir = dirs.workingDir;
 
@@ -2215,7 +2218,8 @@ export async function startDashboard(
 
         const wantBrowser = shouldOpenBrowser();
         writeDashboardPort(boundPort);
-        if (wantBrowser) openBrowser(url);
+        dashLog(workingDir, `DASHBOARD_START port=${boundPort} wantBrowser=${wantBrowser} wantOpenBrowser=${wantOpenBrowser} reusePort=${reusePort}`);
+        if (wantBrowser) openBrowser(url, workingDir);
         else console.log(`Dashboard: ${url}`);
 
         resolvePromise({
@@ -2246,7 +2250,8 @@ export async function startDashboard(
         const url = `http://localhost:${boundPort}`;
         const wantBrowser = shouldOpenBrowser();
         writeDashboardPort(boundPort);
-        if (wantBrowser) openBrowser(url);
+        dashLog(workingDir, `DASHBOARD_START port=${boundPort} wantBrowser=${wantBrowser} wantOpenBrowser=${wantOpenBrowser} portOverride=${portOverride}`);
+        if (wantBrowser) openBrowser(url, workingDir);
         else console.log(`Dashboard: ${url}`);
         resolvePromise({
           stop: () => { clearInterval(pollTimer); server.close(); try { unlinkSync(portFilePath); } catch { /* non-fatal */ } },
@@ -2257,10 +2262,11 @@ export async function startDashboard(
     });
   }
 
-  // If a previous dashboard wrote a port file but is now dead, try that port
-  // first so we reuse the same port and avoid opening a new browser tab.
+  // Prefer reusePort (from shutdownExistingDashboard), then port file, then default.
   let preferredPort = DEFAULT_PORT;
-  if (existsSync(portFilePath)) {
+  if (reusePort !== undefined && reusePort >= DEFAULT_PORT && reusePort < DEFAULT_PORT + MAX_PORT_ATTEMPTS) {
+    preferredPort = reusePort;
+  } else if (existsSync(portFilePath)) {
     const prev = parseInt(readFileSync(portFilePath, "utf-8").trim(), 10);
     if (!isNaN(prev) && prev >= DEFAULT_PORT && prev < DEFAULT_PORT + MAX_PORT_ATTEMPTS) {
       preferredPort = prev;
@@ -2304,29 +2310,32 @@ export async function isDashboardRunning(workingDir: string): Promise<boolean> {
   }
 }
 
-/** Send a shutdown request to any existing dashboard and clean up the port file. */
-export async function shutdownExistingDashboard(workingDir: string): Promise<void> {
+/** Send a shutdown request to any existing dashboard and clean up the port file.
+ *  Returns the old port number so callers can reuse it, or null if none. */
+export async function shutdownExistingDashboard(workingDir: string): Promise<number | null> {
   const portFile = join(workingDir, ".dashboard-port");
-  if (!existsSync(portFile)) return;
+  if (!existsSync(portFile)) return null;
   const portStr = readFileSync(portFile, "utf-8").trim();
   const port = parseInt(portStr, 10);
 
   // Always delete port file — even if HTTP shutdown fails (stale file cleanup)
   try { unlinkSync(portFile); } catch { /* non-fatal */ }
 
-  if (isNaN(port)) return;
+  if (isNaN(port)) return null;
+
+  dashLog(workingDir, `DASHBOARD_SHUTDOWN oldPort=${port}`);
 
   const { request } = await import("node:http");
   const payload = JSON.stringify({ workingDir: resolve(workingDir) });
 
-  return new Promise<void>((res) => {
+  return new Promise<number | null>((res) => {
     const req = request(
       { hostname: "localhost", port, path: "/api/shutdown", method: "POST", timeout: 2000,
         headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } },
-      () => { res(); },
+      () => { res(port); },
     );
-    req.on("error", () => res());
-    req.on("timeout", () => { req.destroy(); res(); });
+    req.on("error", () => res(port));
+    req.on("timeout", () => { req.destroy(); res(port); });
     req.write(payload);
     req.end();
   });

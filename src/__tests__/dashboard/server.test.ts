@@ -273,9 +273,10 @@ describe("startDashboard", () => {
 
     expect(existsSync(portFile)).toBe(true);
 
-    await shutdownExistingDashboard(workingDir);
+    const returnedPort = await shutdownExistingDashboard(workingDir);
     handle = null; // Server is shut down
 
+    expect(returnedPort).toBeTypeOf("number");
     expect(existsSync(portFile)).toBe(false);
 
     // Wait for server to fully close
@@ -297,13 +298,14 @@ describe("startDashboard", () => {
     const portFile = join(workingDir, ".dashboard-port");
     writeFileSync(portFile, "9999"); // Stale port file, no server on this port
 
-    await shutdownExistingDashboard(workingDir);
+    const returnedPort = await shutdownExistingDashboard(workingDir);
 
+    expect(returnedPort).toBe(9999);
     expect(existsSync(portFile)).toBe(false);
   });
 
   it("shutdownExistingDashboard is a no-op when no port file exists", async () => {
-    // Should not throw
-    await shutdownExistingDashboard(workingDir);
+    const returnedPort = await shutdownExistingDashboard(workingDir);
+    expect(returnedPort).toBeNull();
   });
 });

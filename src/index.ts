@@ -10,7 +10,7 @@ import { HiveMindError } from "./utils/errors.js";
 import { join } from "node:path";
 import { realpathSync, existsSync, readFileSync } from "node:fs";
 import { approveCheckpoint, rejectCheckpoint } from "./state/checkpoint-ops.js";
-import { startDashboard, isDashboardRunning, shutdownExistingDashboard } from "./dashboard/server.js";
+import { startDashboard, isDashboardRunning, shutdownExistingDashboard, dashLog } from "./dashboard/server.js";
 import type { DashboardHandle } from "./dashboard/server.js";
 
 export type ParsedCommand =
@@ -124,8 +124,11 @@ export async function main(): Promise<void> {
 
   // Kill stale dashboard from a prior `start` process before spawning a fresh one
   const resumeCommands = new Set(["approve", "reject", "resume"]);
+  let previousPort: number | null = null;
   if (resumeCommands.has(parsed.command)) {
-    await shutdownExistingDashboard(dirs.workingDir);
+    previousPort = await shutdownExistingDashboard(dirs.workingDir);
+    // Brief delay so the old server releases the port before we rebind
+    if (previousPort !== null) await new Promise(r => setTimeout(r, 300));
   }
 
   if (wantsDashboard) {
@@ -135,7 +138,8 @@ export async function main(): Promise<void> {
     } else {
       try {
         const shouldOpenBrowser = !resumeCommands.has(parsed.command);
-        dashboardHandle = await startDashboard(dirs, config, undefined, shouldOpenBrowser);
+        dashLog(dirs.workingDir, `DASHBOARD_DECISION command=${parsed.command} shouldOpenBrowser=${shouldOpenBrowser} previousPort=${previousPort}`);
+        dashboardHandle = await startDashboard(dirs, config, undefined, shouldOpenBrowser, previousPort ?? undefined);
       } catch (err) {
         process.stderr.write(`Dashboard: ${err instanceof Error ? err.message : String(err)}\n`);
       }
