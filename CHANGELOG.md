@@ -1,3 +1,15 @@
+## [0.23.0](https://github.com/ziyilam3999/hive-mind/compare/v0.22.0...v0.23.0) (2026-03-31)
+
+### Features
+
+* feat(US-02): add deprecation marker to compliance stage module
+* feat(US-01): remove compliance invocations from orchestrator and update tests
+* feat(US-02): add web-tool test assertions and exhaustive sweep to spawner tests
+
+### Bug Fixes
+
+* fix: reuse dashboard port across resume commands to keep browser tabs alive (#202)
+
 ## [0.22.0](https://github.com/ziyilam3999/hive-mind/compare/v0.21.4...v0.22.0) (2026-03-31)
 
 ### Features
