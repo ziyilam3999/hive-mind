@@ -50,4 +50,4 @@ TypeScript ESM project. npm-publishable CLI tool.
 - Run `npx tsc --noEmit` after writing tests to catch mismatches before `npm test`
 
 ## Diagnostic Logs
-- `{workingDir}/logs/dashboard.log` — dashboard lifecycle events (start, shutdown, browser open decisions, port selection)
+- `.hive-mind-dashboard.log` (project root) — dashboard lifecycle events (DASHBOARD_START, DASHBOARD_STOP, DASHBOARD_SHUTDOWN, DASHBOARD_DECISION, DASHBOARD_REUSE, BROWSER_OPEN, BROWSER_SKIP, BROWSER_MARKER_WRITTEN)

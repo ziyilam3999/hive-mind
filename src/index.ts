@@ -174,9 +174,10 @@ export async function main(): Promise<void> {
 
   // Kill stale dashboard from a prior `start` process before spawning a fresh one
   const resumeCommands = new Set(["approve", "reject", "resume"]);
+  const cwd = process.cwd();
   let previousPort: number | null = null;
   if (resumeCommands.has(parsed.command)) {
-    previousPort = await shutdownExistingDashboard(dirs.workingDir);
+    previousPort = await shutdownExistingDashboard(dirs.workingDir, cwd);
     // Brief delay so the old server releases the port before we rebind
     if (previousPort !== null) await new Promise(r => setTimeout(r, 300));
   }
@@ -184,12 +185,12 @@ export async function main(): Promise<void> {
   if (wantsDashboard) {
     const dashboardAlive = await isDashboardRunning(dirs.workingDir);
     if (dashboardAlive) {
-      // Existing dashboard is serving the same working directory — skip
+      dashLog(cwd, `DASHBOARD_REUSE command=${parsed.command}`);
     } else {
       try {
         const shouldOpenBrowser = !resumeCommands.has(parsed.command);
-        dashLog(dirs.workingDir, `DASHBOARD_DECISION command=${parsed.command} shouldOpenBrowser=${shouldOpenBrowser} previousPort=${previousPort}`);
-        dashboardHandle = await startDashboard(dirs, config, undefined, shouldOpenBrowser, previousPort ?? undefined);
+        dashLog(cwd, `DASHBOARD_DECISION command=${parsed.command} shouldOpenBrowser=${shouldOpenBrowser} previousPort=${previousPort}`);
+        dashboardHandle = await startDashboard(dirs, config, undefined, shouldOpenBrowser, previousPort ?? undefined, cwd);
       } catch (err) {
         process.stderr.write(`Dashboard: ${err instanceof Error ? err.message : String(err)}\n`);
       }
