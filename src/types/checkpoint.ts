@@ -9,6 +9,7 @@ export type CheckpointType =
   | "verify"
   | "ship"
   | "approve-design-skip"
+  | "approve-design-choice"
   | "approve-design-questionnaire"
   | "approve-design-prototype";
 

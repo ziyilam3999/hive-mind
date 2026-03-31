@@ -821,48 +821,23 @@ export async function runDesignStage(
   // Log design start
   appendLogEntry(logPath, createLogEntry("DESIGN_START", { reason: "Design stage initiated" }));
 
-  // Step 1: Read normalized PRD and detect UI keywords
+  // Step 1: Ask the user whether this PRD needs UI design
+  // (Replaces faulty auto-detection that matched keywords in "Out of Scope" sections)
   const normalizedPrdPath = join(dirs.workingDir, "normalize", "normalized-prd.md");
   if (!existsSync(normalizedPrdPath)) {
     appendLogEntry(logPath, createLogEntry("DESIGN_SKIPPED", { reason: "No normalized PRD found" }));
-    writeCheckpoint(checkpointDir, {
-      awaiting: "approve-design-skip",
-      message: "No normalized PRD found. Skip design stage?",
-      timestamp: new Date().toISOString(),
-      feedback: null,
-      metadata: { customMessage: "No normalized PRD found — design stage will be skipped." },
-    });
+    console.log("[design] No normalized PRD found — skipping design stage.");
     return;
   }
 
-  const prdContent = readFileSync(normalizedPrdPath, "utf-8");
-  const hasUI = detectUIKeywords(prdContent);
-
-  if (!hasUI) {
-    appendLogEntry(logPath, createLogEntry("DESIGN_SKIPPED", { reason: "No UI keywords detected in PRD" }));
-    console.log("[design] No UI keywords detected — skipping design stage.");
-    return;
-  }
-
-  // Step 2: Generate questionnaire
-  const questionnairePath = await generateQuestionnaire(dirs, config, dirs.workingDir);
-  appendLogEntry(logPath, createLogEntry("DESIGN_QUESTIONNAIRE_COMPLETE", {
-    reason: `Questionnaire generated at ${questionnairePath}`,
-  }));
-
-  // Write checkpoint for user to review/edit the questionnaire
   writeCheckpoint(checkpointDir, {
-    awaiting: "approve-design-questionnaire",
-    message: "Review and edit the design questionnaire, then approve.",
+    awaiting: "approve-design-choice",
+    message: "Does this PRD need UI design? Approve to skip design, reject to run design stage.",
     timestamp: new Date().toISOString(),
     feedback: null,
-    metadata: {
-      customMessage: `Review and edit the design questionnaire at ${questionnairePath}, then approve.`,
-    },
+    metadata: { customMessage: "Does this PRD need UI design? Run: hive-mind approve to skip design and proceed to SPEC, or hive-mind reject --feedback 'needs UI' to run the design stage." },
   });
-
-  // Note: In the actual pipeline, the orchestrator resumes from this checkpoint.
-  // The remaining steps (prototype generation, token extraction) run after
-  // the user approves the questionnaire. For the stage function itself,
-  // we return here and let the orchestrator handle resume flow.
+  console.log("[design] Awaiting user decision: skip or run design stage.");
+  // Orchestrator resumes from approve-design-choice checkpoint.
+  // If user approves (skip) → flow to SPEC. If user rejects → orchestrator generates questionnaire.
 }
