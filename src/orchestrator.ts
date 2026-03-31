@@ -426,14 +426,8 @@ export async function resumeFromCheckpoint(
       const normCostLogPath = join(dirs.workingDir, "cost-log.jsonl");
       const normalizeTracker = CostTracker.loadFromDisk(normCostLogPath, startData.budget);
       await runDesignStage(dirs, config, normalizeTracker);
-
-      // If design auto-skipped (no new checkpoint written), flow directly to SPEC.
-      // The recovery checkpoint (approve-normalize) may still exist — check if design wrote a different one.
-      const postDesignCpPath = join(dirs.workingDir, ".checkpoint");
-      const postDesignCp = existsSync(postDesignCpPath) ? JSON.parse(readFileSafe(postDesignCpPath) ?? "{}") : null;
-      if (!postDesignCp || postDesignCp.awaiting === "approve-normalize") {
-        await runSpecThenCheckpoint(normalizedPrd, dirs, config, silent, startData.stopAfterPlan, startData.greenfield, normalizeTracker);
-      }
+      // Design stage always writes a checkpoint (approve-design-skip or approve-design-questionnaire).
+      // Orchestrator waits for the user to approve/reject before proceeding.
       break;
     }
     case "approve-design-skip": {

@@ -120,13 +120,13 @@ describe("crash recovery checkpoints", () => {
         feedback: null,
       };
 
-      // DESIGN stage auto-skips (no UI keywords) → flows to SPEC checkpoint.
+      // DESIGN stage always writes approve-design-skip checkpoint now.
       await resumeFromCheckpoint(checkpoint, dirs, config);
 
-      // Final checkpoint should be approve-spec (DESIGN auto-skipped)
+      // Final checkpoint should be approve-design-skip (design always asks user)
       expect(existsSync(join(testDir, ".checkpoint"))).toBe(true);
       const final = JSON.parse(readFileSync(join(testDir, ".checkpoint"), "utf-8"));
-      expect(final.awaiting).toBe("approve-spec");
+      expect(final.awaiting).toBe("approve-design-skip");
     } finally {
       consoleSpy.mockRestore();
       cleanup();

@@ -848,14 +848,27 @@ export async function runDesignStage(
 
   const prdContent = readFileSync(normalizedPrdPath, "utf-8");
   const hasUI = detectUIKeywords(prdContent);
+  const detectedKeywords = UI_KEYWORDS.filter((kw) => {
+    const pattern = new RegExp(`\\b${kw.replace(/\s+/g, "\\s+")}\\b`, "i");
+    return pattern.test(prdContent);
+  });
 
-  if (!hasUI) {
-    appendLogEntry(logPath, createLogEntry("DESIGN_SKIPPED", { reason: "No UI keywords detected in PRD" }));
-    console.log("[design] No UI keywords detected — skipping design stage.");
-    return;
-  }
+  // Always ask the user whether design is needed (keyword detection is a hint, not a gate)
+  const hint = hasUI
+    ? `UI keywords detected: ${detectedKeywords.join(", ")} — design recommended`
+    : "No UI keywords detected — skip recommended";
+  appendLogEntry(logPath, createLogEntry("DESIGN_CHOICE_PENDING", { reason: hint }));
+  writeCheckpoint(checkpointDir, {
+    awaiting: "approve-design-skip",
+    message: hint,
+    timestamp: new Date().toISOString(),
+    feedback: null,
+    metadata: { customMessage: `${hint}. Approve to skip design, or reject with feedback to enter design flow.`, detectedKeywords },
+  });
+  console.log(`[design] ${hint}. Awaiting user decision.`);
+  return;
 
-  // Step 2: Generate questionnaire
+  // Step 2: Generate questionnaire (reached only via approve-design-skip rejection in orchestrator)
   const questionnairePath = await generateQuestionnaire(dirs, config, dirs.workingDir);
   appendLogEntry(logPath, createLogEntry("DESIGN_QUESTIONNAIRE_COMPLETE", {
     reason: `Questionnaire generated at ${questionnairePath}`,
