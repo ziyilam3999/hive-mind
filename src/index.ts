@@ -134,7 +134,8 @@ export async function main(): Promise<void> {
       // Existing dashboard is serving the same working directory — skip
     } else {
       try {
-        dashboardHandle = await startDashboard(dirs, config);
+        const shouldOpenBrowser = !resumeCommands.has(parsed.command);
+        dashboardHandle = await startDashboard(dirs, config, undefined, shouldOpenBrowser);
       } catch (err) {
         process.stderr.write(`Dashboard: ${err instanceof Error ? err.message : String(err)}\n`);
       }
