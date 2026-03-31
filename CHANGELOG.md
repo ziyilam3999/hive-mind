@@ -1,3 +1,9 @@
+## [0.23.3](https://github.com/ziyilam3999/hive-mind/compare/v0.23.2...v0.23.3) (2026-03-31)
+
+### Bug Fixes
+
+* fix: dashboard hang after checkpoint, design-skip warning, double output detection (#216)
+
 ## [0.23.2](https://github.com/ziyilam3999/hive-mind/compare/v0.23.1...v0.23.2) (2026-03-31)
 
 ### Bug Fixes
