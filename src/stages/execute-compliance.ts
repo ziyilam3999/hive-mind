@@ -26,6 +26,7 @@ export interface ComplianceCheckResult {
  *
  * Non-fatal (P39): crash, missing output, or corrupt report → skip compliance check,
  * log warning, proceed to VERIFY.
+ * @deprecated Compliance merged into VERIFY ECs as of R1 Story 5. See .claude/skills/compliance-ec-rules.md.
  */
 export async function runComplianceCheck(
   story: Story,
