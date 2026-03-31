@@ -25,7 +25,7 @@ export interface AgentRegistryEntry {
 export const AGENT_REGISTRY: Record<AgentType, AgentRegistryEntry> = {
   "researcher": {
     modelTier: "opus",
-    tools: OUTPUT_TOOLS,
+    tools: [...OUTPUT_TOOLS, "WebSearch", "WebFetch"],
     job: "Read PRD + codebase + knowledge-base/*, produce research-report.md with justification analysis",
     rules: [
       "EVIDENCE-RULE: Cite file:line for every factual claim. No unsupported assertions. [Wrong: 'The codebase uses X'] [Right: 'src/foo.ts:42 exports X']",
@@ -174,7 +174,7 @@ export const AGENT_REGISTRY: Record<AgentType, AgentRegistryEntry> = {
   },
   "fixer": {
     modelTier: "sonnet",
-    tools: DEV_TOOLS,
+    tools: [...DEV_TOOLS, "WebSearch"],
     job: "Apply fixes guided by diagnosis or test-report",
     rules: [
       "FULL-RE-UAT: After applying fixes, VERIFY re-runs from E.3 (tester). Compilation-only verification is NEVER sufficient. [Wrong: 'tsc passes so the fix works'] [Right: 'Applied fix, awaiting full re-test from E.3']",
