@@ -1,3 +1,9 @@
+## [0.23.4](https://github.com/ziyilam3999/hive-mind/compare/v0.23.3...v0.23.4) (2026-03-31)
+
+### Bug Fixes
+
+* fix: prevent duplicate browser tabs, move dashboard log to project root (#219)
+
 ## [0.23.3](https://github.com/ziyilam3999/hive-mind/compare/v0.23.2...v0.23.3) (2026-03-31)
 
 ### Bug Fixes
