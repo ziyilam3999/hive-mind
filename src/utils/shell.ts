@@ -1,5 +1,22 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const activeTempFiles = new Set<string>();
+let windowsSecretWarningSent = false;
+
+process.on('exit', () => {
+  for (const tempFile of activeTempFiles) {
+    try { unlinkSync(tempFile); } catch { /* best-effort cleanup */ }
+  }
+});
+
+/** Exported for test isolation — call in afterEach to prevent cross-test state leakage. */
+export function clearTempFileTracker(): void {
+  activeTempFiles.clear();
+  windowsSecretWarningSent = false;
+}
 
 export interface ShellResult {
   stdout: string;
@@ -59,6 +76,7 @@ export interface ClaudeSpawnOptions {
   onData?: (chunk: string) => void;
   outputFile?: string;
   outputPollIntervalMs?: number;
+  mcpServers?: Record<string, unknown>;
 }
 
 export interface ClaudeJsonResult {
@@ -83,6 +101,7 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
   return new Promise((resolve) => {
     spawnClaudeInvocationCount++;
     const startTime = Date.now();
+    let tempMcpConfigPath: string | undefined;
 
     // Diagnostic: check if output file already exists (stale from prior run)
     if (options.outputFile && existsSync(options.outputFile)) {
@@ -101,6 +120,32 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
 
     if (options.allowedTools && options.allowedTools.length > 0) {
       args.push("--allowedTools", options.allowedTools.join(","));
+    }
+
+    // MCP server temp file lifecycle
+    if (options.mcpServers && Object.keys(options.mcpServers).length > 0) {
+      const mcpServers = options.mcpServers;
+
+      // SEC: runtime paranoia guard — shell layer receives Record<string, unknown>
+      for (const [name, entry] of Object.entries(mcpServers)) {
+        if (typeof (entry as Record<string, unknown>).command !== 'string') {
+          throw new Error(`mcpServers.${name}: command must be a string`);
+        }
+      }
+
+      // SEC: Windows warning BEFORE writing secrets to disk (CRITICAL-02)
+      if (process.platform === 'win32' && !windowsSecretWarningSent &&
+          Object.values(mcpServers).some(s => s && typeof s === 'object' && 'env' in (s as Record<string, unknown>))) {
+        console.warn('[mcp] WARNING: On Windows, temp MCP config files are not protected by file permissions (0o600 is ignored). Environment variables containing secrets may be readable by other processes.');
+        windowsSecretWarningSent = true;
+      }
+
+      const filename = `hive-mind-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`;
+      tempMcpConfigPath = join(tmpdir(), filename);
+      writeFileSync(tempMcpConfigPath, JSON.stringify({ mcpServers }), { mode: 0o600 });
+      activeTempFiles.add(tempMcpConfigPath);
+
+      args.push("--mcp-config", tempMcpConfigPath.replace(/\\/g, '/'));
     }
 
     args.push("--dangerously-skip-permissions");
@@ -208,6 +253,12 @@ export function spawnClaude(options: ClaudeSpawnOptions): Promise<ClaudeSpawnRes
             console.warn(`[spawnClaude] DIAGNOSTIC: Agent completed in ${durationMs}ms with no output. exit=${exitCode} stderr=${stderr.slice(0, 200)}`);
           }
         }
+      }
+
+      // MCP temp file cleanup
+      if (tempMcpConfigPath) {
+        activeTempFiles.delete(tempMcpConfigPath);
+        try { unlinkSync(tempMcpConfigPath); } catch { /* cleanup failure is non-critical */ }
       }
 
       resolve({ exitCode, stderr, stdout, json, killedByOutputDetection, usageLimitHit });
