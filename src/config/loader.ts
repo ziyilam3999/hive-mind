@@ -26,7 +26,7 @@ export function validateConfig(raw: unknown): ValidationResult {
   }
 
   const obj = raw as Record<string, unknown>;
-  const knownKeys = new Set([...Object.keys(DEFAULT_CONFIG), "workingDir", "knowledgeDir", "labDir"]);
+  const knownKeys = new Set([...Object.keys(DEFAULT_CONFIG), "workingDir", "knowledgeDir", "labDir", "mcpServers"]);
 
   for (const key of Object.keys(obj)) {
     if (!knownKeys.has(key)) {
@@ -124,6 +124,52 @@ export function validateConfig(raw: unknown): ValidationResult {
     }
   }
 
+  if ("mcpServers" in obj) {
+    const mcp = obj.mcpServers;
+    if (typeof mcp !== "object" || mcp === null || Array.isArray(mcp)) {
+      errors.push("mcpServers must be a non-null object");
+    } else {
+      for (const [serverName, serverConfig] of Object.entries(mcp as Record<string, unknown>)) {
+        if (typeof serverConfig !== "object" || serverConfig === null || Array.isArray(serverConfig)) {
+          errors.push(`mcpServers.${serverName}: entry must be a non-null object`);
+          continue;
+        }
+
+        const entry = serverConfig as Record<string, unknown>;
+
+        if (entry.command === undefined) {
+          errors.push(`mcpServers.${serverName}: command is required`);
+        } else if (typeof entry.command !== "string" || entry.command === "") {
+          errors.push(`mcpServers.${serverName}: command must be a non-empty string`);
+        }
+
+        if (entry.args !== undefined) {
+          if (!Array.isArray(entry.args) || !entry.args.every((a: unknown) => typeof a === "string")) {
+            errors.push(`mcpServers.${serverName}: args must be an array of strings`);
+          }
+        }
+
+        if (entry.env !== undefined) {
+          if (typeof entry.env !== "object" || entry.env === null || Array.isArray(entry.env)) {
+            errors.push(`mcpServers.${serverName}: env must be an object with string values`);
+          } else {
+            for (const [envKey, envVal] of Object.entries(entry.env as Record<string, unknown>)) {
+              if (typeof envVal !== "string") {
+                errors.push(`mcpServers.${serverName}: env.${envKey} must be a string, got: ${JSON.stringify(envVal)}`);
+              } else if (envVal === "") {
+                warnings.push(`mcpServers.${serverName}: env key '${envKey}' has empty string value — secret may be unset`);
+              }
+            }
+          }
+        }
+
+        if (entry.defer_loading !== undefined && typeof entry.defer_loading !== "boolean") {
+          errors.push(`mcpServers.${serverName}: defer_loading must be a boolean`);
+        }
+      }
+    }
+  }
+
   return { valid: errors.length === 0, errors, warnings };
 }
 
@@ -216,11 +262,12 @@ export function loadConfig(projectRoot: string): HiveMindConfig {
     liveReport: (obj.liveReport as boolean | undefined) ?? defaults.liveReport,
     modelAssignments,
     stageTimeouts,
-    pipelineTimeout: (obj.pipelineTimeout as number | undefined) ?? undefined,
-    workingDir: (obj.workingDir as string | undefined) ?? undefined,
-    knowledgeDir: (obj.knowledgeDir as string | undefined) ?? undefined,
-    labDir: (obj.labDir as string | undefined) ?? undefined,
+    pipelineTimeout: obj.pipelineTimeout as number | undefined,
+    workingDir: obj.workingDir as string | undefined,
+    knowledgeDir: obj.knowledgeDir as string | undefined,
+    labDir: obj.labDir as string | undefined,
     designSystemPath: (obj.designSystemPath as string | undefined) ?? defaults.designSystemPath,
     designRulesPath: (obj.designRulesPath as string | undefined) ?? defaults.designRulesPath,
+    mcpServers: obj.mcpServers as HiveMindConfig["mcpServers"],
   };
 }

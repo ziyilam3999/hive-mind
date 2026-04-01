@@ -25,6 +25,7 @@ export async function spawnAgent(
     timeout: timeoutOverride ?? hiveMindConfig.agentTimeout,
     cwd: config.cwd,
     outputFile: config.outputFile,
+    mcpServers: hiveMindConfig.mcpServers,
   });
 
   const elapsed = result.json?.duration_ms;
