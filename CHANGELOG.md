@@ -1,3 +1,10 @@
+## [0.25.0](https://github.com/ziyilam3999/hive-mind/compare/v0.24.1...v0.25.0) (2026-04-01)
+
+### Features
+
+* feat(US-01): Config schema, validation, and loading for mcpServers
+* feat: MCP Phase 1 — consume MCP servers (#231)
+
 ## [0.24.1](https://github.com/ziyilam3999/hive-mind/compare/v0.24.0...v0.24.1) (2026-03-31)
 
 ### Miscellaneous
