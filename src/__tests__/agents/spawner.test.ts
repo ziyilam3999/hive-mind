@@ -206,6 +206,34 @@ describe("spawnAgent", () => {
     expect(callArgs.timeout).toBe(config.agentTimeout);
   });
 
+  it("threads mcpServers from config to spawnClaude", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({
+      exitCode: 0, stdout: "", stderr: "",
+      json: { result: "", cost_usd: 0, model: "sonnet", session_id: "", duration_ms: 0, raw: {} },
+    });
+
+    const mcpServers = { "test-server": { command: "echo", args: ["hello"] } };
+    const mcpConfig = { ...config, mcpServers };
+    await spawnAgent(makeAgentConfig(), mcpConfig);
+
+    const callArgs = mockSpawn.mock.calls[0][0];
+    expect(callArgs.mcpServers).toEqual(mcpServers);
+  });
+
+  it("does not pass mcpServers when not configured", async () => {
+    const mockSpawn = vi.mocked(spawnClaude);
+    mockSpawn.mockResolvedValue({
+      exitCode: 0, stdout: "", stderr: "",
+      json: { result: "", cost_usd: 0, model: "sonnet", session_id: "", duration_ms: 0, raw: {} },
+    });
+
+    await spawnAgent(makeAgentConfig(), config);
+
+    const callArgs = mockSpawn.mock.calls[0][0];
+    expect(callArgs.mcpServers).toBeUndefined();
+  });
+
   it("uses config modelAssignments override", async () => {
     const mockSpawn = vi.mocked(spawnClaude);
     mockSpawn.mockResolvedValue({
