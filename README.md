@@ -28,25 +28,30 @@
 # Hive Mind
 
 [![CI](https://github.com/ziyilam3999/hive-mind/actions/workflows/ci.yml/badge.svg)](https://github.com/ziyilam3999/hive-mind/actions/workflows/ci.yml)
-[![AI Code Review](https://github.com/ziyilam3999/hive-mind/actions/workflows/code-review.yml/badge.svg)](https://github.com/ziyilam3999/hive-mind/actions/workflows/code-review.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/ziyilam3999/hive-mind)](https://github.com/ziyilam3999/hive-mind/releases)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
 ![Node](https://img.shields.io/badge/Node.js-18%2B-green)
 
 PRD-driven orchestrator that turns a product requirements document into working code through a multi-stage AI pipeline with human checkpoints, a real-time browser dashboard, and a dedicated bug-fix pipeline.
 
-> **Design iteration 3** -- ground-up redesign following two earlier prototypes. Currently at `v0.16.0`.
+> **Design iteration 3** — ground-up redesign following two earlier prototypes. See [Releases](https://github.com/ziyilam3999/hive-mind/releases) for the current version.
 
+```mermaid
+graph LR
+    PRD[PRD input] --> N[NORMALIZE]
+    N --> B[BASELINE]
+    B --> S[SPEC]
+    S --> P[PLAN]
+    P --> E[EXECUTE<br/>parallel waves]
+    E --> R[REPORT<br/>scorecard]
+    R -.if bugs.-> D[DIAGNOSE]
+    D --> F[FIX]
+    F --> V[VERIFY]
+    V -.-> R
 ```
-Start pipeline:
 
-PRD --> NORMALIZE --> BASELINE --> SPEC --> PLAN --> EXECUTE --> REPORT
-                  [ human approval at each checkpoint ]    [ scorecard ]
-
-Bug-fix pipeline:
-
-REPORT --> DIAGNOSE --> FIX --> VERIFY
-```
+Each checkpoint is human-gated — approve, reject with feedback, or abort. Parallel wave execution fans out non-overlapping stories; file-overlap detection defers conflicts to the next wave.
 
 ## Features
 
